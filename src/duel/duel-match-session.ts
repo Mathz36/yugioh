@@ -170,18 +170,32 @@ export class DuelMatchSession {
       return false;
     }
 
-    if (targetZoneIndex < 0 || targetZoneIndex > 4 || player.monsterZones[targetZoneIndex] !== null) {
-      this.log('Zona de monstro inválida ou já ocupada.');
-      return false;
-    }
-
     const handIndex = player.hand.findIndex((c) => c.uid === cardUid);
     if (handIndex === -1) return false;
     const card = player.hand[handIndex];
 
+    if (targetZoneIndex < 0 || targetZoneIndex > 4) {
+      this.log('Zona de monstro inválida.');
+      return false;
+    }
+
     const requiredTributes = DuelRuleEngine.getRequiredTributes(card.data.level);
     if (tributeZoneIndices.length !== requiredTributes) {
       this.log(`Monstros Nível ${card.data.level} exigem exatamente ${requiredTributes} sacrifício(s).`);
+      return false;
+    }
+
+    // Valida se o targetZoneIndex está livre OU se é uma das zonas que serão liberadas pelo sacrifício
+    const isTargetZoneFreedByTribute = tributeZoneIndices.includes(targetZoneIndex);
+    if (player.monsterZones[targetZoneIndex] !== null && !isTargetZoneFreedByTribute) {
+      this.log('Zona de monstro já ocupada.');
+      return false;
+    }
+
+    // Valida duplicatas de índices de tributo
+    const uniqueTributes = new Set(tributeZoneIndices);
+    if (uniqueTributes.size !== tributeZoneIndices.length) {
+      this.log('Não é permitido selecionar o mesmo monstro mais de uma vez para sacrifício.');
       return false;
     }
 
@@ -195,7 +209,7 @@ export class DuelMatchSession {
       player.monsterZones[zoneIdx] = null;
       player.graveyard.push(tributeMonster);
       const name = tributeMonster.data.namePt || tributeMonster.data.name;
-      this.log(`${player.nickname} sacrificou ${name} para o Cemitério.`);
+      this.log(`🔥 ${player.nickname} sacrificou ${name} para o Cemitério.`);
     }
 
     // Posiciona o monstro

@@ -98,4 +98,46 @@ describe('DuelMatchSession & DuelBot Integration', () => {
     expect(session.getActivePlayer().id).toBe(session.player1.id);
     expect(session.player2.monsterZones.some((z) => z !== null)).toBe(true);
   });
+
+  it('should require exactly 1 tribute for level 5-6 monsters and 2 tributes for level 7+ monsters', () => {
+    // Arrange
+    const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+    const p1 = session.player1;
+
+    // Coloca 2 monstros nível 4 no campo para servirem de tributo
+    const lvl4Cards = p1.deck.filter((c) => c.data.level <= 4);
+    p1.monsterZones[0] = { ...lvl4Cards[0], uid: 'tribute_1' };
+    p1.monsterZones[1] = { ...lvl4Cards[1], uid: 'tribute_2' };
+
+    // Cartas de teste
+    const lvl6Card = { ...p1.deck.find((c) => c.data.level === 6)!, uid: 'summon_lvl6' };
+    const lvl7Card = { ...p1.deck.find((c) => c.data.level >= 7)!, uid: 'summon_lvl7' };
+    p1.hand.push(lvl6Card, lvl7Card);
+
+    // Act 1: Tentar invocar monstro nível 6 sem tributos -> deve falhar
+    p1.hasNormalSummonedThisTurn = false;
+    const failLvl6NoTribute = session.normalSummon(lvl6Card.uid, 2, 'ATTACK', []);
+    expect(failLvl6NoTribute).toBe(false);
+
+    // Act 2: Invocar monstro nível 6 com exatamente 1 tributo -> deve ter sucesso
+    const successLvl6 = session.normalSummon(lvl6Card.uid, 0, 'ATTACK', [0]);
+    expect(successLvl6).toBe(true);
+    expect(p1.graveyard.some((c) => c.uid === 'tribute_1')).toBe(true);
+    expect(p1.monsterZones[0]?.uid).toBe('summon_lvl6');
+
+    // Prepara para o teste de nível 7+
+    p1.hasNormalSummonedThisTurn = false;
+    p1.monsterZones[2] = { ...lvl4Cards[2], uid: 'tribute_3' }; // Agora tem zona 0, 1 e 2 ocupadas
+
+    // Act 3: Tentar invocar nível 7+ com apenas 1 tributo -> deve falhar
+    const failLvl7With1Tribute = session.normalSummon(lvl7Card.uid, 3, 'ATTACK', [1]);
+    expect(failLvl7With1Tribute).toBe(false);
+
+    // Act 4: Invocar nível 7+ com 2 tributos -> deve ter sucesso
+    const successLvl7 = session.normalSummon(lvl7Card.uid, 1, 'ATTACK', [1, 2]);
+    expect(successLvl7).toBe(true);
+    expect(p1.graveyard.some((c) => c.uid === 'tribute_2')).toBe(true);
+    expect(p1.graveyard.some((c) => c.uid === 'tribute_3')).toBe(true);
+    expect(p1.monsterZones[1]?.uid).toBe('summon_lvl7');
+  });
 });

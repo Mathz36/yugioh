@@ -19,6 +19,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedHandCardUid, setSelectedHandCardUid] = useState<string | null>(null);
   const [pendingSummonZone, setPendingSummonZone] = useState<number | null>(null); // Quando clica na zona para escolher ATK/DEF
+  const [selectedTributeZones, setSelectedTributeZones] = useState<number[]>([]); // Zonas selecionadas para sacrifício
   const [selectedAttackerZone, setSelectedAttackerZone] = useState<number | null>(null);
   const [inspectedCard, setInspectedCard] = useState<CardInstance | null>(null);
   const [languagePt, setLanguagePt] = useState<boolean>(true);
@@ -66,6 +67,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     setSelectedHandCardUid(null);
     setSelectedAttackerZone(null);
     setPendingSummonZone(null);
+    setSelectedTributeZones([]);
     forceUpdate();
   };
 
@@ -75,6 +77,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     setSelectedHandCardUid(null);
     setSelectedAttackerZone(null);
     setPendingSummonZone(null);
+    setSelectedTributeZones([]);
     forceUpdate();
 
     setTimeout(() => {
@@ -88,21 +91,51 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     if (!isPlayerTurn || match.phase !== 'MAIN1' || p1.hasNormalSummonedThisTurn) return;
     setSelectedHandCardUid(selectedHandCardUid === card.uid ? null : card.uid);
     setPendingSummonZone(null);
+    setSelectedTributeZones([]);
   };
 
   // Clique na Zona de Monstro do Jogador
   const handlePlayerMonsterZoneClick = (zoneIndex: number) => {
     if (!isPlayerTurn || match.isGameOver) return;
 
-    // 1. Invocação: Se há carta da mão selecionada e zona vazia -> Abre escolha ATK/DEF
-    if (selectedHandCardUid && match.phase === 'MAIN1' && p1.monsterZones[zoneIndex] === null) {
+    // 1. Invocação: Se há carta da mão selecionada
+    if (selectedHandCardUid && match.phase === 'MAIN1') {
       const card = p1.hand.find((c) => c.uid === selectedHandCardUid);
       if (!card) return;
 
-      if (card.data.level <= 4) {
-        setPendingSummonZone(zoneIndex); // Abre o modal/menu flutuante para escolher posição
-      } else {
-        showNotification(`⚠️ Monstro Nível ${card.data.level} exige sacrifício de monstros no campo!`);
+      const requiredTributes = card.data.level <= 4 ? 0 : card.data.level <= 6 ? 1 : 2;
+      const targetMonster = p1.monsterZones[zoneIndex];
+
+      // Caso com Sacrifício (Nível 5+)
+      if (requiredTributes > 0) {
+        // Se clicou em um monstro seu no campo, pode estar selecionando como sacrifício
+        if (targetMonster !== null) {
+          if (selectedTributeZones.includes(zoneIndex)) {
+            // Desmarca o tributo
+            setSelectedTributeZones(selectedTributeZones.filter((z) => z !== zoneIndex));
+          } else if (selectedTributeZones.length < requiredTributes) {
+            // Adiciona como tributo
+            setSelectedTributeZones([...selectedTributeZones, zoneIndex]);
+          } else {
+            showNotification(`⚠️ Você já selecionou os ${requiredTributes} monstro(s) para sacrifício. Agora clique na zona onde o monstro será invocado!`);
+          }
+          return;
+        }
+
+        // Se clicou numa zona vazia (ou zona liberada por sacrifício)
+        if (selectedTributeZones.length < requiredTributes) {
+          showNotification(`⚠️ Monstro Nível ${card.data.level} exige selecionar ${requiredTributes} monstro(s) no seu campo como sacrifício primeiro!`);
+          return;
+        }
+
+        // Todos os sacrifícios foram selecionados e clicou na zona de destino
+        setPendingSummonZone(zoneIndex);
+        return;
+      }
+
+      // Caso sem Sacrifício (Nível 1 a 4)
+      if (targetMonster === null) {
+        setPendingSummonZone(zoneIndex); // Abre o modal para escolher posição
       }
       return;
     }
@@ -140,13 +173,18 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     }
   };
 
-  // Concluir Invocação com Posição Escolhida
+  // Concluir Invocação com Posição Escolhida (Normal ou com Sacrifício)
   const confirmSummonWithPosition = (position: BattlePosition) => {
     if (selectedHandCardUid === null || pendingSummonZone === null) return;
-    session.normalSummon(selectedHandCardUid, pendingSummonZone, position, []);
-    setSelectedHandCardUid(null);
-    setPendingSummonZone(null);
-    forceUpdate();
+    const success = session.normalSummon(selectedHandCardUid, pendingSummonZone, position, selectedTributeZones);
+    if (success) {
+      setSelectedHandCardUid(null);
+      setPendingSummonZone(null);
+      setSelectedTributeZones([]);
+      forceUpdate();
+    } else {
+      showNotification('❌ Falha ao invocar monstro. Verifique as regras.');
+    }
   };
 
   // Clique no Monstro do Oponente
@@ -184,6 +222,16 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   return (
     <div className="flex h-screen w-screen max-h-screen bg-[#07050d] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#180e2d] via-[#090614] to-[#030206] select-none text-slate-100 overflow-hidden font-sans relative">
       
+      {/* 🔮 ALERTA VISUAL INTEGRADO NA TELA (SUBSTITUINDO ALERT NATIVO) */}
+      {toastMessage && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+          <div className="bg-[#180e2d]/95 border-2 border-amber-400 text-amber-200 px-6 py-2.5 rounded-full shadow-[0_0_30px_rgba(245,158,11,0.9)] backdrop-blur-md font-serif font-black text-sm tracking-wide flex items-center gap-2.5">
+            <span className="text-lg text-amber-400">𓂀</span>
+            <span>{toastMessage}</span>
+          </div>
+        </div>
+      )}
+
       {/* 🔮 OVERLAY DE CONTAGEM REGRESSIVA INICIAL (5 SEGUNDOS) */}
       {countdown !== null && (
         <div className="absolute inset-0 bg-black/95 z-50 flex flex-col items-center justify-center animate-fadeIn">
@@ -298,29 +346,31 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       {/* ÁREA DA MESA / PLAYMAT INTERATIVO */}
       <main className="flex-1 flex flex-col justify-between p-2.5 relative overflow-hidden">
         
-        {/* TOPO: OPONENTE KAIBA */}
-        <div className="flex justify-between items-center bg-[#0e0a17]/95 border border-[#3b2354] rounded-lg px-6 py-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.8)]">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-700 to-indigo-950 border-2 border-blue-400 flex items-center justify-center font-bold text-blue-200 shadow-[0_0_10px_rgba(59,130,246,0.5)]">
+        {/* TOPO: OPONENTE KAIBA (HUD AMPLIADO) */}
+        <div className="flex justify-between items-center bg-[#0e0a17]/95 border-2 border-[#412760] rounded-xl px-7 py-2.5 shadow-[0_6px_25px_rgba(0,0,0,0.85)]">
+          <div className="flex items-center space-x-4">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-950 border-2 border-blue-400 flex items-center justify-center font-black text-blue-200 text-xl shadow-[0_0_15px_rgba(59,130,246,0.6)]">
               K
             </div>
             <div>
-              <h2 className="font-bold text-blue-300 tracking-wide text-sm flex items-center gap-2 font-serif">
+              <h2 className="font-extrabold text-blue-300 tracking-wider text-base flex items-center gap-2 font-serif">
                 {p2.nickname}
-                <span className="text-[10px] px-1.5 bg-blue-950/80 border border-blue-500/40 text-blue-400 rounded font-sans">
-                  BOT
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-950/90 border border-blue-500/50 text-blue-300 rounded font-sans uppercase">
+                  IA Bot
                 </span>
               </h2>
-              <div className="text-[11px] text-slate-400">
-                Deck: <span className="text-amber-400 font-mono font-bold">{p2.deck.length}</span> • Cemitério: <span className="text-purple-400 font-mono font-bold">{p2.graveyard.length}</span>
+              <div className="text-xs text-slate-300 flex items-center gap-2 mt-0.5">
+                <span>Deck: <strong className="text-amber-400 font-mono">{p2.deck.length}</strong></span>
+                <span>•</span>
+                <span>Cemitério: <strong className="text-purple-400 font-mono">{p2.graveyard.length}</strong></span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
-            <span className="text-xs uppercase font-serif tracking-widest text-slate-400 font-bold">LIFE POINTS</span>
-            <div className="bg-black/95 border-2 border-red-600 rounded px-4 py-0.5 text-2xl font-mono font-black text-red-500 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider">
-              {p2.lifePoints}
+          <div className="flex items-center space-x-4">
+            <span className="text-xs uppercase font-serif tracking-widest text-slate-400 font-black">PONTOS DE VIDA</span>
+            <div className="bg-black/95 border-2 border-red-600 rounded-lg px-5 py-1 text-3xl font-mono font-black text-red-500 shadow-[0_0_22px_rgba(239,68,68,0.7)] tracking-wider">
+              {p2.lifePoints} <span className="text-sm font-sans text-red-400 font-normal">LP</span>
             </div>
           </div>
         </div>
@@ -354,7 +404,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   onMouseEnter={() => slot && setInspectedCard(slot)}
                   className={`h-48 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
                     slot
-                      ? `card-3d ${isDefense ? 'card-3d-defense' : ''}`
+                      ? `${isDefense ? 'card-3d-defense' : 'card-3d'}`
                       : 'border-2 border-dashed border-[#2d1c47] zone-empty hover:border-purple-500/60'
                   } ${
                     isTargetable
@@ -369,18 +419,18 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   )}
 
                   {slot ? (
-                    <div className="w-full h-full relative rounded-lg overflow-hidden flex items-center justify-center">
+                    <div className="w-full h-full relative rounded-lg flex items-center justify-center">
                       {/* Apenas a Imagem Pura da Carta Preenchendo com Fidelidade */}
                       <img
                         src={slot.data.imageUrl}
                         alt={slot.data.name}
                         className={`w-full h-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.85)] transition-transform duration-300 ${
-                          isDefense ? 'rotate-90 scale-95' : 'group-hover:scale-105'
+                          isDefense ? 'rotate-90 scale-90' : 'group-hover:scale-105'
                         }`}
                       />
 
                       {/* Informações invisíveis por padrão - reveladas com suavidade apenas ao passar o mouse */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none">
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none rounded-lg">
                         <div className="text-[11px] font-black text-amber-200 truncate drop-shadow text-center">
                           {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
                         </div>
@@ -401,14 +451,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           </div>
         </div>
 
-        {/* FAIXA CENTRAL DO DUELO: CONTROLES & AURA DE FASE */}
-        <div className="flex items-center justify-between px-6 py-1 bg-[#100a1c]/95 border-y-2 border-[#412760] shadow-[0_0_20px_rgba(65,39,96,0.7)] my-1">
-          <div className="flex items-center space-x-3">
-            <span className="text-xs uppercase font-serif tracking-widest text-amber-400 font-bold">FASE ATUAL:</span>
-            <span className="px-3 py-0.5 rounded text-xs font-black tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.4)]">
+        {/* FAIXA CENTRAL DO DUELO: CONTROLES & AURA DE FASE (HUD CENTRAL AMPLIADO) */}
+        <div className="flex items-center justify-between px-7 py-2 bg-[#100a1c]/95 border-y-2 border-[#412760] shadow-[0_0_25px_rgba(65,39,96,0.8)] my-1">
+          <div className="flex items-center space-x-3.5">
+            <span className="text-xs uppercase font-serif tracking-widest text-amber-400 font-black">FASE:</span>
+            <span className="px-3.5 py-1 rounded text-xs font-black tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.5)]">
               {match.phase}
             </span>
-            <span className="text-xs text-slate-400 font-mono">
+            <span className="text-xs text-slate-300 font-mono font-bold">
               Turno {match.currentTurn} • {isPlayerTurn ? '🌟 SEU TURNO' : '⏳ TURNO DO OPONENTE'}
             </span>
           </div>
@@ -426,18 +476,18 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             )}
 
           {/* Botões de Ação */}
-          <div className="flex space-x-2">
+          <div className="flex space-x-2.5">
             <button
               onClick={handleNextPhase}
               disabled={!isPlayerTurn || match.isGameOver || match.phase === 'BATTLE'}
-              className="px-4 py-1 bg-gradient-to-r from-indigo-700 to-purple-800 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-30 text-xs font-bold rounded border border-indigo-400/50 shadow-md transition-all font-serif"
+              className="px-5 py-1.5 bg-gradient-to-r from-indigo-700 to-purple-800 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-30 text-xs font-bold rounded-lg border border-indigo-400/50 shadow-md transition-all font-serif"
             >
               Fase de Batalha ⚔️
             </button>
             <button
               onClick={handleEndTurn}
               disabled={!isPlayerTurn || match.isGameOver}
-              className="px-4 py-1 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 disabled:opacity-30 text-xs font-black rounded border border-amber-400 shadow-md transition-all text-slate-950 font-serif"
+              className="px-5 py-1.5 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 disabled:opacity-30 text-xs font-black rounded-lg border border-amber-400 shadow-md transition-all text-slate-950 font-serif"
             >
               Encerrar Turno 🛡️
             </button>
@@ -448,7 +498,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         <div className="flex flex-col space-y-2">
           <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
             {p1.monsterZones.map((slot, i) => {
-              const isValidSummonZone = selectedHandCardUid !== null && slot === null;
+              const selectedHandCard = selectedHandCardUid ? p1.hand.find((c) => c.uid === selectedHandCardUid) : null;
+              const requiredTributes = selectedHandCard ? (selectedHandCard.data.level <= 4 ? 0 : selectedHandCard.data.level <= 6 ? 1 : 2) : 0;
+              const isSelectedTribute = selectedTributeZones.includes(i);
+              const isTributeTargetZone = selectedHandCard !== null && requiredTributes > 0 && selectedTributeZones.length === requiredTributes && (slot === null || isSelectedTribute);
+              const isValidSummonZone = selectedHandCard !== null && requiredTributes === 0 && slot === null;
               const isSelectedAttacker = selectedAttackerZone === i;
               const isDefense = slot?.position === 'DEFENSE';
 
@@ -459,36 +513,47 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   onMouseEnter={() => slot && setInspectedCard(slot)}
                   className={`h-48 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
                     slot
-                      ? `card-3d ${isDefense ? 'card-3d-defense' : ''}`
-                      : isValidSummonZone
+                      ? `${isDefense ? 'card-3d-defense' : 'card-3d'}`
+                      : (isValidSummonZone || isTributeTargetZone)
                       ? 'border-2 border-emerald-400 bg-emerald-950/40 ring-4 ring-emerald-400/80 shadow-[0_0_25px_rgba(16,185,129,0.8)] scale-105 animate-pulse'
                       : 'border-2 border-dashed border-[#2d1c47] zone-empty hover:border-amber-500/50'
                   } ${
                     isSelectedAttacker
                       ? 'ring-4 ring-amber-400 scale-105 shadow-[0_0_30px_rgba(245,158,11,0.9)]'
                       : ''
+                  } ${
+                    isSelectedTribute
+                      ? 'ring-4 ring-red-500 border-2 border-red-400 scale-105 shadow-[0_0_30px_rgba(239,68,68,0.9)] animate-pulse'
+                      : ''
                   }`}
                 >
-                  {/* Seta Indicadora de Invocação */}
-                  {isValidSummonZone && (
+                  {/* Badge de Sacrifício Selecionado */}
+                  {isSelectedTribute && (
+                    <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-red-600 to-rose-700 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(239,68,68,0.9)] border border-yellow-300 animate-bounce flex items-center gap-1 uppercase tracking-wider">
+                      <span>🔥</span> SACRIFÍCIO
+                    </div>
+                  )}
+
+                  {/* Seta Indicadora de Invocação Normal ou com Tributo */}
+                  {(isValidSummonZone || isTributeTargetZone) && !isSelectedTribute && (
                     <div className="absolute -top-3 z-30 bg-emerald-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
                       <span>⬇️</span> INVOCAR
                     </div>
                   )}
 
                   {slot ? (
-                    <div className="w-full h-full relative rounded-lg overflow-hidden flex items-center justify-center">
+                    <div className="w-full h-full relative rounded-lg flex items-center justify-center">
                       {/* Apenas a Imagem Pura da Carta Original em Alta Definição */}
                       <img
                         src={slot.data.imageUrl}
                         alt={slot.data.name}
                         className={`w-full h-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.85)] transition-transform duration-300 ${
-                          isDefense ? 'rotate-90 scale-95' : 'group-hover:scale-105'
+                          isDefense ? 'rotate-90 scale-90' : 'group-hover:scale-105'
                         }`}
                       />
 
                       {/* Informações ocultas por padrão - reveladas suavemente apenas em hover */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none">
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none rounded-lg">
                         <div className="text-[11px] font-black text-amber-200 truncate drop-shadow text-center">
                           {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
                         </div>
@@ -514,17 +579,17 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           </div>
         </div>
 
-        {/* RODAPÉ DO JOGADOR: MÃO AMPLIADA & STATUS */}
-        <div className="bg-[#0b0814]/95 border-2 border-[#382654] rounded-xl p-2.5 shadow-[0_-5px_30px_rgba(0,0,0,0.85)] flex items-center justify-between">
+        {/* RODAPÉ DO JOGADOR: MÃO AMPLIADA & STATUS (HUD AMPLIADO) */}
+        <div className="bg-[#0b0814]/95 border-2 border-[#412760] rounded-xl p-3 shadow-[0_-6px_30px_rgba(0,0,0,0.85)] flex items-center justify-between">
           
-          <div className="flex items-center space-x-3 w-52">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-600 via-amber-700 to-purple-950 border-2 border-amber-400 flex items-center justify-center font-bold text-amber-200 text-lg shadow-[0_0_12px_rgba(245,158,11,0.5)] uppercase">
+          <div className="flex items-center space-x-4 w-60">
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 via-amber-700 to-purple-950 border-2 border-amber-400 flex items-center justify-center font-black text-amber-200 text-2xl shadow-[0_0_15px_rgba(245,158,11,0.6)] uppercase">
               {p1.nickname.charAt(0) || 'D'}
             </div>
             <div>
-              <h2 className="font-bold text-amber-300 text-sm font-serif truncate max-w-[140px]">{p1.nickname}</h2>
-              <div className="bg-black/95 border border-red-600 rounded px-2.5 py-0.5 text-xl font-mono font-black text-red-400 shadow-[0_0_12px_rgba(239,68,68,0.5)]">
-                {p1.lifePoints} LP
+              <h2 className="font-extrabold text-amber-300 text-base font-serif tracking-wide truncate max-w-[150px]">{p1.nickname}</h2>
+              <div className="bg-black/95 border-2 border-red-600 rounded-lg px-3.5 py-0.5 text-2xl font-mono font-black text-red-400 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider mt-0.5">
+                {p1.lifePoints} <span className="text-xs font-sans text-red-400 font-normal">LP</span>
               </div>
             </div>
           </div>
@@ -595,11 +660,16 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         {pendingSummonZone !== null && selectedHandCardUid !== null && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
             <div className="bg-[#140e24] border-2 border-amber-400 rounded-xl p-5 text-center max-w-sm shadow-[0_0_40px_rgba(245,158,11,0.5)]">
+              <div className="text-3xl mb-1 text-amber-400">
+                {selectedTributeZones.length > 0 ? '🔥' : '⚔️'}
+              </div>
               <h3 className="text-lg font-serif font-black text-amber-300 mb-1">
-                COMO DESEJA BAIXAR O MONSTRO?
+                {selectedTributeZones.length > 0 ? 'INVOCAÇÃO-TRIBUTO' : 'INVOCAÇÃO NORMAL'}
               </h3>
               <p className="text-xs text-slate-300 mb-4">
-                Escolha a posição de batalha para inseri-lo no campo:
+                {selectedTributeZones.length > 0
+                  ? `Sacrificando ${selectedTributeZones.length} monstro(s). Escolha a posição:`
+                  : 'Escolha a posição de batalha para inseri-lo no campo:'}
               </p>
               
               <div className="flex space-x-3 justify-center">
