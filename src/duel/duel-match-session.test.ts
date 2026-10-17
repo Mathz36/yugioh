@@ -244,4 +244,120 @@ describe('DuelMatchSession & DuelBot Integration', () => {
     expect(bot.monsterZones[0]?.position).toBe('ATTACK');
     expect(bot.hasNormalSummonedThisTurn).toBe(true);
   });
+
+  it('should allow Level 5-6 tribute summon occupying the EXACT SAME zone vacated by the sacrificed monster (Regression Fix)', () => {
+    // Arrange
+    const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+    const p1 = session.player1;
+
+    // Fill zone 0 with a Level 4 monster to be sacrificed
+    const lvl4Card = p1.deck.find((c) => c.data.level <= 4)!;
+    p1.monsterZones[0] = { ...lvl4Card, uid: 'tribute_zone_0_monster' };
+
+    // Prepare a Level 6 monster in hand
+    const lvl6Card = { ...p1.deck.find((c) => c.data.level === 6)!, uid: 'summon_lvl6_in_same_zone' };
+    p1.hand.push(lvl6Card);
+    p1.hasNormalSummonedThisTurn = false;
+
+    // Act: Summon Level 6 into targetZoneIndex 0 sacrificing zone 0
+    const summonSuccess = session.normalSummon(lvl6Card.uid, 0, 'ATTACK', [0]);
+
+    // Assert
+    expect(summonSuccess).toBe(true);
+    expect(p1.graveyard.some((c) => c.uid === 'tribute_zone_0_monster')).toBe(true);
+    expect(p1.monsterZones[0]?.uid).toBe('summon_lvl6_in_same_zone');
+    expect(p1.monsterZones[0]?.position).toBe('ATTACK');
+    expect(p1.hasNormalSummonedThisTurn).toBe(true);
+  });
+
+  it('should allow Level 7+ tribute summon occupying the EXACT SAME zone of one of the sacrificed monsters (Regression Fix)', () => {
+    // Arrange
+    const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+    const p1 = session.player1;
+
+    // Fill zones 1 and 2 with monsters to be sacrificed
+    const lvl4Cards = p1.deck.filter((c) => c.data.level <= 4);
+    p1.monsterZones[1] = { ...lvl4Cards[0], uid: 'tribute_zone_1' };
+    p1.monsterZones[2] = { ...lvl4Cards[1], uid: 'tribute_zone_2' };
+
+    // Prepare Level 7+ monster in hand
+    const lvl7Card = { ...p1.deck.find((c) => c.data.level >= 7)!, uid: 'summon_lvl7_in_same_zone' };
+    p1.hand.push(lvl7Card);
+    p1.hasNormalSummonedThisTurn = false;
+
+    // Act: Summon Level 7+ into targetZoneIndex 1 sacrificing zones [1, 2]
+    const summonSuccess = session.normalSummon(lvl7Card.uid, 1, 'ATTACK', [1, 2]);
+
+    // Assert
+    expect(summonSuccess).toBe(true);
+    expect(p1.graveyard.some((c) => c.uid === 'tribute_zone_1')).toBe(true);
+    expect(p1.graveyard.some((c) => c.uid === 'tribute_zone_2')).toBe(true);
+    expect(p1.monsterZones[1]?.uid).toBe('summon_lvl7_in_same_zone');
+    expect(p1.monsterZones[1]?.position).toBe('ATTACK');
+    expect(p1.monsterZones[2]).toBeNull();
+    expect(p1.hasNormalSummonedThisTurn).toBe(true);
+  });
+
+  it('should ensure DuelBot attacks favorable targets when opponent field has monsters', () => {
+    // Arrange
+    const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+    const bot = session.player2;
+    const opponent = session.player1;
+
+    // Set opponent with a weaker attack monster in zone 0
+    opponent.monsterZones[0] = {
+      uid: 'yugi_kuriboh',
+      data: {
+        id: '40640057',
+        name: 'Kuriboh',
+        type: 'Effect Monster',
+        level: 1,
+        attack: 300,
+        defense: 200,
+        description: 'Kuriboh',
+        imageUrl: '',
+      },
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+
+    // Set bot active turn
+    session.matchState.activePlayerId = bot.id;
+    session.matchState.currentTurn = 2;
+    session.matchState.phase = 'BATTLE';
+
+    // Place a strong bot monster summoned in turn 1 (ready to attack)
+    bot.monsterZones[0] = {
+      uid: 'kaiba_vorse_raider_atk',
+      data: {
+        id: '14898066',
+        name: 'Vorse Raider',
+        type: 'Normal Monster',
+        level: 4,
+        attack: 1900,
+        defense: 1200,
+        description: 'Warrior',
+        imageUrl: '',
+      },
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1, // Summoned in previous turn
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+
+    // Act
+    DuelBot.executeAttacks(session);
+
+    // Assert: Kuriboh destroyed, Vorse Raider marked as hasAttacked, damage inflicted to opponent
+    expect(opponent.monsterZones[0]).toBeNull();
+    expect(opponent.graveyard.some((c) => c.uid === 'yugi_kuriboh')).toBe(true);
+    expect(bot.monsterZones[0]?.hasAttacked).toBe(true);
+    expect(opponent.lifePoints).toBe(8000 - (1900 - 300)); // 6400 LP
+  });
 });

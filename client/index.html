@@ -101,23 +101,49 @@
         animation: drawBezierFlow 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
       }
 
-      /* 3. Ataque: Investida Rápida (Lunge) */
+      /* 3. Ataque: Investida Rápida e Marcante (Attack Lunge) */
       @keyframes attackLungePlayer {
-        0% { transform: translateY(0) scale(1); }
-        35% { transform: translateY(-75px) scale(1.18); box-shadow: 0 0 35px rgba(239, 68, 68, 0.9); }
-        100% { transform: translateY(0) scale(1); }
+        0% {
+          transform: translateY(0) scale(1);
+        }
+        35% {
+          transform: translateY(-220px) scale(1.28) rotateX(10deg);
+          box-shadow: 0 0 45px 10px rgba(239, 68, 68, 0.95), 0 20px 40px rgba(0, 0, 0, 0.9);
+          filter: brightness(1.2);
+        }
+        70% {
+          transform: translateY(-200px) scale(1.22);
+        }
+        100% {
+          transform: translateY(0) scale(1);
+        }
       }
       .anim-attack-lunge-player {
-        animation: attackLungePlayer 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        animation: attackLungePlayer 0.52s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards !important;
+        z-index: 50 !important;
+        pointer-events: none;
       }
 
       @keyframes attackLungeOpponent {
-        0% { transform: translateY(0) scale(1); }
-        35% { transform: translateY(75px) scale(1.18); box-shadow: 0 0 35px rgba(239, 68, 68, 0.9); }
-        100% { transform: translateY(0) scale(1); }
+        0% {
+          transform: translateY(0) scale(1);
+        }
+        35% {
+          transform: translateY(220px) scale(1.28) rotateX(-10deg);
+          box-shadow: 0 0 45px 10px rgba(239, 68, 68, 0.95), 0 20px 40px rgba(0, 0, 0, 0.9);
+          filter: brightness(1.2);
+        }
+        70% {
+          transform: translateY(200px) scale(1.22);
+        }
+        100% {
+          transform: translateY(0) scale(1);
+        }
       }
       .anim-attack-lunge-opponent {
-        animation: attackLungeOpponent 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        animation: attackLungeOpponent 0.52s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards !important;
+        z-index: 50 !important;
+        pointer-events: none;
       }
 
       /* 3b. Camera Shake */

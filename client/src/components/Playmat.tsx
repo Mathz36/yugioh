@@ -160,7 +160,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             if (opponentMonsters.length === 0) {
               // Ataque Direto nos LPs do Jogador!
               setTargetHitZone({ isPlayer: true, zoneIndex: null });
-              setTimeout(() => setTargetHitZone(null), 450);
+              setTimeout(() => setTargetHitZone(null), 500);
               const dmg = attacker.card.data.attack;
               setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: null });
               setTimeout(() => setFloatingDamage(null), 1200);
@@ -176,7 +176,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                 ) || opponentMonsters[0];
 
               setTargetHitZone({ isPlayer: true, zoneIndex: target.index });
-              setTimeout(() => setTargetHitZone(null), 450);
+              setTimeout(() => setTargetHitZone(null), 500);
 
               if (target.card.position === 'ATTACK' && attacker.card.data.attack > target.card.data.attack) {
                 const dmg = attacker.card.data.attack - target.card.data.attack;
@@ -192,6 +192,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               session.declareAttack(attacker.index, target.index);
             }
 
+            forceUpdate();
+          }, 280);
+
+          // Finaliza o Lunge do Bot após completar o arco (540ms)
+          setTimeout(() => {
             setLungingZone(null);
             forceUpdate();
 
@@ -208,8 +213,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                 setRecentDrawnUids([lastCard.uid]);
                 setTimeout(() => setRecentDrawnUids([]), 900);
               }
-            }, 700);
-          }, 350);
+            }, 600);
+          }, 540);
         } else {
           // Sem ataques, passa o turno de volta
           setTimeout(() => {
@@ -252,28 +257,36 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
       // Caso com Sacrifício (Nível 5+)
       if (requiredTributes > 0) {
-        // Se clicou em um monstro seu no campo, pode estar selecionando como sacrifício
+        // Se já selecionou os sacrifícios necessários:
+        // Clicar em qualquer uma das zonas sacrificadas OU em uma zona vazia dispara a invocação imediata!
+        if (selectedTributeZones.length === requiredTributes) {
+          if (selectedTributeZones.includes(zoneIndex) || targetMonster === null) {
+            executeSummon(zoneIndex, selectedTributeZones);
+            return;
+          }
+          showNotification(`⚠️ Você já selecionou os ${requiredTributes} sacrifício(s). Clique em uma das zonas liberadas ou vazias para invocar!`);
+          return;
+        }
+
+        // Se ainda não completou a seleção de sacrifícios:
         if (targetMonster !== null) {
           if (selectedTributeZones.includes(zoneIndex)) {
             // Desmarca o tributo
             setSelectedTributeZones(selectedTributeZones.filter((z) => z !== zoneIndex));
-          } else if (selectedTributeZones.length < requiredTributes) {
-            // Adiciona como tributo
-            setSelectedTributeZones([...selectedTributeZones, zoneIndex]);
           } else {
-            showNotification(`⚠️ Você já selecionou os ${requiredTributes} monstro(s) para sacrifício. Agora clique na zona onde o monstro será invocado!`);
+            // Adiciona como tributo
+            const nextTributes = [...selectedTributeZones, zoneIndex];
+            setSelectedTributeZones(nextTributes);
+
+            if (nextTributes.length === requiredTributes) {
+              showNotification(`✨ ${requiredTributes} sacrifício(s) pronto(s)! Agora clique na zona onde deseja baixar ${card.data.namePt || card.data.name}!`);
+            }
           }
           return;
         }
 
-        // Se clicou numa zona vazia (ou zona liberada por sacrifício)
-        if (selectedTributeZones.length < requiredTributes) {
-          showNotification(`⚠️ Monstro Nível ${card.data.level} exige selecionar ${requiredTributes} monstro(s) no seu campo como sacrifício primeiro!`);
-          return;
-        }
-
-        // Todos os sacrifícios foram selecionados e clicou na zona de destino -> Invoca direto em ATTACK
-        executeSummon(zoneIndex, selectedTributeZones);
+        // Clicou numa zona vazia antes de selecionar os sacrifícios
+        showNotification(`⚠️ Monstro Nível ${card.data.level} exige selecionar ${requiredTributes} monstro(s) no seu campo como sacrifício primeiro!`);
         return;
       }
 
@@ -358,7 +371,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     setLungingZone({ isPlayer: true, zoneIndex: attackerZone });
     setSelectedAttackerZone(null);
 
-    // Timing do Impacto
+    // Timing do Impacto: Dispara exatamente no clímax do Lunge (280ms)
     setTimeout(() => {
       // Disparo do Efeito Sonoro e Camera Shake
       soundFX.playAttackStrike();
@@ -367,7 +380,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
       // VFX no Destino (Anel de impacto / Explosão)
       setTargetHitZone({ isPlayer: false, zoneIndex: targetZoneIndex });
-      setTimeout(() => setTargetHitZone(null), 450);
+      setTimeout(() => setTargetHitZone(null), 500);
 
       // Calcular Dano e Destruição para Feedback Visual
       if (targetZoneIndex === null) {
@@ -408,13 +421,16 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         }
       }
 
-      // Executa no motor de regras após início da animação de investida
+      // Executa no motor de regras após impacto
       session.declareAttack(attackerZone, targetZoneIndex);
       forceUpdate();
+    }, 280);
 
-      // Finaliza o Lunge
-      setTimeout(() => setLungingZone(null), 150);
-    }, 200);
+    // Finaliza o Lunge apenas após o ciclo completo da animação (540ms)
+    setTimeout(() => {
+      setLungingZone(null);
+      forceUpdate();
+    }, 540);
   };
 
   // Desistir / Sair da Partida
@@ -814,18 +830,25 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     <div className="absolute inset-0 rounded-full border-4 border-red-500 pointer-events-none anim-impact-ring z-40"></div>
                   )}
 
-                  {/* Badge de Sacrifício Selecionado */}
-                  {isSelectedTribute && (
+                  {/* Badge de Sacrifício Selecionado / Zona Pronta para Invocação por Tributo */}
+                  {isSelectedTribute ? (
                     <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-red-600 to-rose-700 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(239,68,68,0.9)] border border-yellow-300 animate-bounce flex items-center gap-1 uppercase tracking-wider">
-                      <span>🔥</span> SACRIFÍCIO
+                      {isTributeTargetZone ? (
+                        <>
+                          <span>⚡</span> INVOCAR AQUI!
+                        </>
+                      ) : (
+                        <>
+                          <span>🔥</span> SACRIFÍCIO
+                        </>
+                      )}
                     </div>
-                  )}
-
-                  {/* Seta Indicadora de Invocação Normal ou com Tributo */}
-                  {(isValidSummonZone || isTributeTargetZone) && !isSelectedTribute && (
-                    <div className="absolute -top-3 z-30 bg-emerald-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
-                      <span>⬇️</span> INVOCAR
-                    </div>
+                  ) : (
+                    (isValidSummonZone || isTributeTargetZone) && (
+                      <div className="absolute -top-3 z-30 bg-emerald-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
+                        <span>⬇️</span> INVOCAR
+                      </div>
+                    )
                   )}
 
                   {slot ? (
