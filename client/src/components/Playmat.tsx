@@ -146,14 +146,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           return;
         }
 
-        // Todos os sacrifícios foram selecionados e clicou na zona de destino
-        setPendingSummonZone(zoneIndex);
+        // Todos os sacrifícios foram selecionados e clicou na zona de destino -> Invoca direto em ATTACK
+        executeSummon(zoneIndex, selectedTributeZones);
         return;
       }
 
-      // Caso sem Sacrifício (Nível 1 a 4)
+      // Caso sem Sacrifício (Nível 1 a 4) -> Invoca direto em ATTACK na zona vazia
       if (targetMonster === null) {
-        setPendingSummonZone(zoneIndex); // Abre o modal para escolher posição
+        executeSummon(zoneIndex, []);
       }
       return;
     }
@@ -163,20 +163,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
     setInspectedCard(currentMonster);
 
-    // 2. Mudança de Posição (MAIN1 ou MAIN2)
+    // 2. Mudança de Posição Ilimitada ao Clicar na Carta (Apenas na Fase Principal)
     if (match.phase === 'MAIN1' || match.phase === 'MAIN2') {
       if (selectedHandCardUid === null && selectedAttackerZone === null) {
-        // Tenta mudar posição se elegível
-        if (currentMonster.turnSummoned === match.currentTurn) {
-          showNotification('⚠️ Um monstro não pode mudar de posição no turno em que foi invocado.');
-          return;
+        const success = session.changeMonsterPosition(zoneIndex);
+        if (success) {
+          soundFX.playPlaceCard();
+          forceUpdate();
         }
-        if (currentMonster.hasChangedPositionThisTurn) {
-          showNotification('⚠️ Este monstro já mudou de posição neste turno.');
-          return;
-        }
-        session.changeMonsterPosition(zoneIndex);
-        forceUpdate();
         return;
       }
     }
@@ -195,19 +189,18 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     }
   };
 
-  // Concluir Invocação com Posição Escolhida (Normal ou com Sacrifício)
-  const confirmSummonWithPosition = (position: BattlePosition) => {
-    if (selectedHandCardUid === null || pendingSummonZone === null) return;
-    const zoneToSlam = pendingSummonZone;
-    const success = session.normalSummon(selectedHandCardUid, pendingSummonZone, position, selectedTributeZones);
+  // Executa Invocação Direta em Posição de Ataque (Vertical)
+  const executeSummon = (zoneIndex: number, tributeIndices: number[]) => {
+    if (selectedHandCardUid === null) return;
+    const success = session.normalSummon(selectedHandCardUid, zoneIndex, 'ATTACK', tributeIndices);
     if (success) {
       setSelectedHandCardUid(null);
       setPendingSummonZone(null);
       setSelectedTributeZones([]);
 
-      // 1. VFX de Posicionamento: Card Slam, Dust Ring e Som de Impacto
+      // 1. VFX de Posicionamento: Card Slam e Som de Impacto
       soundFX.playPlaceCard();
-      setSlamZone({ isPlayer: true, zoneIndex: zoneToSlam });
+      setSlamZone({ isPlayer: true, zoneIndex });
       setTimeout(() => setSlamZone(null), 500);
 
       forceUpdate();
@@ -826,46 +819,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           </div>
         </div>
 
-        {/* ⚔️ MINI-MODAL FLUTUANTE: ESCOLHER POSIÇÃO DE INVOCAR (ATK OU DEF) */}
-        {pendingSummonZone !== null && selectedHandCardUid !== null && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-            <div className="bg-[#140e24] border-2 border-amber-400 rounded-xl p-5 text-center max-w-sm shadow-[0_0_40px_rgba(245,158,11,0.5)]">
-              <div className="text-3xl mb-1 text-amber-400">
-                {selectedTributeZones.length > 0 ? '🔥' : '⚔️'}
-              </div>
-              <h3 className="text-lg font-serif font-black text-amber-300 mb-1">
-                {selectedTributeZones.length > 0 ? 'INVOCAÇÃO-TRIBUTO' : 'INVOCAÇÃO NORMAL'}
-              </h3>
-              <p className="text-xs text-slate-300 mb-4">
-                {selectedTributeZones.length > 0
-                  ? `Sacrificando ${selectedTributeZones.length} monstro(s). Escolha a posição:`
-                  : 'Escolha a posição de batalha para inseri-lo no campo:'}
-              </p>
-              
-              <div className="flex space-x-3 justify-center">
-                <button
-                  onClick={() => confirmSummonWithPosition('ATTACK')}
-                  className="flex-1 py-2.5 px-3 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-slate-950 font-black rounded-lg border border-amber-300 shadow-md flex items-center justify-center gap-1.5 text-xs uppercase"
-                >
-                  <span>⚔️</span> Posição de Ataque
-                </button>
-                <button
-                  onClick={() => confirmSummonWithPosition('DEFENSE')}
-                  className="flex-1 py-2.5 px-3 bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-600 hover:to-indigo-700 text-white font-black rounded-lg border border-blue-400 shadow-md flex items-center justify-center gap-1.5 text-xs uppercase"
-                >
-                  <span>🛡️</span> Posição de Defesa
-                </button>
-              </div>
 
-              <button
-                onClick={() => setPendingSummonZone(null)}
-                className="mt-3 text-[11px] text-slate-400 hover:text-slate-200 underline"
-              >
-                Cancelar Invocação
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* 🏳️ MODAL DE CONFIRMAÇÃO DE SAIR / RENDER-SE */}
         {showSurrenderModal && (

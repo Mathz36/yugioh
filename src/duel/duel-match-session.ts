@@ -230,7 +230,7 @@ export class DuelMatchSession {
   public changeMonsterPosition(zoneIndex: number): boolean {
     if (this.matchState.isGameOver) return false;
     if (this.matchState.phase !== 'MAIN1' && this.matchState.phase !== 'MAIN2') {
-      this.log('Você só pode alterar a posição de batalha durante a Fase Principal.');
+      this.log('A posição de batalha só pode ser alterada durante a Fase Principal (antes ou depois da Batalha).');
       return false;
     }
 
@@ -241,26 +241,15 @@ export class DuelMatchSession {
       return false;
     }
 
-    if (monster.turnSummoned === this.matchState.currentTurn) {
-      this.log('Um monstro não pode mudar de posição no mesmo turno em que foi invocado.');
-      return false;
-    }
-
     if (monster.hasAttacked) {
       this.log('Um monstro que já atacou não pode mudar de posição neste turno.');
       return false;
     }
 
-    if (monster.hasChangedPositionThisTurn) {
-      this.log('Este monstro já mudou de posição manualmente neste turno.');
-      return false;
-    }
-
     monster.position = monster.position === 'ATTACK' ? 'DEFENSE' : 'ATTACK';
-    monster.hasChangedPositionThisTurn = true;
 
     const cardName = monster.data.namePt || monster.data.name;
-    const newPosName = monster.position === 'ATTACK' ? 'Posição de Ataque' : 'Posição de Defesa';
+    const newPosName = monster.position === 'ATTACK' ? 'Posição de Ataque (Vertical)' : 'Posição de Defesa (Horizontal)';
     this.log(`🔄 ${player.nickname} alterou ${cardName} para ${newPosName}.`);
     return true;
   }

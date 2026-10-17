@@ -45,29 +45,40 @@ describe('DuelMatchSession & DuelBot Integration', () => {
     expect(session.player1.monsterZones[0]?.position).toBe('DEFENSE');
   });
 
-  it('should prevent changing position on the same turn summoned, but allow it on subsequent turns', () => {
+  it('should allow changing position freely during Main Phase, but prevent it during Battle Phase or opponent turn', () => {
     // Arrange
     const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
     const lvl4Card = session.player1.hand.find((c) => c.data.level <= 4);
     session.normalSummon(lvl4Card!.uid, 0, 'ATTACK', []);
 
-    // Act 1: Attempt to change position on the same turn (Turn 1) -> must fail
-    const changeOnSameTurn = session.changeMonsterPosition(0);
-    expect(changeOnSameTurn).toBe(false);
+    // Act 1: Monstro entra em ATTACK por padrão
     expect(session.player1.monsterZones[0]?.position).toBe('ATTACK');
 
-    // Simulate turn advancement: pass to bot, bot finishes, returns to player 1 (Turn 3)
-    session.endTurn(); // Bot turn
-    session.endTurn(); // Player turn again (Turn 3)
-
-    // Act 2: Attempt to change position on subsequent turn -> must succeed
-    const changeOnNextTurn = session.changeMonsterPosition(0);
-    expect(changeOnNextTurn).toBe(true);
+    // Act 2: Mudar para DEFENSE na Main Phase (mesmo no turno em que foi invocado) -> sucesso
+    const changeToDef = session.changeMonsterPosition(0);
+    expect(changeToDef).toBe(true);
     expect(session.player1.monsterZones[0]?.position).toBe('DEFENSE');
 
-    // Act 3: Attempt to change a SECOND time in the same turn -> must fail (limit 1x per turn)
-    const secondChangeInSameTurn = session.changeMonsterPosition(0);
-    expect(secondChangeInSameTurn).toBe(false);
+    // Act 3: Mudar de volta para ATTACK ilimitadamente na Main Phase -> sucesso
+    const changeBackToAtk = session.changeMonsterPosition(0);
+    expect(changeBackToAtk).toBe(true);
+    expect(session.player1.monsterZones[0]?.position).toBe('ATTACK');
+
+    // Act 4: Mudar novamente para DEFENSE antes da Batalha -> sucesso
+    session.changeMonsterPosition(0);
+    expect(session.player1.monsterZones[0]?.position).toBe('DEFENSE');
+
+    // Act 5: Avançar para Fase de Batalha
+    session.nextPhase();
+    expect(session.matchState.phase).toBe('BATTLE');
+
+    // Act 6: Tentar mudar de posição durante a Fase de Batalha -> DEVE FALHAR
+    const changeDuringBattle = session.changeMonsterPosition(0);
+    expect(changeDuringBattle).toBe(false);
+    expect(session.player1.monsterZones[0]?.position).toBe('DEFENSE'); // Permanece a posição fixada
+
+    // Act 7: Passar o turno para o oponente -> a posição de DEFENSE prevalece
+    session.endTurn();
     expect(session.player1.monsterZones[0]?.position).toBe('DEFENSE');
   });
 
