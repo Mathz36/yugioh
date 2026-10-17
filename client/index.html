@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yu-Gi-Oh! Classic Duel - Reino dos Duelistas</title>
+    <!-- Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              cardNormal: '#c49856',
+              cardSpell: '#1d9e74',
+              cardTrap: '#bc2e67',
+              playmatBorder: '#3b2d54',
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      /* Efeito 3D Holográfico com Profundidade e Sombra Suave */
+      .card-3d {
+        transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+        transform-style: preserve-3d;
+        perspective: 1000px;
+      }
+      .card-3d:hover {
+        transform: translateY(-8px) scale(1.06) rotateX(4deg) rotateY(-2deg);
+        box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.9), 0 0 25px rgba(245, 158, 11, 0.6);
+        z-index: 40;
+      }
+      .card-3d-defense {
+        transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+        transform-style: preserve-3d;
+        perspective: 1000px;
+      }
+      .card-3d-defense:hover {
+        transform: translateY(-8px) scale(1.05);
+        box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.9), 0 0 25px rgba(59, 130, 246, 0.6);
+        z-index: 40;
+      }
+      .zone-empty {
+        background: radial-gradient(circle at center, rgba(30, 20, 50, 0.4) 0%, rgba(10, 6, 20, 0.8) 100%);
+      }
+    </style>
+  </head>
+  <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans select-none overflow-x-hidden">
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

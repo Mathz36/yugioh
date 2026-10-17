@@ -1,0 +1,29 @@
+{
+  "name": "yugioh-deck-builder-backend",
+  "version": "1.0.0",
+  "description": "Yu-Gi-Oh backend data synchronizer and deck service",
+  "main": "scripts/sync-cards.ts",
+  "scripts": {
+    "dev": "vite --port 3000 --open",
+    "build": "vite build",
+    "sync:cards": "tsx scripts/sync-cards.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vite": "^5.3.4",
+    "vitest": "^2.1.0"
+  }
+}
+

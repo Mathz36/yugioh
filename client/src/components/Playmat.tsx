@@ -1,0 +1,690 @@
+import React, { useState, useEffect } from 'react';
+import { DuelMatchSession } from '@duel/duel-match-session';
+import { createKaibaDeck, createYugiDeck } from '@duel/starter-decks';
+import { CardInstance, BattlePosition } from '@duel/duel-types';
+import { DuelBot } from '@duel/duel-bot';
+
+export interface PlaymatProps {
+  playerNickname?: string;
+  onExitToMenu?: () => void;
+}
+
+export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', onExitToMenu }) => {
+  const [session, setSession] = useState<DuelMatchSession>(() => {
+    return new DuelMatchSession(playerNickname, createYugiDeck(), 'Seto Kaiba (Bot)', createKaibaDeck());
+  });
+
+  // Modais e Estados Visuais
+  const [countdown, setCountdown] = useState<number | null>(5); // Contagem regressiva inicial de 5s
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [selectedHandCardUid, setSelectedHandCardUid] = useState<string | null>(null);
+  const [pendingSummonZone, setPendingSummonZone] = useState<number | null>(null); // Quando clica na zona para escolher ATK/DEF
+  const [selectedAttackerZone, setSelectedAttackerZone] = useState<number | null>(null);
+  const [inspectedCard, setInspectedCard] = useState<CardInstance | null>(null);
+  const [languagePt, setLanguagePt] = useState<boolean>(true);
+  const [showSurrenderModal, setShowSurrenderModal] = useState<boolean>(false);
+  const [, setRefreshKey] = useState(0);
+
+  const showNotification = (msg: string) => {
+    setToastMessage(msg);
+  };
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => {
+      setToastMessage(null);
+    }, 3200);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  const forceUpdate = () => setRefreshKey((k) => k + 1);
+
+  const p1 = session.player1;
+  const p2 = session.player2; // Bot
+  const match = session.matchState;
+  const isPlayerTurn = match.activePlayerId === p1.id && countdown === null;
+
+  // Efeito da Contagem Regressiva de 5 segundos
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    } else {
+      const timer = setTimeout(() => setCountdown(null), 800); // Exibe "É HORA DO DUELO!" por 800ms
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  // Auxiliares de seleção
+  const selectedAttackingMonster = selectedAttackerZone !== null ? p1.monsterZones[selectedAttackerZone] : null;
+
+  // --- Handlers de Ações ---
+  const handleNextPhase = () => {
+    if (!isPlayerTurn || match.isGameOver) return;
+    session.nextPhase();
+    setSelectedHandCardUid(null);
+    setSelectedAttackerZone(null);
+    setPendingSummonZone(null);
+    forceUpdate();
+  };
+
+  const handleEndTurn = () => {
+    if (!isPlayerTurn || match.isGameOver) return;
+    session.endTurn();
+    setSelectedHandCardUid(null);
+    setSelectedAttackerZone(null);
+    setPendingSummonZone(null);
+    forceUpdate();
+
+    setTimeout(() => {
+      DuelBot.executeTurn(session);
+      forceUpdate();
+    }, 700);
+  };
+
+  const handleSelectHandCard = (card: CardInstance) => {
+    setInspectedCard(card);
+    if (!isPlayerTurn || match.phase !== 'MAIN1' || p1.hasNormalSummonedThisTurn) return;
+    setSelectedHandCardUid(selectedHandCardUid === card.uid ? null : card.uid);
+    setPendingSummonZone(null);
+  };
+
+  // Clique na Zona de Monstro do Jogador
+  const handlePlayerMonsterZoneClick = (zoneIndex: number) => {
+    if (!isPlayerTurn || match.isGameOver) return;
+
+    // 1. Invocação: Se há carta da mão selecionada e zona vazia -> Abre escolha ATK/DEF
+    if (selectedHandCardUid && match.phase === 'MAIN1' && p1.monsterZones[zoneIndex] === null) {
+      const card = p1.hand.find((c) => c.uid === selectedHandCardUid);
+      if (!card) return;
+
+      if (card.data.level <= 4) {
+        setPendingSummonZone(zoneIndex); // Abre o modal/menu flutuante para escolher posição
+      } else {
+        showNotification(`⚠️ Monstro Nível ${card.data.level} exige sacrifício de monstros no campo!`);
+      }
+      return;
+    }
+
+    const currentMonster = p1.monsterZones[zoneIndex];
+    if (!currentMonster) return;
+
+    setInspectedCard(currentMonster);
+
+    // 2. Mudança de Posição (MAIN1 ou MAIN2)
+    if (match.phase === 'MAIN1' || match.phase === 'MAIN2') {
+      if (selectedHandCardUid === null && selectedAttackerZone === null) {
+        // Tenta mudar posição se elegível
+        if (currentMonster.turnSummoned === match.currentTurn) {
+          showNotification('⚠️ Um monstro não pode mudar de posição no turno em que foi invocado.');
+          return;
+        }
+        if (currentMonster.hasChangedPositionThisTurn) {
+          showNotification('⚠️ Este monstro já mudou de posição neste turno.');
+          return;
+        }
+        session.changeMonsterPosition(zoneIndex);
+        forceUpdate();
+        return;
+      }
+    }
+
+    // 3. Seleção de Ataque (BATTLE PHASE)
+    if (match.phase === 'BATTLE') {
+      if (currentMonster.position === 'ATTACK' && !currentMonster.hasAttacked) {
+        setSelectedAttackerZone(selectedAttackerZone === zoneIndex ? null : zoneIndex);
+      } else if (currentMonster.position === 'DEFENSE') {
+        showNotification('🛡️ Monstros em Posição de Defesa não podem atacar!');
+      }
+    }
+  };
+
+  // Concluir Invocação com Posição Escolhida
+  const confirmSummonWithPosition = (position: BattlePosition) => {
+    if (selectedHandCardUid === null || pendingSummonZone === null) return;
+    session.normalSummon(selectedHandCardUid, pendingSummonZone, position, []);
+    setSelectedHandCardUid(null);
+    setPendingSummonZone(null);
+    forceUpdate();
+  };
+
+  // Clique no Monstro do Oponente
+  const handleOpponentZoneClick = (targetZoneIndex: number | null) => {
+    if (targetZoneIndex !== null) {
+      const monster = p2.monsterZones[targetZoneIndex];
+      if (monster) setInspectedCard(monster);
+    }
+
+    if (!isPlayerTurn || match.phase !== 'BATTLE' || selectedAttackerZone === null) return;
+    session.declareAttack(selectedAttackerZone, targetZoneIndex);
+    setSelectedAttackerZone(null);
+    forceUpdate();
+  };
+
+  // Desistir / Sair da Partida
+  const handleConfirmSurrender = () => {
+    session.surrender(p1.id);
+    setShowSurrenderModal(false);
+    forceUpdate();
+    if (onExitToMenu) {
+      onExitToMenu();
+    }
+  };
+
+  const handleResetMatch = () => {
+    setSession(new DuelMatchSession(playerNickname, createYugiDeck(), 'Seto Kaiba (Bot)', createKaibaDeck()));
+    setSelectedHandCardUid(null);
+    setSelectedAttackerZone(null);
+    setPendingSummonZone(null);
+    setCountdown(5);
+    forceUpdate();
+  };
+
+  return (
+    <div className="flex h-screen w-screen max-h-screen bg-[#07050d] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#180e2d] via-[#090614] to-[#030206] select-none text-slate-100 overflow-hidden font-sans relative">
+      
+      {/* 🔮 OVERLAY DE CONTAGEM REGRESSIVA INICIAL (5 SEGUNDOS) */}
+      {countdown !== null && (
+        <div className="absolute inset-0 bg-black/95 z-50 flex flex-col items-center justify-center animate-fadeIn">
+          <div className="text-6xl text-amber-400 drop-shadow-[0_0_20px_rgba(245,158,11,0.8)] mb-4 animate-pulse">
+            𓂀
+          </div>
+          <h2 className="text-2xl font-serif tracking-widest text-amber-300 font-black mb-6">
+            A PARTIDA VAI INICIAR EM
+          </h2>
+          <div className="text-8xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-yellow-500 shadow-2xl scale-125 transition-transform duration-300">
+            {countdown > 0 ? countdown : 'É HORA DO DUELO!'}
+          </div>
+          <p className="text-xs text-slate-400 mt-8 uppercase tracking-widest font-mono">
+            {countdown > 0 ? 'Embaralhando decks clássicos...' : 'Que os Jogos das Sombras comecem!'}
+          </p>
+        </div>
+      )}
+
+      {/* PAINEL LATERAL ESQUERDO: GRIMOIRE & TRADUÇÃO (ESTILO MTG / ANIME) */}
+      <aside className="w-80 bg-[#0d0918]/95 border-r-2 border-[#382654] flex flex-col p-3 shadow-[5px_0_30px_rgba(0,0,0,0.85)] z-20 justify-between">
+        <div className="flex flex-col items-center">
+          
+          {/* Topo do Grimoire com Tradução e Botão de Sair */}
+          <div className="w-full flex justify-between items-center pb-2 mb-2 border-b border-[#311f49]">
+            <div className="flex items-center space-x-1.5">
+              <span className="text-xl text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">𓂀</span>
+              <h1 className="text-xs font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-600 font-serif">
+                GRIMOIRE
+              </h1>
+            </div>
+            
+            <div className="flex items-center space-x-1.5">
+              <button
+                onClick={() => setLanguagePt(!languagePt)}
+                className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-purple-950/80 border border-purple-500/50 hover:border-amber-400 text-amber-300 transition-colors"
+                title="Alternar idioma das cartas e do chat"
+              >
+                {languagePt ? '🇧🇷 PT-BR' : '🇺🇸 EN'}
+              </button>
+              
+              <button
+                onClick={() => setShowSurrenderModal(true)}
+                className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-red-950/80 border border-red-500/50 hover:border-red-400 text-red-300 transition-colors"
+                title="Sair ou Render-se do Duelo"
+              >
+                🏳️ Sair
+              </button>
+            </div>
+          </div>
+
+          {/* Carta Inspecionada em Alta Definição */}
+          {inspectedCard ? (
+            <div className="flex flex-col items-center w-full animate-fadeIn">
+              <div className="relative group w-60 h-84 rounded-lg p-2 bg-gradient-to-br from-[#7a4e23] via-[#472c13] to-[#1a0f05] border-2 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.4)] transition-transform duration-300 hover:scale-105">
+                <img
+                  src={inspectedCard.data.imageUrl}
+                  alt={inspectedCard.data.name}
+                  className="w-full h-full object-contain rounded drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]"
+                />
+              </div>
+
+              {/* Detalhes da Carta Traduzida */}
+              <div className="mt-2.5 w-full bg-[#120c22] border-2 border-[#412760] rounded-lg p-2.5 shadow-md">
+                <div className="flex justify-between items-baseline mb-1">
+                  <span className="font-extrabold text-amber-300 text-sm tracking-wide">
+                    {languagePt && inspectedCard.data.namePt ? inspectedCard.data.namePt : inspectedCard.data.name}
+                  </span>
+                  <span className="text-[11px] font-serif text-amber-400">
+                    {'★'.repeat(inspectedCard.data.level)}
+                  </span>
+                </div>
+
+                <div className="text-[10px] uppercase font-serif tracking-wider text-purple-300 border-b border-purple-900/60 pb-1 mb-1.5 flex justify-between">
+                  <span>{inspectedCard.data.type}</span>
+                  <span className="text-slate-400">Nível {inspectedCard.data.level}</span>
+                </div>
+
+                <p className="text-[11px] text-amber-100/90 leading-relaxed italic bg-black/40 p-1.5 rounded border border-purple-950/80 min-h-[50px]">
+                  "{languagePt && inspectedCard.data.descriptionPt ? inspectedCard.data.descriptionPt : inspectedCard.data.description}"
+                </p>
+
+                <div className="flex justify-between font-mono font-black text-xs pt-1.5 mt-1 text-slate-200">
+                  <div className="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-600/60 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
+                    ATK ⚔️ {inspectedCard.data.attack}
+                  </div>
+                  <div className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-600/60 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]">
+                    DEF 🛡️ {inspectedCard.data.defense}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="w-60 h-84 rounded-lg border-2 border-dashed border-[#382654] flex flex-col items-center justify-center text-slate-500 text-xs text-center p-6 bg-black/20">
+              <span className="text-4xl mb-3 text-amber-400/40 animate-pulse">𓂀</span>
+              <p className="font-serif">Clique ou aponte para qualquer carta para revelar seu poder e tradução.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Histórico do Duelo (Chat Traduzido) */}
+        <div className="bg-[#050308]/90 border border-purple-950 rounded p-2 text-[10px] text-slate-300 font-mono h-28 overflow-y-auto flex flex-col-reverse shadow-inner">
+          <div>
+            {match.log.slice(-6).map((line, idx) => (
+              <div key={idx} className="leading-snug border-b border-purple-950/40 py-0.5">
+                {line}
+              </div>
+            ))}
+          </div>
+        </div>
+      </aside>
+
+      {/* ÁREA DA MESA / PLAYMAT INTERATIVO */}
+      <main className="flex-1 flex flex-col justify-between p-2.5 relative overflow-hidden">
+        
+        {/* TOPO: OPONENTE KAIBA */}
+        <div className="flex justify-between items-center bg-[#0e0a17]/95 border border-[#3b2354] rounded-lg px-6 py-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.8)]">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-700 to-indigo-950 border-2 border-blue-400 flex items-center justify-center font-bold text-blue-200 shadow-[0_0_10px_rgba(59,130,246,0.5)]">
+              K
+            </div>
+            <div>
+              <h2 className="font-bold text-blue-300 tracking-wide text-sm flex items-center gap-2 font-serif">
+                {p2.nickname}
+                <span className="text-[10px] px-1.5 bg-blue-950/80 border border-blue-500/40 text-blue-400 rounded font-sans">
+                  BOT
+                </span>
+              </h2>
+              <div className="text-[11px] text-slate-400">
+                Deck: <span className="text-amber-400 font-mono font-bold">{p2.deck.length}</span> • Cemitério: <span className="text-purple-400 font-mono font-bold">{p2.graveyard.length}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <span className="text-xs uppercase font-serif tracking-widest text-slate-400 font-bold">LIFE POINTS</span>
+            <div className="bg-black/95 border-2 border-red-600 rounded px-4 py-0.5 text-2xl font-mono font-black text-red-500 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider">
+              {p2.lifePoints}
+            </div>
+          </div>
+        </div>
+
+        {/* CAMPO DO OPONENTE */}
+        <div className="flex flex-col space-y-2">
+          {/* Mão do Oponente (Verso) */}
+          <div className="flex justify-center -space-x-5 h-20">
+            {p2.hand.map((card, i) => (
+              <div
+                key={card.uid || i}
+                className="w-14 h-20 rounded border-2 border-amber-900 bg-gradient-to-br from-[#4a2608] via-[#241103] to-[#120601] shadow-lg flex items-center justify-center transition-all hover:-translate-y-1"
+              >
+                <div className="w-8 h-12 border border-amber-600/40 rounded-full flex items-center justify-center text-[9px] text-amber-500/80 font-serif font-black">
+                  YG
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Fileira de Monstros do Oponente (Pura Imagem 3D, sem caixa preta e com detalhes apenas no hover) */}
+          <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
+            {p2.monsterZones.map((slot, i) => {
+              const isTargetable = selectedAttackingMonster !== null && slot !== null;
+              const isDefense = slot?.position === 'DEFENSE';
+              
+              return (
+                <div
+                  key={`p2-m-${i}`}
+                  onClick={() => handleOpponentZoneClick(i)}
+                  onMouseEnter={() => slot && setInspectedCard(slot)}
+                  className={`h-48 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
+                    slot
+                      ? `card-3d ${isDefense ? 'card-3d-defense' : ''}`
+                      : 'border-2 border-dashed border-[#2d1c47] zone-empty hover:border-purple-500/60'
+                  } ${
+                    isTargetable
+                      ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-black scale-105 shadow-[0_0_30px_rgba(239,68,68,0.9)] animate-pulse'
+                      : ''
+                  }`}
+                >
+                  {isTargetable && (
+                    <div className="absolute -top-3 z-30 bg-red-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
+                      <span>🎯</span> ALVO
+                    </div>
+                  )}
+
+                  {slot ? (
+                    <div className="w-full h-full relative rounded-lg overflow-hidden flex items-center justify-center">
+                      {/* Apenas a Imagem Pura da Carta Preenchendo com Fidelidade */}
+                      <img
+                        src={slot.data.imageUrl}
+                        alt={slot.data.name}
+                        className={`w-full h-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.85)] transition-transform duration-300 ${
+                          isDefense ? 'rotate-90 scale-95' : 'group-hover:scale-105'
+                        }`}
+                      />
+
+                      {/* Informações invisíveis por padrão - reveladas com suavidade apenas ao passar o mouse */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none">
+                        <div className="text-[11px] font-black text-amber-200 truncate drop-shadow text-center">
+                          {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] font-mono font-black bg-black/80 px-2 py-1 rounded border border-purple-500/50">
+                          <span className="text-amber-400">⚔️ {slot.data.attack}</span>
+                          <span className="text-blue-400">🛡️ {slot.data.defense}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-purple-900/60 font-serif tracking-widest uppercase">
+                      Vazio
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* FAIXA CENTRAL DO DUELO: CONTROLES & AURA DE FASE */}
+        <div className="flex items-center justify-between px-6 py-1 bg-[#100a1c]/95 border-y-2 border-[#412760] shadow-[0_0_20px_rgba(65,39,96,0.7)] my-1">
+          <div className="flex items-center space-x-3">
+            <span className="text-xs uppercase font-serif tracking-widest text-amber-400 font-bold">FASE ATUAL:</span>
+            <span className="px-3 py-0.5 rounded text-xs font-black tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.4)]">
+              {match.phase}
+            </span>
+            <span className="text-xs text-slate-400 font-mono">
+              Turno {match.currentTurn} • {isPlayerTurn ? '🌟 SEU TURNO' : '⏳ TURNO DO OPONENTE'}
+            </span>
+          </div>
+
+          {/* Botão de Ataque Direto */}
+          {match.phase === 'BATTLE' &&
+            selectedAttackingMonster !== null &&
+            p2.monsterZones.every((m) => m === null) && (
+              <button
+                onClick={() => handleOpponentZoneClick(null)}
+                className="px-6 py-1.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs uppercase tracking-widest rounded-full shadow-[0_0_25px_rgba(239,68,68,0.9)] border-2 border-yellow-300 animate-bounce flex items-center gap-1.5"
+              >
+                <span>⚡</span> ATACAR DIRETAMENTE OS LPs!
+              </button>
+            )}
+
+          {/* Botões de Ação */}
+          <div className="flex space-x-2">
+            <button
+              onClick={handleNextPhase}
+              disabled={!isPlayerTurn || match.isGameOver || match.phase === 'BATTLE'}
+              className="px-4 py-1 bg-gradient-to-r from-indigo-700 to-purple-800 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-30 text-xs font-bold rounded border border-indigo-400/50 shadow-md transition-all font-serif"
+            >
+              Fase de Batalha ⚔️
+            </button>
+            <button
+              onClick={handleEndTurn}
+              disabled={!isPlayerTurn || match.isGameOver}
+              className="px-4 py-1 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 disabled:opacity-30 text-xs font-black rounded border border-amber-400 shadow-md transition-all text-slate-950 font-serif"
+            >
+              Encerrar Turno 🛡️
+            </button>
+          </div>
+        </div>
+
+        {/* CAMPO DO JOGADOR (ZONA DE MONSTROS 3D AMPLIADA) */}
+        <div className="flex flex-col space-y-2">
+          <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
+            {p1.monsterZones.map((slot, i) => {
+              const isValidSummonZone = selectedHandCardUid !== null && slot === null;
+              const isSelectedAttacker = selectedAttackerZone === i;
+              const isDefense = slot?.position === 'DEFENSE';
+
+              return (
+                <div
+                  key={`p1-m-${i}`}
+                  onClick={() => handlePlayerMonsterZoneClick(i)}
+                  onMouseEnter={() => slot && setInspectedCard(slot)}
+                  className={`h-48 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
+                    slot
+                      ? `card-3d ${isDefense ? 'card-3d-defense' : ''}`
+                      : isValidSummonZone
+                      ? 'border-2 border-emerald-400 bg-emerald-950/40 ring-4 ring-emerald-400/80 shadow-[0_0_25px_rgba(16,185,129,0.8)] scale-105 animate-pulse'
+                      : 'border-2 border-dashed border-[#2d1c47] zone-empty hover:border-amber-500/50'
+                  } ${
+                    isSelectedAttacker
+                      ? 'ring-4 ring-amber-400 scale-105 shadow-[0_0_30px_rgba(245,158,11,0.9)]'
+                      : ''
+                  }`}
+                >
+                  {/* Seta Indicadora de Invocação */}
+                  {isValidSummonZone && (
+                    <div className="absolute -top-3 z-30 bg-emerald-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
+                      <span>⬇️</span> INVOCAR
+                    </div>
+                  )}
+
+                  {slot ? (
+                    <div className="w-full h-full relative rounded-lg overflow-hidden flex items-center justify-center">
+                      {/* Apenas a Imagem Pura da Carta Original em Alta Definição */}
+                      <img
+                        src={slot.data.imageUrl}
+                        alt={slot.data.name}
+                        className={`w-full h-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.85)] transition-transform duration-300 ${
+                          isDefense ? 'rotate-90 scale-95' : 'group-hover:scale-105'
+                        }`}
+                      />
+
+                      {/* Informações ocultas por padrão - reveladas suavemente apenas em hover */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none">
+                        <div className="text-[11px] font-black text-amber-200 truncate drop-shadow text-center">
+                          {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] font-mono font-black bg-black/85 px-2 py-1 rounded border border-amber-500/50">
+                          <span className="text-amber-400">⚔️ {slot.data.attack}</span>
+                          <span className="text-blue-400">🛡️ {slot.data.defense}</span>
+                          {slot.hasAttacked ? (
+                            <span className="text-red-400 font-sans text-[9px]">Atacou</span>
+                          ) : match.phase === 'BATTLE' && !isDefense ? (
+                            <span className="text-emerald-400 font-sans text-[9px] animate-pulse">Pronto</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] text-purple-900/60 font-serif tracking-widest uppercase">
+                      {isValidSummonZone ? 'Clique p/ Inserir' : 'Zona Monstro'}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* RODAPÉ DO JOGADOR: MÃO AMPLIADA & STATUS */}
+        <div className="bg-[#0b0814]/95 border-2 border-[#382654] rounded-xl p-2.5 shadow-[0_-5px_30px_rgba(0,0,0,0.85)] flex items-center justify-between">
+          
+          <div className="flex items-center space-x-3 w-52">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-600 via-amber-700 to-purple-950 border-2 border-amber-400 flex items-center justify-center font-bold text-amber-200 text-lg shadow-[0_0_12px_rgba(245,158,11,0.5)] uppercase">
+              {p1.nickname.charAt(0) || 'D'}
+            </div>
+            <div>
+              <h2 className="font-bold text-amber-300 text-sm font-serif truncate max-w-[140px]">{p1.nickname}</h2>
+              <div className="bg-black/95 border border-red-600 rounded px-2.5 py-0.5 text-xl font-mono font-black text-red-400 shadow-[0_0_12px_rgba(239,68,68,0.5)]">
+                {p1.lifePoints} LP
+              </div>
+            </div>
+          </div>
+
+          {/* Mão do Jogador (Cartas 3D Ampliadas e Arte Pura) */}
+          <div className="flex-1 flex justify-center -space-x-4 overflow-visible py-1">
+            {p1.hand.map((card) => {
+              const isSelected = selectedHandCardUid === card.uid;
+              return (
+                <div
+                  key={card.uid}
+                  onClick={() => handleSelectHandCard(card)}
+                  onMouseEnter={() => setInspectedCard(card)}
+                  className={`card-3d group w-32 h-44 rounded-md cursor-pointer transition-all duration-200 relative flex items-center justify-center ${
+                    isSelected
+                      ? '-translate-y-6 ring-4 ring-amber-400/90 shadow-[0_0_35px_rgba(245,158,11,1)] scale-110 z-30'
+                      : 'hover:-translate-y-5 hover:scale-105 hover:z-20 hover:drop-shadow-[0_15px_25px_rgba(245,158,11,0.5)]'
+                  }`}
+                >
+                  {isSelected && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-30 bg-amber-400 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow border border-white animate-bounce">
+                      ESCOLHIDA
+                    </div>
+                  )}
+
+                  {/* Arte Pura da Carta */}
+                  <img
+                    src={card.data.imageUrl}
+                    alt={card.data.name}
+                    className="w-full h-full object-contain filter drop-shadow-xl select-none"
+                  />
+
+                  {/* Informações da Carta Apenas no Hover */}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-md flex flex-col justify-between p-1.5 pointer-events-none backdrop-blur-[1px]">
+                    <div className="text-[10px] font-bold text-amber-200 text-center truncate bg-black/80 rounded px-1 shadow">
+                      {languagePt && card.data.namePt ? card.data.namePt : card.data.name}
+                    </div>
+
+                    <div className="flex justify-between text-[9px] font-mono font-black text-amber-300 bg-black/90 px-1.5 py-0.5 rounded shadow">
+                      <span>⚔️ {card.data.attack}</span>
+                      <span>🛡️ {card.data.defense}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Cemitério e Deck do Jogador */}
+          <div className="flex items-center space-x-3 pl-4 border-l-2 border-[#2b1c42]">
+            <div className="text-center">
+              <div className="w-14 h-20 rounded border-2 border-purple-800 bg-purple-950/40 flex items-center justify-center text-xs font-mono font-bold text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.3)]">
+                {p1.graveyard.length}
+              </div>
+              <span className="text-[9px] text-slate-400 uppercase font-serif tracking-wider">Cemitério</span>
+            </div>
+
+            <div className="text-center">
+              <div className="w-14 h-20 rounded border-2 border-amber-700 bg-gradient-to-br from-[#4a2608] via-[#241103] to-[#120601] flex items-center justify-center text-sm font-mono font-black text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.4)]">
+                {p1.deck.length}
+              </div>
+              <span className="text-[9px] text-slate-400 uppercase font-serif tracking-wider">Deck</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ⚔️ MINI-MODAL FLUTUANTE: ESCOLHER POSIÇÃO DE INVOCAR (ATK OU DEF) */}
+        {pendingSummonZone !== null && selectedHandCardUid !== null && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
+            <div className="bg-[#140e24] border-2 border-amber-400 rounded-xl p-5 text-center max-w-sm shadow-[0_0_40px_rgba(245,158,11,0.5)]">
+              <h3 className="text-lg font-serif font-black text-amber-300 mb-1">
+                COMO DESEJA BAIXAR O MONSTRO?
+              </h3>
+              <p className="text-xs text-slate-300 mb-4">
+                Escolha a posição de batalha para inseri-lo no campo:
+              </p>
+              
+              <div className="flex space-x-3 justify-center">
+                <button
+                  onClick={() => confirmSummonWithPosition('ATTACK')}
+                  className="flex-1 py-2.5 px-3 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-slate-950 font-black rounded-lg border border-amber-300 shadow-md flex items-center justify-center gap-1.5 text-xs uppercase"
+                >
+                  <span>⚔️</span> Posição de Ataque
+                </button>
+                <button
+                  onClick={() => confirmSummonWithPosition('DEFENSE')}
+                  className="flex-1 py-2.5 px-3 bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-600 hover:to-indigo-700 text-white font-black rounded-lg border border-blue-400 shadow-md flex items-center justify-center gap-1.5 text-xs uppercase"
+                >
+                  <span>🛡️</span> Posição de Defesa
+                </button>
+              </div>
+
+              <button
+                onClick={() => setPendingSummonZone(null)}
+                className="mt-3 text-[11px] text-slate-400 hover:text-slate-200 underline"
+              >
+                Cancelar Invocação
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 🏳️ MODAL DE CONFIRMAÇÃO DE SAIR / RENDER-SE */}
+        {showSurrenderModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
+            <div className="bg-[#160c1d] border-2 border-red-500 rounded-xl p-6 text-center max-w-sm shadow-[0_0_35px_rgba(239,68,68,0.5)]">
+              <h3 className="text-xl font-serif font-black text-red-400 mb-2">
+                DESEJA SAIR DO DUELO?
+              </h3>
+              <p className="text-xs text-slate-300 mb-5">
+                Ao sair agora, você concederá a vitória a Seto Kaiba por rendição.
+              </p>
+              
+              <div className="flex space-x-3 justify-center">
+                <button
+                  onClick={handleConfirmSurrender}
+                  className="flex-1 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-xs uppercase shadow"
+                >
+                  Sim, Desistir
+                </button>
+                <button
+                  onClick={() => setShowSurrenderModal(false)}
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg text-xs uppercase shadow"
+                >
+                  Continuar Jogando
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DE FIM DE PARTIDA */}
+        {match.isGameOver && (
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
+            <div className="bg-[#120c22] border-2 border-amber-400 rounded-2xl p-8 text-center max-w-md shadow-[0_0_50px_rgba(245,158,11,0.6)]">
+              <div className="text-4xl mb-2 text-amber-400">𓂀</div>
+              <h1 className="text-3xl font-black text-amber-400 mb-2 font-serif tracking-widest">
+                FIM DO DUELO!
+              </h1>
+              <p className="text-slate-200 font-semibold mb-6">{match.winReason}</p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                <button
+                  onClick={handleResetMatch}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 text-xs"
+                >
+                  ⚔️ Novo Duelo
+                </button>
+                {onExitToMenu && (
+                  <button
+                    onClick={onExitToMenu}
+                    className="w-full sm:w-auto px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-purple-500/50 font-bold uppercase tracking-wider rounded-xl shadow transition-transform hover:scale-105 text-xs"
+                  >
+                    🏠 Menu Principal
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
