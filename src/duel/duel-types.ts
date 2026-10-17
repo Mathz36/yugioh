@@ -23,6 +23,8 @@ export interface CardInstance {
   hasAttacked: boolean;
   hasChangedPositionThisTurn: boolean;
   turnSummoned: number;
+  monstersDestroyedCount: number;
+  hasAttackedDirectly: boolean;
 }
 
 export interface PlayerDuelState {

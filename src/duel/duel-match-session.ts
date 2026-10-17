@@ -55,6 +55,8 @@ export class DuelMatchSession {
         hasAttacked: false,
         hasChangedPositionThisTurn: false,
         turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
       }))
     );
 
@@ -298,6 +300,7 @@ export class DuelMatchSession {
       const damage = attackingCard.data.attack;
       defenderPlayer.lifePoints = Math.max(0, defenderPlayer.lifePoints - damage);
       attackingCard.hasAttacked = true;
+      attackingCard.hasAttackedDirectly = true;
       this.log(`⚔️ ATAQUE DIRETO! ${attackerName} atacou diretamente causando ${damage} de dano!`);
 
       if (defenderPlayer.lifePoints <= 0) {
@@ -320,7 +323,7 @@ export class DuelMatchSession {
       name: attackerName,
       level: attackingCard.data.level,
       attack: attackingCard.data.attack,
-      defense: attackingCard.data.defense,
+      defense: defendingCard.data.defense,
       position: attackingCard.position,
     };
 
@@ -347,7 +350,8 @@ export class DuelMatchSession {
     if (result.defenderDestroyed) {
       defenderPlayer.monsterZones[targetZoneIndex] = null;
       defenderPlayer.graveyard.push(defendingCard);
-      this.log(`💥 ${defenderName} foi destruído e enviado ao Cemitério!`);
+      attackingCard.monstersDestroyedCount = (attackingCard.monstersDestroyedCount || 0) + 1;
+      this.log(`💥 ${defenderName} foi destruído e enviado ao Cemitério! (${attackerName} já destruiu ${attackingCard.monstersDestroyedCount} monstros)`);
     }
 
     if (result.attackerDamageTaken > 0) {
@@ -391,6 +395,7 @@ export class DuelMatchSession {
     });
 
     // Alterna o jogador ativo
+    const previousPlayer = this.getActivePlayer();
     this.matchState.activePlayerId =
       this.matchState.activePlayerId === this.player1.id
         ? this.player2.id
@@ -399,6 +404,7 @@ export class DuelMatchSession {
     this.matchState.currentTurn++;
 
     const newActivePlayer = this.getActivePlayer();
+    this.log(`⏳ ${previousPlayer.nickname} passou o turno para ${newActivePlayer.nickname}.`);
     this.log(`\n=================== Turno ${this.matchState.currentTurn}: Turno de ${newActivePlayer.nickname} ===================`);
 
     // Compra de carta do turno

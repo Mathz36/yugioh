@@ -35,6 +35,23 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const [floatingDamage, setFloatingDamage] = useState<{ amount: number; isPlayer: boolean; zoneIndex: number | null } | null>(null);
   const [isCameraShaking, setIsCameraShaking] = useState<boolean>(false);
   const [recentDrawnUids, setRecentDrawnUids] = useState<string[]>([]);
+  const [flippedZones, setFlippedZones] = useState<{ isPlayer: boolean; zoneIndex: number }[]>([]);
+
+  // Retorna a classe de chama da carta baseado em destruições e ataque direto
+  const getCardFlameClass = (card: CardInstance | null): string => {
+    if (!card) return '';
+    if (card.hasAttackedDirectly) {
+      return 'flame-blue'; // Fogo azul ao atacar a vida diretamente
+    }
+    const kills = card.monstersDestroyedCount || 0;
+    if (kills >= 5) {
+      return 'flame-heavy'; // 5+ monstros: fogo intenso
+    }
+    if (kills >= 3) {
+      return 'flame-light'; // 3 a 4 monstros: fogo leve
+    }
+    return '';
+  };
 
   const showNotification = (msg: string) => {
     setToastMessage(msg);
@@ -83,6 +100,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
   const handleEndTurn = () => {
     if (!isPlayerTurn || match.isGameOver) return;
+    
+    // Anuncia a passagem do turno
+    showNotification(`⏳ ${p1.nickname} passou o turno para ${p2.nickname}`);
     session.endTurn();
     setSelectedHandCardUid(null);
     setSelectedAttackerZone(null);
@@ -90,17 +110,119 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     setSelectedTributeZones([]);
     forceUpdate();
 
+    // Executa a IA do Bot com feedback visual e tempos reais
     setTimeout(() => {
-      DuelBot.executeTurn(session);
-      forceUpdate();
+      const bot = session.getActivePlayer();
+      const opponent = session.getOpponentPlayer();
+      if (session.matchState.isGameOver) return;
 
-      // Quando o turno volta para o jogador, o motor compra uma carta (Draw Phase)
-      const lastCard = session.player1.hand[session.player1.hand.length - 1];
-      if (lastCard) {
-        soundFX.playDrawCard();
-        setRecentDrawnUids([lastCard.uid]);
-        setTimeout(() => setRecentDrawnUids([]), 900);
+      // 1. Bot Summon com animação de Slam
+      const emptyZoneIdx = bot.monsterZones.findIndex((z) => z === null);
+      const summonable = [...bot.hand].sort((a, b) => b.data.attack - a.data.attack);
+      if (!bot.hasNormalSummonedThisTurn && emptyZoneIdx !== -1 && summonable.length > 0) {
+        const toSummon = summonable[0];
+        if (toSummon.data.level <= 4) {
+          session.normalSummon(toSummon.uid, emptyZoneIdx, 'ATTACK', []);
+          soundFX.playPlaceCard();
+          setSlamZone({ isPlayer: false, zoneIndex: emptyZoneIdx });
+          setTimeout(() => setSlamZone(null), 500);
+          forceUpdate();
+        }
       }
+
+      // 2. Transição para Battle Phase
+      setTimeout(() => {
+        session.nextPhase(); // Move to BATTLE
+        forceUpdate();
+
+        // Encontra atacantes elegíveis do bot
+        const botAttackers = bot.monsterZones
+          .map((m, idx) => ({ card: m, index: idx }))
+          .filter((item): item is { card: CardInstance; index: number } =>
+            item.card !== null &&
+            item.card.position === 'ATTACK' &&
+            !item.card.hasAttacked &&
+            item.card.turnSummoned !== session.matchState.currentTurn
+          );
+
+        if (botAttackers.length > 0) {
+          const attacker = botAttackers[0];
+          const opponentMonsters = opponent.monsterZones
+            .map((m, idx) => ({ card: m, index: idx }))
+            .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
+
+          // Animação de investida do Bot (Lunge)
+          setLungingZone({ isPlayer: false, zoneIndex: attacker.index });
+
+          setTimeout(() => {
+            soundFX.playAttackStrike();
+            setIsCameraShaking(true);
+            setTimeout(() => setIsCameraShaking(false), 280);
+
+            if (opponentMonsters.length === 0) {
+              // Ataque Direto nos LPs do Jogador!
+              setTargetHitZone({ isPlayer: true, zoneIndex: null });
+              setTimeout(() => setTargetHitZone(null), 450);
+              const dmg = attacker.card.data.attack;
+              setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: null });
+              setTimeout(() => setFloatingDamage(null), 1200);
+
+              session.declareAttack(attacker.index, null);
+            } else {
+              // Ataque contra monstro do jogador
+              const target = opponentMonsters[0];
+              setTargetHitZone({ isPlayer: true, zoneIndex: target.index });
+              setTimeout(() => setTargetHitZone(null), 450);
+
+              if (target.card.position === 'ATTACK' && attacker.card.data.attack > target.card.data.attack) {
+                const dmg = attacker.card.data.attack - target.card.data.attack;
+                setDestroyedCardUids((prev) => [...prev, target.card.uid]);
+                soundFX.playDestruction();
+                setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: target.index });
+                setTimeout(() => setFloatingDamage(null), 1200);
+              } else if (target.card.position === 'DEFENSE' && attacker.card.data.attack > target.card.data.defense) {
+                setDestroyedCardUids((prev) => [...prev, target.card.uid]);
+                soundFX.playDestruction();
+              }
+
+              session.declareAttack(attacker.index, target.index);
+            }
+
+            setLungingZone(null);
+            forceUpdate();
+
+            // 3. Fim do turno do Bot, retornando ao jogador
+            setTimeout(() => {
+              session.nextPhase(); // MAIN2
+              session.nextPhase(); // END -> Turno do Jogador
+              showNotification(`⚔️ É a vez de ${p1.nickname} duelar!`);
+              forceUpdate();
+
+              const lastCard = session.player1.hand[session.player1.hand.length - 1];
+              if (lastCard) {
+                soundFX.playDrawCard();
+                setRecentDrawnUids([lastCard.uid]);
+                setTimeout(() => setRecentDrawnUids([]), 900);
+              }
+            }, 700);
+          }, 350);
+        } else {
+          // Sem ataques, passa o turno de volta
+          setTimeout(() => {
+            session.nextPhase(); // MAIN2
+            session.nextPhase(); // END -> Turno do Jogador
+            showNotification(`⚔️ É a vez de ${p1.nickname} duelar!`);
+            forceUpdate();
+
+            const lastCard = session.player1.hand[session.player1.hand.length - 1];
+            if (lastCard) {
+              soundFX.playDrawCard();
+              setRecentDrawnUids([lastCard.uid]);
+              setTimeout(() => setRecentDrawnUids([]), 900);
+            }
+          }, 600);
+        }
+      }, 600);
     }, 700);
   };
 
@@ -169,6 +291,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         const success = session.changeMonsterPosition(zoneIndex);
         if (success) {
           soundFX.playPlaceCard();
+          setFlippedZones((prev) => [...prev, { isPlayer: true, zoneIndex }]);
+          setTimeout(() => {
+            setFlippedZones((prev) => prev.filter((z) => !(z.isPlayer && z.zoneIndex === zoneIndex)));
+          }, 450);
           forceUpdate();
         }
         return;
@@ -507,6 +633,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               const isDestroyed = slot && destroyedCardUids.includes(slot.uid);
               const showDmg = floatingDamage && !floatingDamage.isPlayer && floatingDamage.zoneIndex === i;
               
+              const flameClass = getCardFlameClass(slot);
+              const isFlipped = flippedZones.some((z) => !z.isPlayer && z.zoneIndex === i);
+              
               return (
                 <div
                   key={`p2-m-${i}`}
@@ -514,7 +643,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   onMouseEnter={() => slot && setInspectedCard(slot)}
                   className={`h-48 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
                     slot
-                      ? `${isDefense ? 'card-3d-defense' : 'card-3d'}`
+                      ? `${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass}`
                       : 'border-2 border-dashed border-[#2d1c47] zone-empty hover:border-purple-500/60'
                   } ${
                     isTargetable
@@ -545,7 +674,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   )}
 
                   {slot ? (
-                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDestroyed ? 'anim-card-destroy' : ''}`}>
+                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
                       {/* Apenas a Imagem Pura da Carta Preenchendo com Fidelidade */}
                       <img
                         src={slot.data.imageUrl}
@@ -585,7 +714,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               {match.phase}
             </span>
             <span className="text-xs text-slate-300 font-mono font-bold">
-              Turno {match.currentTurn} • {isPlayerTurn ? '🌟 SEU TURNO' : '⏳ TURNO DO OPONENTE'}
+              Turno {match.currentTurn} • {isPlayerTurn ? `🌟 TURNO DE ${p1.nickname.toUpperCase()}` : `⏳ TURNO DE ${p2.nickname.toUpperCase()}`}
             </span>
           </div>
 
@@ -636,6 +765,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               const isHitTarget = targetHitZone && targetHitZone.isPlayer && targetHitZone.zoneIndex === i;
               const isDestroyed = slot && destroyedCardUids.includes(slot.uid);
               const showDmg = floatingDamage && floatingDamage.isPlayer && floatingDamage.zoneIndex === i;
+              const flameClass = getCardFlameClass(slot);
+              const isFlipped = flippedZones.some((z) => z.isPlayer && z.zoneIndex === i);
 
               return (
                 <div
@@ -644,7 +775,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   onMouseEnter={() => slot && setInspectedCard(slot)}
                   className={`h-48 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
                     slot
-                      ? `${isDefense ? 'card-3d-defense' : 'card-3d'}`
+                      ? `${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass}`
                       : (isValidSummonZone || isTributeTargetZone)
                       ? 'border-2 border-emerald-400 bg-emerald-950/40 ring-4 ring-emerald-400/80 shadow-[0_0_25px_rgba(16,185,129,0.8)] scale-105 animate-pulse'
                       : 'border-2 border-dashed border-[#2d1c47] zone-empty hover:border-amber-500/50'
@@ -694,7 +825,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   )}
 
                   {slot ? (
-                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''}`}>
+                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
                       {/* Apenas a Imagem Pura da Carta Original em Alta Definição */}
                       <img
                         src={slot.data.imageUrl}

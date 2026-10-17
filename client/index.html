@@ -181,6 +181,62 @@
       .anim-card-destroy {
         animation: destroyDissolve 0.55s ease-in forwards;
       }
+
+      /* 5. Efeitos de Fogo na Carta (Kill Streak & Ataque Direto) */
+      @keyframes flameLightAura {
+        0%, 100% {
+          box-shadow: 0 0 15px 4px rgba(249, 115, 22, 0.75), 0 0 30px 6px rgba(234, 88, 12, 0.45);
+          filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.8));
+        }
+        50% {
+          box-shadow: 0 0 25px 8px rgba(249, 115, 22, 0.95), 0 0 45px 12px rgba(234, 88, 12, 0.6);
+          filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.95));
+        }
+      }
+      .flame-light {
+        animation: flameLightAura 1.8s ease-in-out infinite;
+        border-color: rgba(249, 115, 22, 0.9) !important;
+      }
+
+      @keyframes flameHeavyAura {
+        0%, 100% {
+          box-shadow: 0 0 25px 8px rgba(239, 68, 68, 0.9), 0 0 50px 15px rgba(245, 158, 11, 0.7);
+          filter: drop-shadow(0 0 16px rgba(239, 68, 68, 1)) brightness(1.1);
+        }
+        50% {
+          box-shadow: 0 0 38px 14px rgba(239, 68, 68, 1), 0 0 70px 24px rgba(245, 158, 11, 0.9);
+          filter: drop-shadow(0 0 25px rgba(245, 158, 11, 1)) brightness(1.25);
+        }
+      }
+      .flame-heavy {
+        animation: flameHeavyAura 1.2s ease-in-out infinite;
+        border-color: rgba(239, 68, 68, 1) !important;
+      }
+
+      @keyframes flameBlueAura {
+        0%, 100% {
+          box-shadow: 0 0 22px 6px rgba(59, 130, 246, 0.9), 0 0 45px 12px rgba(6, 182, 212, 0.6);
+          filter: drop-shadow(0 0 12px rgba(59, 130, 246, 0.95));
+        }
+        50% {
+          box-shadow: 0 0 35px 12px rgba(59, 130, 246, 1), 0 0 65px 20px rgba(6, 182, 212, 0.85);
+          filter: drop-shadow(0 0 20px rgba(6, 182, 212, 1));
+        }
+      }
+      .flame-blue {
+        animation: flameBlueAura 1.4s ease-in-out infinite;
+        border-color: rgba(59, 130, 246, 1) !important;
+      }
+
+      /* 6. Transição 3D ao Virar de Posição de Batalha */
+      @keyframes cardFlipTransition {
+        0% { transform: scale(0.9) rotateY(0deg); }
+        50% { transform: scale(1.15) rotateY(90deg); }
+        100% { transform: scale(1) rotateY(0deg); }
+      }
+      .anim-card-flip {
+        animation: cardFlipTransition 0.4s ease-in-out;
+      }
     </style>
   </head>
   <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans select-none overflow-x-hidden">
