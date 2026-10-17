@@ -117,14 +117,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       if (session.matchState.isGameOver) return;
 
       // 1. Bot Summon com animação de Slam
-      const emptyZoneIdx = bot.monsterZones.findIndex((z) => z === null);
-      const summonable = [...bot.hand].sort((a, b) => b.data.attack - a.data.attack);
-      if (!bot.hasNormalSummonedThisTurn && emptyZoneIdx !== -1 && summonable.length > 0) {
-        const toSummon = summonable[0];
-        if (toSummon.data.level <= 4) {
-          session.normalSummon(toSummon.uid, emptyZoneIdx, 'ATTACK', []);
+      if (!bot.hasNormalSummonedThisTurn) {
+        const summonResult = DuelBot.evaluateAndSummon(session);
+        if (summonResult) {
           soundFX.playPlaceCard();
-          setSlamZone({ isPlayer: false, zoneIndex: emptyZoneIdx });
+          setSlamZone({ isPlayer: false, zoneIndex: summonResult.zoneIndex });
           setTimeout(() => setSlamZone(null), 500);
           forceUpdate();
         }
@@ -135,7 +132,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         session.nextPhase(); // Move to BATTLE
         forceUpdate();
 
-        // Encontra atacantes elegíveis do bot
+        // Encontra atacantes elegíveis do bot (que não tenham sido invocados no turno atual)
         const botAttackers = bot.monsterZones
           .map((m, idx) => ({ card: m, index: idx }))
           .filter((item): item is { card: CardInstance; index: number } =>
@@ -143,7 +140,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             item.card.position === 'ATTACK' &&
             !item.card.hasAttacked &&
             item.card.turnSummoned !== session.matchState.currentTurn
-          );
+          )
+          .sort((a, b) => b.card.data.attack - a.card.data.attack);
 
         if (botAttackers.length > 0) {
           const attacker = botAttackers[0];
@@ -169,8 +167,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
               session.declareAttack(attacker.index, null);
             } else {
-              // Ataque contra monstro do jogador
-              const target = opponentMonsters[0];
+              // Encontra melhor alvo vulnerável
+              const target =
+                opponentMonsters.find(
+                  (t) =>
+                    (t.card.position === 'ATTACK' && attacker.card.data.attack > t.card.data.attack) ||
+                    (t.card.position === 'DEFENSE' && attacker.card.data.attack > t.card.data.defense)
+                ) || opponentMonsters[0];
+
               setTargetHitZone({ isPlayer: true, zoneIndex: target.index });
               setTimeout(() => setTargetHitZone(null), 450);
 

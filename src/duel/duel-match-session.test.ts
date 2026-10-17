@@ -185,4 +185,63 @@ describe('DuelMatchSession & DuelBot Integration', () => {
     expect(attackOnNextTurn).toBe(true);
     expect(p1.monsterZones[0]?.hasAttacked).toBe(true);
   });
+
+  it('should ensure DuelBot summons an eligible Level <= 4 monster even when higher ATK tribute monsters exist in hand (Regression Fix)', () => {
+    // Arrange: Simulates Kaiba bot having Blue-Eyes (3000 ATK, Level 8) and Vorse Raider (1900 ATK, Level 4)
+    const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+    session.endTurn(); // Pass to Kaiba (turn 2)
+
+    const bot = session.getActivePlayer();
+    // Clear hand and set specific cards to recreate the bug condition
+    bot.hand = [
+      {
+        uid: 'kaiba_blue_eyes',
+        data: {
+          id: '89631139',
+          name: 'Blue-Eyes White Dragon',
+          type: 'Normal Monster',
+          level: 8,
+          attack: 3000,
+          defense: 2500,
+          description: 'Legendary dragon',
+          imageUrl: '',
+        },
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      },
+      {
+        uid: 'kaiba_vorse_raider',
+        data: {
+          id: '14898066',
+          name: 'Vorse Raider',
+          type: 'Normal Monster',
+          level: 4,
+          attack: 1900,
+          defense: 1200,
+          description: 'Warrior',
+          imageUrl: '',
+        },
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      },
+    ];
+
+    // Act
+    const result = DuelBot.evaluateAndSummon(session);
+
+    // Assert: Bot must not be blocked by Blue-Eyes and must successfully summon Vorse Raider
+    expect(result).not.toBeNull();
+    expect(result?.summonedCard.uid).toBe('kaiba_vorse_raider');
+    expect(bot.monsterZones[0]?.uid).toBe('kaiba_vorse_raider');
+    expect(bot.monsterZones[0]?.position).toBe('ATTACK');
+    expect(bot.hasNormalSummonedThisTurn).toBe(true);
+  });
 });

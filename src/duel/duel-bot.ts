@@ -36,49 +36,57 @@ export class DuelBot {
     session.nextPhase(); // End turn, passing back to user
   }
 
-  private static evaluateAndSummon(session: DuelMatchSession): void {
+  public static evaluateAndSummon(session: DuelMatchSession): { summonedCard: CardInstance; zoneIndex: number } | null {
     const bot = session.getActivePlayer();
 
     // Find empty monster zone
     const emptyZoneIndex = bot.monsterZones.findIndex((z) => z === null);
-    if (emptyZoneIndex === -1) return; // No space
-
-    // Sort hand by attack descending
-    const summonableCards = [...bot.hand].sort((a, b) => b.data.attack - a.data.attack);
 
     // Count available monsters on bot's field for tribute
     const currentMonstersOnField = bot.monsterZones
       .map((m, idx) => ({ card: m, index: idx }))
       .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
 
+    // Sort hand by attack descending
+    const summonableCards = [...bot.hand].sort((a, b) => b.data.attack - a.data.attack);
+
     // Prioritize highest level/attack we can legally afford
     for (const card of summonableCards) {
-      if (card.data.level <= 4) {
+      if (card.data.level <= 4 && emptyZoneIndex !== -1) {
         // Direct summon, 0 tributes needed
-        session.normalSummon(card.uid, emptyZoneIndex, 'ATTACK', []);
-        break;
-      } else if (card.data.level <= 6 && currentMonstersOnField.length >= 1) {
+        const success = session.normalSummon(card.uid, emptyZoneIndex, 'ATTACK', []);
+        if (success) {
+          return { summonedCard: card, zoneIndex: emptyZoneIndex };
+        }
+      } else if (card.data.level >= 5 && card.data.level <= 6 && currentMonstersOnField.length >= 1) {
         // 1 tribute needed: pick weakest monster on field to sacrifice
         const sortedTributes = [...currentMonstersOnField].sort(
           (a, b) => a.card.data.attack - b.card.data.attack
         );
         const sacrifice = sortedTributes[0];
-        // The empty zone can be the zone vacated by the sacrifice
-        session.normalSummon(card.uid, sacrifice.index, 'ATTACK', [sacrifice.index]);
-        break;
+        const targetZone = emptyZoneIndex !== -1 ? emptyZoneIndex : sacrifice.index;
+        const success = session.normalSummon(card.uid, targetZone, 'ATTACK', [sacrifice.index]);
+        if (success) {
+          return { summonedCard: card, zoneIndex: targetZone };
+        }
       } else if (card.data.level >= 7 && currentMonstersOnField.length >= 2) {
         // 2 tributes needed: pick 2 weakest monsters on field
         const sortedTributes = [...currentMonstersOnField].sort(
           (a, b) => a.card.data.attack - b.card.data.attack
         );
         const sacrifices = [sortedTributes[0].index, sortedTributes[1].index];
-        session.normalSummon(card.uid, sacrifices[0], 'ATTACK', sacrifices);
-        break;
+        const targetZone = emptyZoneIndex !== -1 ? emptyZoneIndex : sacrifices[0];
+        const success = session.normalSummon(card.uid, targetZone, 'ATTACK', sacrifices);
+        if (success) {
+          return { summonedCard: card, zoneIndex: targetZone };
+        }
       }
     }
+
+    return null;
   }
 
-  private static executeAttacks(session: DuelMatchSession): void {
+  public static executeAttacks(session: DuelMatchSession): void {
     const bot = session.getActivePlayer();
     const opponent = session.getOpponentPlayer();
 
