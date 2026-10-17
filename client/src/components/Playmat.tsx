@@ -324,9 +324,17 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               </div>
             </div>
           ) : (
-            <div className="w-60 h-84 rounded-lg border-2 border-dashed border-[#382654] flex flex-col items-center justify-center text-slate-500 text-xs text-center p-6 bg-black/20">
-              <span className="text-4xl mb-3 text-amber-400/40 animate-pulse">𓂀</span>
-              <p className="font-serif">Clique ou aponte para qualquer carta para revelar seu poder e tradução.</p>
+            <div className="w-60 h-84 rounded-lg border-2 border-amber-900/60 shadow-[0_0_25px_rgba(245,158,11,0.2)] flex flex-col items-center justify-between p-3 bg-black/40">
+              <div className="w-full h-64 rounded overflow-hidden shadow-2xl flex items-center justify-center">
+                <img
+                  src="/card-back.jpg"
+                  alt="Verso da Carta"
+                  className="w-full h-full object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]"
+                />
+              </div>
+              <p className="font-serif text-[11px] text-amber-200/70 text-center mt-2 italic">
+                Aponte ou selecione qualquer carta no campo ou na mão para inspecionar seus segredos.
+              </p>
             </div>
           )}
         </div>
@@ -377,16 +385,18 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
         {/* CAMPO DO OPONENTE */}
         <div className="flex flex-col space-y-2">
-          {/* Mão do Oponente (Verso) */}
+          {/* Mão do Oponente (Verso Oficial Yu-Gi-Oh) */}
           <div className="flex justify-center -space-x-5 h-20">
             {p2.hand.map((card, i) => (
               <div
                 key={card.uid || i}
-                className="w-14 h-20 rounded border-2 border-amber-900 bg-gradient-to-br from-[#4a2608] via-[#241103] to-[#120601] shadow-lg flex items-center justify-center transition-all hover:-translate-y-1"
+                className="w-14 h-20 rounded shadow-2xl transition-all duration-200 hover:-translate-y-2 hover:scale-110 hover:z-20 cursor-default"
               >
-                <div className="w-8 h-12 border border-amber-600/40 rounded-full flex items-center justify-center text-[9px] text-amber-500/80 font-serif font-black">
-                  YG
-                </div>
+                <img
+                  src="/card-back.jpg"
+                  alt="Verso da Carta"
+                  className="w-full h-full object-contain filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)] rounded"
+                />
               </div>
             ))}
           </div>
@@ -648,8 +658,13 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             </div>
 
             <div className="text-center">
-              <div className="w-14 h-20 rounded border-2 border-amber-700 bg-gradient-to-br from-[#4a2608] via-[#241103] to-[#120601] flex items-center justify-center text-sm font-mono font-black text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.4)]">
-                {p1.deck.length}
+              <div className="w-14 h-20 rounded border border-amber-600/50 relative shadow-[0_0_15px_rgba(245,158,11,0.4)] overflow-hidden flex items-center justify-center group">
+                <img src="/card-back.jpg" alt="Deck" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                  <span className="text-sm font-mono font-black text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
+                    {p1.deck.length}
+                  </span>
+                </div>
               </div>
               <span className="text-[9px] text-slate-400 uppercase font-serif tracking-wider">Deck</span>
             </div>
