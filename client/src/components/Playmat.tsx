@@ -3,6 +3,7 @@ import { DuelMatchSession } from '@duel/duel-match-session';
 import { createKaibaDeck, createYugiDeck } from '@duel/starter-decks';
 import { CardInstance, BattlePosition } from '@duel/duel-types';
 import { DuelBot } from '@duel/duel-bot';
+import { soundFX } from '../utils/soundFX';
 
 export interface PlaymatProps {
   playerNickname?: string;
@@ -25,6 +26,15 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const [languagePt, setLanguagePt] = useState<boolean>(true);
   const [showSurrenderModal, setShowSurrenderModal] = useState<boolean>(false);
   const [, setRefreshKey] = useState(0);
+
+  // Estados de Animação e VFX Dinâmicos
+  const [slamZone, setSlamZone] = useState<{ isPlayer: boolean; zoneIndex: number } | null>(null);
+  const [lungingZone, setLungingZone] = useState<{ isPlayer: boolean; zoneIndex: number } | null>(null);
+  const [targetHitZone, setTargetHitZone] = useState<{ isPlayer: boolean; zoneIndex: number | null } | null>(null);
+  const [destroyedCardUids, setDestroyedCardUids] = useState<string[]>([]);
+  const [floatingDamage, setFloatingDamage] = useState<{ amount: number; isPlayer: boolean; zoneIndex: number | null } | null>(null);
+  const [isCameraShaking, setIsCameraShaking] = useState<boolean>(false);
+  const [recentDrawnUids, setRecentDrawnUids] = useState<string[]>([]);
 
   const showNotification = (msg: string) => {
     setToastMessage(msg);
@@ -83,6 +93,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     setTimeout(() => {
       DuelBot.executeTurn(session);
       forceUpdate();
+
+      // Quando o turno volta para o jogador, o motor compra uma carta (Draw Phase)
+      const lastCard = session.player1.hand[session.player1.hand.length - 1];
+      if (lastCard) {
+        soundFX.playDrawCard();
+        setRecentDrawnUids([lastCard.uid]);
+        setTimeout(() => setRecentDrawnUids([]), 900);
+      }
     }, 700);
   };
 
@@ -166,6 +184,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     // 3. Seleção de Ataque (BATTLE PHASE)
     if (match.phase === 'BATTLE') {
       if (currentMonster.position === 'ATTACK' && !currentMonster.hasAttacked) {
+        if (currentMonster.turnSummoned === match.currentTurn) {
+          showNotification('⏳ Este monstro foi invocado neste turno e só poderá atacar no próximo turno!');
+          return;
+        }
         setSelectedAttackerZone(selectedAttackerZone === zoneIndex ? null : zoneIndex);
       } else if (currentMonster.position === 'DEFENSE') {
         showNotification('🛡️ Monstros em Posição de Defesa não podem atacar!');
@@ -176,18 +198,25 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   // Concluir Invocação com Posição Escolhida (Normal ou com Sacrifício)
   const confirmSummonWithPosition = (position: BattlePosition) => {
     if (selectedHandCardUid === null || pendingSummonZone === null) return;
+    const zoneToSlam = pendingSummonZone;
     const success = session.normalSummon(selectedHandCardUid, pendingSummonZone, position, selectedTributeZones);
     if (success) {
       setSelectedHandCardUid(null);
       setPendingSummonZone(null);
       setSelectedTributeZones([]);
+
+      // 1. VFX de Posicionamento: Card Slam, Dust Ring e Som de Impacto
+      soundFX.playPlaceCard();
+      setSlamZone({ isPlayer: true, zoneIndex: zoneToSlam });
+      setTimeout(() => setSlamZone(null), 500);
+
       forceUpdate();
     } else {
       showNotification('❌ Falha ao invocar monstro. Verifique as regras.');
     }
   };
 
-  // Clique no Monstro do Oponente
+  // Clique no Monstro do Oponente (Declaração de Ataque)
   const handleOpponentZoneClick = (targetZoneIndex: number | null) => {
     if (targetZoneIndex !== null) {
       const monster = p2.monsterZones[targetZoneIndex];
@@ -195,9 +224,74 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     }
 
     if (!isPlayerTurn || match.phase !== 'BATTLE' || selectedAttackerZone === null) return;
-    session.declareAttack(selectedAttackerZone, targetZoneIndex);
+
+    const attackerZone = selectedAttackerZone;
+    const attackingCard = p1.monsterZones[attackerZone];
+    const defendingCard = targetZoneIndex !== null ? p2.monsterZones[targetZoneIndex] : null;
+
+    if (!attackingCard) return;
+
+    // 3. Efeitos de Ataque: Animação de Investida (Lunge)
+    setLungingZone({ isPlayer: true, zoneIndex: attackerZone });
     setSelectedAttackerZone(null);
-    forceUpdate();
+
+    // Timing do Impacto
+    setTimeout(() => {
+      // Disparo do Efeito Sonoro e Camera Shake
+      soundFX.playAttackStrike();
+      setIsCameraShaking(true);
+      setTimeout(() => setIsCameraShaking(false), 280);
+
+      // VFX no Destino (Anel de impacto / Explosão)
+      setTargetHitZone({ isPlayer: false, zoneIndex: targetZoneIndex });
+      setTimeout(() => setTargetHitZone(null), 450);
+
+      // Calcular Dano e Destruição para Feedback Visual
+      if (targetZoneIndex === null) {
+        // Ataque Direto
+        const dmg = attackingCard.data.attack;
+        setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: null });
+        setTimeout(() => setFloatingDamage(null), 1200);
+      } else if (defendingCard) {
+        // Monstro vs Monstro
+        let dmg = 0;
+        if (defendingCard.position === 'ATTACK') {
+          if (attackingCard.data.attack > defendingCard.data.attack) {
+            dmg = attackingCard.data.attack - defendingCard.data.attack;
+            setDestroyedCardUids((prev) => [...prev, defendingCard.uid]);
+            soundFX.playDestruction();
+          } else if (attackingCard.data.attack < defendingCard.data.attack) {
+            dmg = defendingCard.data.attack - attackingCard.data.attack;
+            setDestroyedCardUids((prev) => [...prev, attackingCard.uid]);
+            soundFX.playDestruction();
+          } else {
+            // Empate
+            setDestroyedCardUids((prev) => [...prev, attackingCard.uid, defendingCard.uid]);
+            soundFX.playDestruction();
+          }
+        } else {
+          // DEFENSE
+          if (attackingCard.data.attack > defendingCard.data.defense) {
+            setDestroyedCardUids((prev) => [...prev, defendingCard.uid]);
+            soundFX.playDestruction();
+          } else if (attackingCard.data.attack < defendingCard.data.defense) {
+            dmg = defendingCard.data.defense - attackingCard.data.attack;
+          }
+        }
+
+        if (dmg > 0) {
+          setFloatingDamage({ amount: dmg, isPlayer: attackingCard.data.attack < defendingCard.data.attack, zoneIndex: targetZoneIndex });
+          setTimeout(() => setFloatingDamage(null), 1200);
+        }
+      }
+
+      // Executa no motor de regras após início da animação de investida
+      session.declareAttack(attackerZone, targetZoneIndex);
+      forceUpdate();
+
+      // Finaliza o Lunge
+      setTimeout(() => setLungingZone(null), 150);
+    }, 200);
   };
 
   // Desistir / Sair da Partida
@@ -351,11 +445,20 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         </div>
       </aside>
 
-      {/* ÁREA DA MESA / PLAYMAT INTERATIVO */}
-      <main className="flex-1 flex flex-col justify-between p-2.5 relative overflow-hidden">
+      {/* ÁREA DA MESA / PLAYMAT INTERATIVO COM CAMERA SHAKE */}
+      <main className={`flex-1 flex flex-col justify-between p-2.5 relative overflow-hidden transition-transform ${isCameraShaking ? 'anim-camera-shake' : ''}`}>
         
         {/* TOPO: OPONENTE KAIBA (HUD AMPLIADO) */}
-        <div className="flex justify-between items-center bg-[#0e0a17]/95 border-2 border-[#412760] rounded-xl px-7 py-2.5 shadow-[0_6px_25px_rgba(0,0,0,0.85)]">
+        <div className="flex justify-between items-center bg-[#0e0a17]/95 border-2 border-[#412760] rounded-xl px-7 py-2.5 shadow-[0_6px_25px_rgba(0,0,0,0.85)] relative">
+          {/* Floating Damage em Ataque Direto */}
+          {floatingDamage && !floatingDamage.isPlayer && floatingDamage.zoneIndex === null && (
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none anim-damage-float">
+              <span className="text-4xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-t from-red-600 via-rose-500 to-amber-300 drop-shadow-[0_0_15px_rgba(239,68,68,1)]">
+                -{floatingDamage.amount}
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center space-x-4">
             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-950 border-2 border-blue-400 flex items-center justify-center font-black text-blue-200 text-xl shadow-[0_0_15px_rgba(59,130,246,0.6)]">
               K
@@ -406,6 +509,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             {p2.monsterZones.map((slot, i) => {
               const isTargetable = selectedAttackingMonster !== null && slot !== null;
               const isDefense = slot?.position === 'DEFENSE';
+              const isHitTarget = targetHitZone && !targetHitZone.isPlayer && targetHitZone.zoneIndex === i;
+              const isLunging = lungingZone && !lungingZone.isPlayer && lungingZone.zoneIndex === i;
+              const isDestroyed = slot && destroyedCardUids.includes(slot.uid);
+              const showDmg = floatingDamage && !floatingDamage.isPlayer && floatingDamage.zoneIndex === i;
               
               return (
                 <div
@@ -420,8 +527,24 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     isTargetable
                       ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-black scale-105 shadow-[0_0_30px_rgba(239,68,68,0.9)] animate-pulse'
                       : ''
+                  } ${
+                    isLunging ? 'anim-attack-lunge-opponent z-40' : ''
                   }`}
                 >
+                  {/* Floating Damage Text */}
+                  {showDmg && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none anim-damage-float">
+                      <span className="text-3xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-t from-red-600 to-amber-300 drop-shadow-[0_0_12px_rgba(239,68,68,1)]">
+                        -{floatingDamage.amount}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* VFX de Anel de Impacto no Alvo */}
+                  {isHitTarget && (
+                    <div className="absolute inset-0 rounded-full border-4 border-red-500 pointer-events-none anim-impact-ring z-40"></div>
+                  )}
+
                   {isTargetable && (
                     <div className="absolute -top-3 z-30 bg-red-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
                       <span>🎯</span> ALVO
@@ -429,7 +552,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   )}
 
                   {slot ? (
-                    <div className="w-full h-full relative rounded-lg flex items-center justify-center">
+                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDestroyed ? 'anim-card-destroy' : ''}`}>
                       {/* Apenas a Imagem Pura da Carta Preenchendo com Fidelidade */}
                       <img
                         src={slot.data.imageUrl}
@@ -504,7 +627,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           </div>
         </div>
 
-        {/* CAMPO DO JOGADOR (ZONA DE MONSTROS 3D AMPLIADA) */}
+        {/* CAMPO DO JOGADOR (ZONA DE MONSTROS 3D AMPLIADA COM VFX) */}
         <div className="flex flex-col space-y-2">
           <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
             {p1.monsterZones.map((slot, i) => {
@@ -515,6 +638,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               const isValidSummonZone = selectedHandCard !== null && requiredTributes === 0 && slot === null;
               const isSelectedAttacker = selectedAttackerZone === i;
               const isDefense = slot?.position === 'DEFENSE';
+              const isSlamming = slamZone && slamZone.isPlayer && slamZone.zoneIndex === i;
+              const isLunging = lungingZone && lungingZone.isPlayer && lungingZone.zoneIndex === i;
+              const isHitTarget = targetHitZone && targetHitZone.isPlayer && targetHitZone.zoneIndex === i;
+              const isDestroyed = slot && destroyedCardUids.includes(slot.uid);
+              const showDmg = floatingDamage && floatingDamage.isPlayer && floatingDamage.zoneIndex === i;
 
               return (
                 <div
@@ -535,8 +663,29 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     isSelectedTribute
                       ? 'ring-4 ring-red-500 border-2 border-red-400 scale-105 shadow-[0_0_30px_rgba(239,68,68,0.9)] animate-pulse'
                       : ''
+                  } ${
+                    isLunging ? 'anim-attack-lunge-player z-40' : ''
                   }`}
                 >
+                  {/* Floating Damage Text */}
+                  {showDmg && (
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none anim-damage-float">
+                      <span className="text-3xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-t from-red-600 to-amber-300 drop-shadow-[0_0_12px_rgba(239,68,68,1)]">
+                        -{floatingDamage.amount}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Anel de Poeira / Impacto na Invocação */}
+                  {isSlamming && (
+                    <div className="absolute inset-0 rounded-full border-4 border-amber-400 pointer-events-none anim-impact-ring z-40"></div>
+                  )}
+
+                  {/* Anel de Impacto ao Ser Atingido */}
+                  {isHitTarget && (
+                    <div className="absolute inset-0 rounded-full border-4 border-red-500 pointer-events-none anim-impact-ring z-40"></div>
+                  )}
+
                   {/* Badge de Sacrifício Selecionado */}
                   {isSelectedTribute && (
                     <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-red-600 to-rose-700 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(239,68,68,0.9)] border border-yellow-300 animate-bounce flex items-center gap-1 uppercase tracking-wider">
@@ -552,7 +701,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   )}
 
                   {slot ? (
-                    <div className="w-full h-full relative rounded-lg flex items-center justify-center">
+                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''}`}>
                       {/* Apenas a Imagem Pura da Carta Original em Alta Definição */}
                       <img
                         src={slot.data.imageUrl}
@@ -572,8 +721,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                           <span className="text-blue-400">🛡️ {slot.data.defense}</span>
                           {slot.hasAttacked ? (
                             <span className="text-red-400 font-sans text-[9px]">Atacou</span>
+                          ) : slot.turnSummoned === match.currentTurn ? (
+                            <span className="text-yellow-400 font-sans text-[9px]">Invocado ⏳</span>
                           ) : match.phase === 'BATTLE' && !isDefense ? (
-                            <span className="text-emerald-400 font-sans text-[9px] animate-pulse">Pronto</span>
+                            <span className="text-emerald-400 font-sans text-[9px] animate-pulse">Pronto ⚔️</span>
                           ) : null}
                         </div>
                       </div>
@@ -604,16 +755,20 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             </div>
           </div>
 
-          {/* Mão do Jogador (Cartas 3D Ampliadas e Arte Pura) */}
+          {/* Mão do Jogador (Cartas 3D Ampliadas, Layout Dinâmico e Animação de Compra) */}
           <div className="flex-1 flex justify-center -space-x-4 overflow-visible py-1">
-            {p1.hand.map((card) => {
+            {p1.hand.map((card, idx) => {
               const isSelected = selectedHandCardUid === card.uid;
+              const isNewlyDrawn = recentDrawnUids.includes(card.uid);
               return (
                 <div
                   key={card.uid}
                   onClick={() => handleSelectHandCard(card)}
                   onMouseEnter={() => setInspectedCard(card)}
+                  style={{ animationDelay: isNewlyDrawn ? `${idx * 140}ms` : '0ms' }}
                   className={`card-3d group w-32 h-44 rounded-md cursor-pointer transition-all duration-200 relative flex items-center justify-center ${
+                    isNewlyDrawn ? 'anim-draw-card' : ''
+                  } ${
                     isSelected
                       ? '-translate-y-6 ring-4 ring-amber-400/90 shadow-[0_0_35px_rgba(245,158,11,1)] scale-110 z-30'
                       : 'hover:-translate-y-5 hover:scale-105 hover:z-20 hover:drop-shadow-[0_15px_25px_rgba(245,158,11,0.5)]'

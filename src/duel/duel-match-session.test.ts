@@ -140,4 +140,38 @@ describe('DuelMatchSession & DuelBot Integration', () => {
     expect(p1.graveyard.some((c) => c.uid === 'tribute_3')).toBe(true);
     expect(p1.monsterZones[1]?.uid).toBe('summon_lvl7');
   });
+
+  it('should prevent a monster summoned on the current turn from attacking until the next turn', () => {
+    // Arrange
+    const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+    const p1 = session.player1;
+    const lvl4Card = p1.hand.find((c) => c.data.level <= 4)!;
+
+    // Invocação no Turno 1
+    session.normalSummon(lvl4Card.uid, 0, 'ATTACK', []);
+    expect(p1.monsterZones[0]?.turnSummoned).toBe(1);
+
+    // Muda para Fase de Batalha (Turno 1)
+    session.nextPhase();
+    expect(session.matchState.phase).toBe('BATTLE');
+
+    // Act 1: Tentar atacar no mesmo turno da invocação (Turno 1) -> DEVE FALHAR
+    const attackOnSameTurn = session.declareAttack(0, null);
+    expect(attackOnSameTurn).toBe(false);
+    expect(p1.monsterZones[0]?.hasAttacked).toBe(false);
+
+    // Passa turno para o Bot e de volta para o Jogador (Turno 3)
+    session.endTurn(); // Bot turn
+    session.endTurn(); // Player turn again (Turno 3)
+
+    // Muda para Fase de Batalha do Turno 3
+    session.nextPhase();
+    expect(session.matchState.phase).toBe('BATTLE');
+    expect(session.matchState.currentTurn).toBe(3);
+
+    // Act 2: Tentar atacar no próximo turno (Turno 3) -> DEVE TER SUCESSO
+    const attackOnNextTurn = session.declareAttack(0, null);
+    expect(attackOnNextTurn).toBe(true);
+    expect(p1.monsterZones[0]?.hasAttacked).toBe(true);
+  });
 });

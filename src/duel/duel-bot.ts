@@ -82,12 +82,15 @@ export class DuelBot {
     const bot = session.getActivePlayer();
     const opponent = session.getOpponentPlayer();
 
-    // Collect bot monsters that can declare an attack
+    // Collect bot monsters that can declare an attack (only if not summoned on the current turn)
     const botAttackers = bot.monsterZones
       .map((m, idx) => ({ card: m, index: idx }))
       .filter(
         (item): item is { card: CardInstance; index: number } =>
-          item.card !== null && item.card.position === 'ATTACK' && !item.card.hasAttacked
+          item.card !== null &&
+          item.card.position === 'ATTACK' &&
+          !item.card.hasAttacked &&
+          item.card.turnSummoned !== session.matchState.currentTurn
       )
       .sort((a, b) => b.card.data.attack - a.card.data.attack);
 

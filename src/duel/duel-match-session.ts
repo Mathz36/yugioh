@@ -286,6 +286,11 @@ export class DuelMatchSession {
       return false;
     }
 
+    if (attackingCard.turnSummoned === this.matchState.currentTurn) {
+      this.log(`⚠️ ${attackingCard.data.namePt || attackingCard.data.name} foi invocado neste turno e só poderá atacar a partir do próximo turno!`);
+      return false;
+    }
+
     if (attackingCard.hasAttacked) {
       this.log(`${attackingCard.data.namePt || attackingCard.data.name} já atacou neste turno.`);
       return false;
