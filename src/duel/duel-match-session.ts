@@ -495,7 +495,11 @@ export class DuelMatchSession {
     };
   }
 
-  public declareAttack(attackerZoneIndex: number, targetZoneIndex: number | null): boolean {
+  public declareAttack(
+    attackerZoneIndex: number,
+    targetZoneIndex: number | null,
+    selectedDefenderTargetUids?: string[]
+  ): boolean {
     if (this.matchState.isGameOver) return false;
     if (this.matchState.phase !== 'BATTLE') {
       this.log('Você só pode declarar ataques durante a Fase de Batalha.');
@@ -579,17 +583,43 @@ export class DuelMatchSession {
       const action = defendingCard.data.effectDefinition?.action;
 
       if (action === 'DESTROY_MONSTER') {
-        // Man-Eater Bug: Destrói o monstro atacante
-        attackerPlayer.monsterZones[attackerZoneIndex] = null;
-        attackerPlayer.graveyard.push(attackingCard);
-        attackerRemovedByFlip = true;
-        this.log(`🪲 EFEITO FLIP ATIVADO! ${defenderName} ativou seu efeito e destruiu o monstro atacante ${attackerName}! O ataque foi interrompido!`);
+        const targets = selectedDefenderTargetUids && selectedDefenderTargetUids.length > 0
+          ? selectedDefenderTargetUids
+          : [attackingCard.uid];
+
+        ACTION_HANDLERS.DESTROY_MONSTER(
+          {
+            cardInstance: defendingCard,
+            player: defenderPlayer,
+            opponent: attackerPlayer,
+            targetUids: targets,
+            logFn: (msg) => this.log(msg),
+          },
+          (c, own, opp) => this.getEffectiveAttack(c, own, opp)
+        );
+
+        if (!attackerPlayer.monsterZones.some((m) => m?.uid === attackingCard.uid)) {
+          attackerRemovedByFlip = true;
+        }
       } else if (action === 'RETURN_TO_HAND') {
-        // Penguin Soldier: Devolve o monstro atacante para a mão do dono
-        attackerPlayer.monsterZones[attackerZoneIndex] = null;
-        attackerPlayer.hand.push(attackingCard);
-        attackerRemovedByFlip = true;
-        this.log(`🐧 EFEITO FLIP ATIVADO! ${defenderName} ativou seu efeito e devolveu ${attackerName} para a mão de ${attackerPlayer.nickname}! O ataque foi interrompido!`);
+        const targets = selectedDefenderTargetUids && selectedDefenderTargetUids.length > 0
+          ? selectedDefenderTargetUids
+          : undefined;
+
+        ACTION_HANDLERS.RETURN_TO_HAND(
+          {
+            cardInstance: defendingCard,
+            player: defenderPlayer,
+            opponent: attackerPlayer,
+            targetUids: targets,
+            logFn: (msg) => this.log(msg),
+          },
+          (c, own, opp) => this.getEffectiveAttack(c, own, opp)
+        );
+
+        if (!attackerPlayer.monsterZones.some((m) => m?.uid === attackingCard.uid)) {
+          attackerRemovedByFlip = true;
+        }
       }
     }
 

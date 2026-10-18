@@ -53,8 +53,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const [recentDrawnUids, setRecentDrawnUids] = useState<string[]>([]);
   const [flippedZones, setFlippedZones] = useState<{ isPlayer: boolean; zoneIndex: number }[]>([]);
   const [flipEffectBanner, setFlipEffectBanner] = useState<{ cardName: string; action: string } | null>(null);
-  const [penguinTargetSelection, setPenguinTargetSelection] = useState<{
+  const [tacticalTargetSelection, setTacticalTargetSelection] = useState<{
     zoneIndex: number;
+    cardName: string;
+    action: 'DESTROY_MONSTER' | 'RETURN_TO_HAND';
+    maxTargets: number;
     selectedUids: string[];
   } | null>(null);
   const [kuribohPrompt, setKuribohPrompt] = useState<{
@@ -555,19 +558,47 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           return;
         }
 
-        // Verifica se é o Soldado Pinguim virado para baixo e o oponente tem mais de 2 monstros
-        const isPenguinSoldier =
+        // Verifica se é monstro com efeito FLIP virado para baixo que suporta mira tática
+        const isManEater =
+          currentMonster.isFaceDown &&
+          (currentMonster.data.id === '54652250' || currentMonster.data.name.toLowerCase().includes('man-eater'));
+        const isPenguin =
           currentMonster.isFaceDown &&
           (currentMonster.data.id === '93920745' || currentMonster.data.name.toLowerCase().includes('penguin'));
-        const opponentMonsterCount = p2.monsterZones.filter((m) => m !== null).length;
 
-        if (isPenguinSoldier && opponentMonsterCount > 2) {
-          // Ativa o modo de seleção inteligente: o jogador escolhe até 2 alvos no campo do adversário
-          setPenguinTargetSelection({ zoneIndex, selectedUids: [] });
+        const opponentMonsterCount = p2.monsterZones.filter((m) => m !== null).length;
+        const cardDisplayName = (languagePt && currentMonster.data.namePt) ? currentMonster.data.namePt : currentMonster.data.name;
+
+        if (isManEater && opponentMonsterCount > 1) {
+          // Man-Eater Bug mira 1 monstro se houver > 1
+          setTacticalTargetSelection({
+            zoneIndex,
+            cardName: cardDisplayName,
+            action: 'DESTROY_MONSTER',
+            maxTargets: 1,
+            selectedUids: [],
+          });
           showNotification(
             languagePt
-              ? '🐧 Soldado Pinguim: Selecione até 2 monstros do oponente para retornar à mão!'
-              : '🐧 Penguin Soldier: Select up to 2 opponent monsters to return to hand!'
+              ? '🎯 Escolha 1 monstro do adversário para destruir!'
+              : '🎯 Choose 1 opponent monster to destroy!'
+          );
+          return;
+        }
+
+        if (isPenguin && opponentMonsterCount > 2) {
+          // Penguin Soldier mira até 2 monstros se houver > 2
+          setTacticalTargetSelection({
+            zoneIndex,
+            cardName: cardDisplayName,
+            action: 'RETURN_TO_HAND',
+            maxTargets: 2,
+            selectedUids: [],
+          });
+          showNotification(
+            languagePt
+              ? '🎯 Escolha até 2 monstros do adversário para retornar à mão!'
+              : '🎯 Choose up to 2 opponent monsters to return to hand!'
           );
           return;
         }
@@ -615,8 +646,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
         if (posResult.flipEffect.action === 'DESTROY_MONSTER') {
           soundFX.playDestruction();
-          if (posResult.flipEffect.targetCardUid) {
-            setDestroyedCardUids((prev) => [...prev, posResult.flipEffect!.targetCardUid!]);
+          const targetUids = posResult.flipEffect.targetCardUids || (posResult.flipEffect.targetCardUid ? [posResult.flipEffect.targetCardUid] : []);
+          if (targetUids.length > 0) {
+            setDestroyedCardUids((prev) => [...prev, ...targetUids]);
           }
           if (posResult.flipEffect.targetName) {
             showNotification(
@@ -643,7 +675,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         }
       }
 
-      setPenguinTargetSelection(null);
+      setTacticalTargetSelection(null);
       forceUpdate();
     }
   };
@@ -680,24 +712,28 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       const monster = p2.monsterZones[targetZoneIndex];
       if (monster) setInspectedCard(monster);
 
-      // Se a seleção do efeito do Soldado Pinguim estiver ativa:
-      if (penguinTargetSelection && monster) {
-        const isAlreadySelected = penguinTargetSelection.selectedUids.includes(monster.uid);
+      // Se a seleção tática de efeito FLIP (Man-Eater Bug ou Penguin Soldier) estiver ativa:
+      if (tacticalTargetSelection && monster) {
+        const isAlreadySelected = tacticalTargetSelection.selectedUids.includes(monster.uid);
         let nextSelectedUids: string[];
 
         if (isAlreadySelected) {
-          nextSelectedUids = penguinTargetSelection.selectedUids.filter((uid) => uid !== monster.uid);
+          nextSelectedUids = tacticalTargetSelection.selectedUids.filter((uid) => uid !== monster.uid);
         } else {
-          if (penguinTargetSelection.selectedUids.length >= 2) {
-            // Limite de 2 alvos atingido: substitui o último ou avisa
-            nextSelectedUids = [penguinTargetSelection.selectedUids[0], monster.uid];
+          if (tacticalTargetSelection.selectedUids.length >= tacticalTargetSelection.maxTargets) {
+            // Se atingiu o limite: se maxTargets === 1, substitui; se > 1, substitui o último
+            if (tacticalTargetSelection.maxTargets === 1) {
+              nextSelectedUids = [monster.uid];
+            } else {
+              nextSelectedUids = [...tacticalTargetSelection.selectedUids.slice(0, tacticalTargetSelection.maxTargets - 1), monster.uid];
+            }
           } else {
-            nextSelectedUids = [...penguinTargetSelection.selectedUids, monster.uid];
+            nextSelectedUids = [...tacticalTargetSelection.selectedUids, monster.uid];
           }
         }
 
-        setPenguinTargetSelection({
-          ...penguinTargetSelection,
+        setTacticalTargetSelection({
+          ...tacticalTargetSelection,
           selectedUids: nextSelectedUids,
         });
         return;
@@ -1280,8 +1316,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
             {p2.monsterZones.map((slot, i) => {
               const isTargetable = selectedAttackingMonster !== null && slot !== null;
-              const isPenguinTargeting = Boolean(penguinTargetSelection && slot !== null);
-              const isPenguinSelected = Boolean(penguinTargetSelection && slot && penguinTargetSelection.selectedUids.includes(slot.uid));
+              const isTacticalTargeting = Boolean(tacticalTargetSelection && slot !== null);
+              const isTacticalSelected = Boolean(tacticalTargetSelection && slot && tacticalTargetSelection.selectedUids.includes(slot.uid));
               const isDefense = slot?.position === 'DEFENSE';
               const isHitTarget = targetHitZone && !targetHitZone.isPlayer && targetHitZone.zoneIndex === i;
               const isLunging = lungingZone && !lungingZone.isPlayer && lungingZone.zoneIndex === i;
@@ -1310,9 +1346,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                       ? `${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass}`
                       : 'border-2 border-dashed border-[#2d1c47] zone-empty hover:border-purple-500/60'
                   } ${
-                    isPenguinSelected
+                    isTacticalSelected
                       ? 'ring-4 ring-cyan-400 bg-cyan-950/40 scale-105 shadow-[0_0_30px_rgba(34,211,238,0.9)] animate-pulse'
-                      : isPenguinTargeting
+                      : isTacticalTargeting
                       ? 'ring-2 ring-cyan-500/80 hover:ring-4 hover:ring-cyan-300 scale-102 hover:scale-105 shadow-[0_0_20px_rgba(6,182,212,0.6)] animate-pulse'
                       : isTargetable
                       ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-black scale-105 shadow-[0_0_30px_rgba(239,68,68,0.9)] animate-pulse'
@@ -1336,26 +1372,26 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   )}
 
                   {/* Indicador de Alvo de Ataque */}
-                  {!isPenguinTargeting && isTargetable && (
+                  {!isTacticalTargeting && isTargetable && (
                     <div className="absolute -top-3 z-30 bg-red-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
                       <span>🎯</span> {languagePt ? 'ALVO' : 'TARGET'}
                     </div>
                   )}
 
-                  {/* Indicador de Seleção do Soldado Pinguim */}
-                  {isPenguinTargeting && (
+                  {/* Indicador de Seleção Tática do Efeito FLIP */}
+                  {isTacticalTargeting && (
                     <div
                       className={`absolute -top-3.5 z-40 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border animate-bounce flex items-center gap-1 uppercase tracking-wider ${
-                        isPenguinSelected
+                        isTacticalSelected
                           ? 'bg-gradient-to-r from-cyan-500 to-blue-600 border-yellow-300 shadow-[0_0_15px_rgba(34,211,238,0.9)]'
                           : 'bg-cyan-900/90 border-cyan-400 text-cyan-200'
                       }`}
                     >
-                      <span>🐧</span>{' '}
-                      {isPenguinSelected
-                        ? languagePt
-                          ? 'RETORNAR À MÃO'
-                          : 'RETURN'
+                      <span>{tacticalTargetSelection.action === 'DESTROY_MONSTER' ? '🪲' : '🐧'}</span>{' '}
+                      {isTacticalSelected
+                        ? tacticalTargetSelection.action === 'DESTROY_MONSTER'
+                          ? languagePt ? 'DESTRUIR' : 'DESTROY'
+                          : languagePt ? 'RETORNAR' : 'RETURN'
                         : languagePt
                         ? 'ESCOLHER ALVO'
                         : 'SELECT TARGET'}
@@ -1425,31 +1461,36 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             </span>
           </div>
 
-          {/* Botão de Confirmação do Efeito do Soldado Pinguim (Smart Targeting) */}
-          {penguinTargetSelection && (
+          {/* Botão de Confirmação de Mira Tática (Man-Eater Bug & Penguin Soldier) */}
+          {tacticalTargetSelection && (
             <div className="flex items-center gap-2 animate-fadeIn">
               <button
-                onClick={() => executeFlipPositionChange(penguinTargetSelection.zoneIndex, penguinTargetSelection.selectedUids)}
+                onClick={() =>
+                  executeFlipPositionChange(
+                    tacticalTargetSelection.zoneIndex,
+                    tacticalTargetSelection.selectedUids
+                  )
+                }
                 className={`px-5 py-1.5 text-xs font-black uppercase tracking-wider rounded-full shadow-lg transition-all flex items-center gap-1.5 border ${
-                  penguinTargetSelection.selectedUids.length > 0
+                  tacticalTargetSelection.selectedUids.length > 0
                     ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-600 hover:from-cyan-400 hover:to-blue-400 text-slate-950 border-cyan-200 shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-pulse'
                     : 'bg-cyan-950/90 text-cyan-200 border-cyan-500/50 hover:bg-cyan-900'
                 }`}
               >
-                <span>🐧</span>
+                <span>{tacticalTargetSelection.action === 'DESTROY_MONSTER' ? '🪲' : '🐧'}</span>
                 <span>
-                  {penguinTargetSelection.selectedUids.length > 0
+                  {tacticalTargetSelection.selectedUids.length > 0
                     ? languagePt
-                      ? `Confirmar Retorno (${penguinTargetSelection.selectedUids.length})`
-                      : `Confirm Return (${penguinTargetSelection.selectedUids.length})`
+                      ? `Confirmar ${tacticalTargetSelection.action === 'DESTROY_MONSTER' ? 'Destruição' : 'Retorno'} (${tacticalTargetSelection.selectedUids.length})`
+                      : `Confirm ${tacticalTargetSelection.action === 'DESTROY_MONSTER' ? 'Destruction' : 'Return'} (${tacticalTargetSelection.selectedUids.length})`
                     : languagePt
-                    ? 'Retornar Melhores Alvos'
-                    : 'Return Strongest Targets'}
+                    ? 'Confirmar Alvo Mais Forte'
+                    : 'Confirm Strongest Target'}
                 </span>
               </button>
 
               <button
-                onClick={() => setPenguinTargetSelection(null)}
+                onClick={() => setTacticalTargetSelection(null)}
                 className="px-3 py-1 text-[11px] font-bold text-slate-400 hover:text-slate-200 bg-slate-900/80 rounded-full border border-slate-700 uppercase transition-colors"
               >
                 {languagePt ? 'Cancelar' : 'Cancel'}
