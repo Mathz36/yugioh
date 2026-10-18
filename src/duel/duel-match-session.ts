@@ -181,6 +181,7 @@ export class DuelMatchSession {
     const handIndex = player.hand.findIndex((c) => c.uid === cardUid);
     if (handIndex === -1) return false;
     const card = player.hand[handIndex];
+    if (!card || !card.data) return false;
 
     const typeLower = (card.data.type || '').toLowerCase();
     const isSpellOrTrap = typeLower.includes('spell') || typeLower.includes('mágica') || typeLower.includes('trap') || typeLower.includes('armadilha');
@@ -282,6 +283,15 @@ export class DuelMatchSession {
     if (!cardInstance) {
       this.log('Carta Mágica não encontrada na mão ou campo.');
       return false;
+    }
+
+    // Validação de cartas mágicas baixadas no campo (spellTrapZones):
+    // Cartas baixadas só podem ser ativadas em turnos posteriores (turnSet < currentTurn)
+    if (fromZoneIndex !== null && typeof cardInstance.turnSet === 'number') {
+      if (cardInstance.turnSet >= this.matchState.currentTurn) {
+        this.log('⏳ Cartas Mágicas baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.');
+        return false;
+      }
     }
 
     const cardType = cardInstance.data.type.toLowerCase();
@@ -911,8 +921,8 @@ export class DuelMatchSession {
     this.log(`⚔️ BATALHA: ${attackerName} (ATK ${attackerEffectiveAtk}) atacou ${defenderName} em ${defPosName}!`);
 
     // 1. Resolução prioritária de Efeito FLIP antes do combate/dano
-    // Dispara se a carta era virada para baixo (Face-Down) OU se estava em Posição de Defesa com efeito FLIP
-    const triggersFlip = (wasFaceDown || defendingCard.position === 'DEFENSE') && defendingCard.data.effectType === 'FLIP';
+    // Dispara estritamente se a carta era virada para baixo (Face-Down) com efeito FLIP
+    const triggersFlip = wasFaceDown && defendingCard.data.effectType === 'FLIP';
     let attackerRemovedByFlip = false;
 
     if (triggersFlip) {

@@ -278,11 +278,11 @@ describe('DuelMatchSession & DuelBot Integration', () => {
     const p1 = session.player1;
 
     // Fill zone 0 with a Level 4 monster to be sacrificed
-    const lvl4Card = p1.deck.find((c) => c.data.level <= 4)!;
+    const lvl4Card = [...p1.deck, ...p1.hand].find((c) => c.data.level >= 1 && c.data.level <= 4)!;
     p1.monsterZones[0] = { ...lvl4Card, uid: 'tribute_zone_0_monster' };
 
     // Prepare a Level 6 monster in hand
-    const lvl6Card = { ...p1.deck.find((c) => c.data.level === 6)!, uid: 'summon_lvl6_in_same_zone' };
+    const lvl6Card = { ...[...p1.deck, ...p1.hand].find((c) => c.data.level === 6)!, uid: 'summon_lvl6_in_same_zone' };
     p1.hand.push(lvl6Card);
     p1.hasNormalSummonedThisTurn = false;
 
@@ -303,12 +303,12 @@ describe('DuelMatchSession & DuelBot Integration', () => {
     const p1 = session.player1;
 
     // Fill zones 1 and 2 with monsters to be sacrificed
-    const lvl4Cards = p1.deck.filter((c) => c.data.level <= 4);
+    const lvl4Cards = [...p1.deck, ...p1.hand].filter((c) => c.data.level >= 1 && c.data.level <= 4);
     p1.monsterZones[1] = { ...lvl4Cards[0], uid: 'tribute_zone_1' };
     p1.monsterZones[2] = { ...lvl4Cards[1], uid: 'tribute_zone_2' };
 
     // Prepare Level 7+ monster in hand
-    const lvl7Card = { ...p1.deck.find((c) => c.data.level >= 7)!, uid: 'summon_lvl7_in_same_zone' };
+    const lvl7Card = { ...[...p1.deck, ...p1.hand].find((c) => c.data.level >= 7)!, uid: 'summon_lvl7_in_same_zone' };
     p1.hand.push(lvl7Card);
     p1.hasNormalSummonedThisTurn = false;
 
@@ -508,6 +508,7 @@ describe('DuelMatchSession & DuelBot Integration', () => {
         effectDefinition: { action: 'DESTROY_MONSTER', target: 'ATTACKER_OR_FIELD' },
       },
       position: 'DEFENSE',
+      isFaceDown: true,
       hasAttacked: false,
       hasChangedPositionThisTurn: false,
       turnSummoned: 1,
@@ -578,6 +579,7 @@ describe('DuelMatchSession & DuelBot Integration', () => {
         effectDefinition: { action: 'RETURN_TO_HAND', count: 1, target: 'ATTACKER_MONSTER' },
       },
       position: 'DEFENSE',
+      isFaceDown: true,
       hasAttacked: false,
       hasChangedPositionThisTurn: false,
       turnSummoned: 1,
@@ -706,11 +708,12 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       const p1 = session.player1;
       const p2 = session.player2;
 
-      // Kaiba (p2) tem Man-Eater Bug em DEFENSE (ATK 450, DEF 600)
+      // Kaiba (p2) tem Man-Eater Bug em DEFENSE (ATK 450, DEF 600) virado para baixo
       p2.monsterZones[0] = {
         uid: 'man_eater_bug_p2',
         data: CLASSIC_CARDS.MAN_EATER_BUG,
         position: 'DEFENSE',
+        isFaceDown: true,
         hasAttacked: false,
         hasChangedPositionThisTurn: false,
         turnSummoned: 1,
@@ -755,11 +758,12 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       const p1 = session.player1;
       const p2 = session.player2;
 
-      // Kaiba (p2) tem Penguin Soldier em DEFENSE (DEF 500)
+      // Kaiba (p2) tem Penguin Soldier em DEFENSE (DEF 500) virado para baixo
       p2.monsterZones[0] = {
         uid: 'penguin_soldier_p2',
         data: CLASSIC_CARDS.PENGUIN_SOLDIER,
         position: 'DEFENSE',
+        isFaceDown: true,
         hasAttacked: false,
         hasChangedPositionThisTurn: false,
         turnSummoned: 1,
@@ -2887,6 +2891,194 @@ describe('DuelMatchSession & DuelBot Integration', () => {
 
       const activateResult = session.activateTrapHole(yugi.id, 0, 0);
       expect(activateResult).toBe(false);
+    });
+
+    it('Teste 9: Tentar chamar normalSummon com uma Carta Mágica retorna false e não altera monsterZones', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+
+      // Adiciona Pot of Greed e Dark Hole à mão do jogador
+      const potOfGreed = {
+        uid: 'p1_pot_of_greed_summon_attempt',
+        data: CLASSIC_CARDS.POT_OF_GREED,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.hand.push(potOfGreed);
+
+      const darkHole = {
+        uid: 'p1_dark_hole_summon_attempt',
+        data: CLASSIC_CARDS.DARK_HOLE,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.hand.push(darkHole);
+
+      expect(player.monsterZones[0]).toBeNull();
+      const initialHandCount = player.hand.length;
+
+      // Act 1: Tenta invocar Pot of Greed na zona de monstro 0
+      const summonPotResult = session.normalSummon(potOfGreed.uid, 0, 'ATTACK', []);
+
+      // Assert 1: Deve falhar, manter a zona nula e manter a carta na mão
+      expect(summonPotResult).toBe(false);
+      expect(player.monsterZones[0]).toBeNull();
+      expect(player.hand.some((c) => c.uid === potOfGreed.uid)).toBe(true);
+      expect(player.hasNormalSummonedThisTurn).toBe(false);
+
+      // Act 2: Tenta invocar Dark Hole na zona de monstro 1
+      const summonDarkHoleResult = session.normalSummon(darkHole.uid, 1, 'DEFENSE', []);
+
+      // Assert 2: Deve falhar, manter a zona nula e não consumir a invocação normal
+      expect(summonDarkHoleResult).toBe(false);
+      expect(player.monsterZones[1]).toBeNull();
+      expect(player.hand.some((c) => c.uid === darkHole.uid)).toBe(true);
+      expect(player.hand.length).toBe(initialHandCount);
+      expect(player.hasNormalSummonedThisTurn).toBe(false);
+    });
+
+    it('Teste 10: Tentar chamar normalSummon com uma Carta Armadilha retorna false e a carta permanece na mão', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+
+      // Adiciona Trap Hole à mão do jogador
+      const trapHole = {
+        uid: 'p1_trap_hole_summon_attempt',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.hand.push(trapHole);
+
+      expect(player.monsterZones[2]).toBeNull();
+      const initialHandCount = player.hand.length;
+
+      // Act: Tenta invocar Trap Hole na zona de monstro 2
+      const summonTrapResult = session.normalSummon(trapHole.uid, 2, 'ATTACK', []);
+
+      // Assert:
+      // Retorna false, a carta permanece na mão, a zona continua vazia e hasNormalSummonedThisTurn não é ativado
+      expect(summonTrapResult).toBe(false);
+      expect(player.monsterZones[2]).toBeNull();
+      expect(player.hand.some((c) => c.uid === trapHole.uid)).toBe(true);
+      expect(player.hand.length).toBe(initialHandCount);
+      expect(player.hasNormalSummonedThisTurn).toBe(false);
+    });
+
+    it('Teste 11 (Face-up FLIP Defense: Atacar Man-Eater Bug de face para cima em defesa NÃO deve acionar o efeito FLIP)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+      const p2 = session.player2;
+
+      // Kaiba (p2) tem Man-Eater Bug virado DE FACE PARA CIMA (isFaceDown: false) em DEFENSE
+      p2.monsterZones[0] = {
+        uid: 'man_eater_bug_face_up_def',
+        data: CLASSIC_CARDS.MAN_EATER_BUG,
+        position: 'DEFENSE',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Yugi (p1) tem Blue-Eyes White Dragon em ATTACK (3000 ATK)
+      p1.monsterZones[0] = {
+        uid: 'blue_eyes_attacker',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = p1.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act: Yugi ataca o Man-Eater Bug de face para cima
+      const attackSuccess = session.declareAttack(0, 0);
+
+      // Assert:
+      // O ataque é bem-sucedido
+      expect(attackSuccess).toBe(true);
+
+      // O efeito FLIP NÃO é acionado, logo Blue-Eyes NÃO deve ter sido destruído!
+      expect(p1.monsterZones[0]).not.toBeNull();
+      expect(p1.monsterZones[0]?.uid).toBe('blue_eyes_attacker');
+      expect(p1.graveyard.some((c) => c.uid === 'blue_eyes_attacker')).toBe(false);
+
+      // Man-Eater Bug (600 DEF) é destruído em batalha contra 3000 ATK e enviado para o cemitério de Kaiba
+      expect(p2.monsterZones[0]).toBeNull();
+      expect(p2.graveyard.some((c) => c.uid === 'man_eater_bug_face_up_def')).toBe(true);
+    });
+
+    it('Teste 12 (Set Spell Trap-Lock: Carta Mágica baixada não pode ser ativada no mesmo turno, mas no turno seguinte sim)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+
+      // Adiciona Dark Hole à mão de p1
+      const darkHole = {
+        uid: 'p1_dark_hole_set_test',
+        data: CLASSIC_CARDS.DARK_HOLE,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      p1.hand.push(darkHole);
+
+      session.matchState.currentTurn = 1;
+      session.matchState.activePlayerId = p1.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Baixa Dark Hole na zona 0
+      const setResult = session.setSpellTrap(darkHole.uid, 0);
+      expect(setResult).toBe(true);
+      expect(p1.spellTrapZones[0]?.uid).toBe(darkHole.uid);
+      expect(p1.spellTrapZones[0]?.turnSet).toBe(1);
+
+      // Act 1: Tenta ativar Dark Hole no mesmo turno em que foi baixada (Turno 1)
+      const activateSameTurn = session.activateSpell(darkHole.uid);
+
+      // Assert 1: Deve retornar false e continuar no campo virada para baixo
+      expect(activateSameTurn).toBe(false);
+      expect(p1.spellTrapZones[0]).not.toBeNull();
+      expect(p1.spellTrapZones[0]?.uid).toBe(darkHole.uid);
+
+      // Act 2: Avança para o turno 3 (próximo turno do jogador p1, turnSet < currentTurn)
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = p1.id;
+      session.matchState.phase = 'MAIN1';
+
+      const activateNextTurn = session.activateSpell(darkHole.uid);
+
+      // Assert 2: No turno seguinte a ativação deve ter sucesso e enviar a carta para o cemitério
+      expect(activateNextTurn).toBe(true);
+      expect(p1.spellTrapZones[0]).toBeNull();
+      expect(p1.graveyard.some((c) => c.uid === darkHole.uid)).toBe(true);
     });
   });
 });
