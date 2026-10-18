@@ -2,6 +2,8 @@ import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
 import { AuthModal } from './components/AuthModal';
 import { GameMenu } from './components/GameMenu';
 import { Playmat } from './components/Playmat';
+import { DeckBuilder } from './components/DeckBuilder';
+import { getActiveDeckForDuel } from './utils/deckStorage';
 
 export interface UserSession {
   email: string;
@@ -9,7 +11,7 @@ export interface UserSession {
   isGuest?: boolean;
 }
 
-export type AppView = 'AUTH' | 'MENU' | 'DUEL_BOT';
+export type AppView = 'AUTH' | 'MENU' | 'DECK_BUILDER' | 'DUEL_BOT';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -69,6 +71,10 @@ export const App: React.FC = () => {
     setCurrentView('DUEL_BOT');
   };
 
+  const handleOpenDeckBuilder = () => {
+    setCurrentView('DECK_BUILDER');
+  };
+
   const handleExitToMenu = () => {
     setCurrentView('MENU');
   };
@@ -78,6 +84,8 @@ export const App: React.FC = () => {
     setCurrentView('AUTH');
   };
 
+  const activeDeckData = currentUser ? getActiveDeckForDuel(currentUser.nickname) : null;
+
   return (
     <ErrorBoundary>
       <main className="w-full h-full min-h-screen bg-slate-950 overflow-hidden">
@@ -86,19 +94,30 @@ export const App: React.FC = () => {
           <AuthModal onLoginSuccess={handleLoginSuccess} />
         )}
 
-        {/* 2. Menu Principal de Jogo (Online e Solo vs Bot) */}
+        {/* 2. Menu Principal de Jogo (Online, Deck Builder e Solo vs Bot) */}
         {currentView === 'MENU' && currentUser && (
           <GameMenu
             userNickname={currentUser.nickname}
             onPlayVsBot={handlePlayVsBot}
+            onOpenDeckBuilder={handleOpenDeckBuilder}
             onLogout={handleLogout}
           />
         )}
 
-        {/* 3. Arena de Duelo (Playmat) */}
+        {/* 3. Construtor Visual de Decks */}
+        {currentView === 'DECK_BUILDER' && currentUser && (
+          <DeckBuilder
+            userNickname={currentUser.nickname}
+            onBackToMenu={handleExitToMenu}
+          />
+        )}
+
+        {/* 4. Arena de Duelo (Playmat) com o Deck Principal Ativo do Jogador */}
         {currentView === 'DUEL_BOT' && currentUser && (
           <Playmat
             playerNickname={currentUser.nickname}
+            playerDeck={activeDeckData?.cards}
+            playerDeckName={activeDeckData?.deckName}
             onExitToMenu={handleExitToMenu}
           />
         )}

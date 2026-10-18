@@ -1,21 +1,40 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DuelMatchSession } from '@duel/duel-match-session';
-import { createKaibaDeck, createYugiDeck } from '@duel/starter-decks';
-import { CardInstance, BattlePosition } from '@duel/duel-types';
+import { createKaibaDeck } from '@duel/starter-decks';
+import { CardData, CardInstance, BattlePosition } from '@duel/duel-types';
 import { DuelBot } from '@duel/duel-bot';
 import { soundFX } from '../utils/soundFX';
 import { soundtrackManager } from '../utils/SoundtrackManager';
 import { getUserSettings, UserSettings } from '../utils/settings';
+import { getActiveDeckForDuel } from '../utils/deckStorage';
 import { SettingsModal } from './SettingsModal';
 
 export interface PlaymatProps {
   playerNickname?: string;
+  playerDeck?: CardData[];
+  playerDeckName?: string;
   onExitToMenu?: () => void;
 }
 
-export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', onExitToMenu }) => {
+export const Playmat: React.FC<PlaymatProps> = ({
+  playerNickname = 'Yugi Muto',
+  playerDeck,
+  onExitToMenu,
+}) => {
+  const resolvePlayerDeck = (): CardData[] => {
+    if (playerDeck && playerDeck.length >= 5) {
+      return playerDeck;
+    }
+    return getActiveDeckForDuel(playerNickname).cards;
+  };
+
   const [session, setSession] = useState<DuelMatchSession>(() => {
-    return new DuelMatchSession(playerNickname, createYugiDeck(), 'Seto Kaiba (Bot)', createKaibaDeck());
+    return new DuelMatchSession(
+      playerNickname,
+      resolvePlayerDeck(),
+      'Seto Kaiba (Bot)',
+      createKaibaDeck()
+    );
   });
 
   // Referências DOM para cálculo do vetor direcional de ataque (Lunge)
@@ -1330,7 +1349,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const handleResetMatch = () => {
     clearAllTimers();
     soundtrackManager.playMatchMusic();
-    setSession(new DuelMatchSession(playerNickname, createYugiDeck(), 'Seto Kaiba (Bot)', createKaibaDeck()));
+    setSession(
+      new DuelMatchSession(
+        playerNickname,
+        resolvePlayerDeck(),
+        'Seto Kaiba (Bot)',
+        createKaibaDeck()
+      )
+    );
     setSelectedHandCardUid(null);
     setSelectedAttackerZone(null);
     setPendingSummonZone(null);

@@ -6,10 +6,16 @@ import { SettingsModal } from './SettingsModal';
 interface GameMenuProps {
   userNickname: string;
   onPlayVsBot: () => void;
+  onOpenDeckBuilder: () => void;
   onLogout: () => void;
 }
 
-export const GameMenu: React.FC<GameMenuProps> = ({ userNickname, onPlayVsBot, onLogout }) => {
+export const GameMenu: React.FC<GameMenuProps> = ({
+  userNickname,
+  onPlayVsBot,
+  onOpenDeckBuilder,
+  onLogout,
+}) => {
   const [settings, setSettings] = useState<UserSettings>(() => getUserSettings(userNickname));
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -23,6 +29,11 @@ export const GameMenu: React.FC<GameMenuProps> = ({ userNickname, onPlayVsBot, o
   const handleStartDuel = () => {
     soundtrackManager.unlockAudioContext();
     onPlayVsBot();
+  };
+
+  const handleOpenDeckBuilder = () => {
+    soundtrackManager.unlockAudioContext();
+    onOpenDeckBuilder();
   };
 
   const handleSettingsChanged = (newSettings: UserSettings) => {
@@ -106,8 +117,8 @@ export const GameMenu: React.FC<GameMenuProps> = ({ userNickname, onPlayVsBot, o
                 </div>
                 <p className="text-[11px] sm:text-xs text-slate-300/80 mt-0.5 leading-snug">
                   {isPt
-                    ? 'Desafie a IA de Seto Kaiba com decks clássicos e regras sagradas.'
-                    : 'Challenge Seto Kaiba AI with classic decks and official rules.'}
+                    ? 'Desafie a IA de Seto Kaiba com seu deck principal ativo.'
+                    : 'Challenge Seto Kaiba AI with your active main deck.'}
                 </p>
               </div>
             </div>
@@ -141,30 +152,35 @@ export const GameMenu: React.FC<GameMenuProps> = ({ userNickname, onPlayVsBot, o
             <span className="text-purple-400 text-sm font-bold pr-1">🔒</span>
           </div>
 
-          {/* Opção 3: 🎴 Construtor de Decks */}
-          <div className="w-full p-3.5 sm:p-4 rounded-2xl bg-slate-950/70 border border-purple-900/50 flex items-center justify-between text-left opacity-70 hover:opacity-85 transition-opacity">
+          {/* Opção 3: 🎴 Construtor de Decks (HABILITADO) */}
+          <button
+            onClick={handleOpenDeckBuilder}
+            className="w-full p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-purple-950/85 via-slate-950/90 to-slate-900/90 border border-purple-500/60 hover:border-amber-400 shadow-[0_0_20px_rgba(147,51,234,0.25)] hover:shadow-[0_0_30px_rgba(245,158,11,0.45)] transition-all duration-200 group flex items-center justify-between text-left cursor-pointer transform hover:-translate-y-0.5"
+          >
             <div className="flex items-center space-x-3.5">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-purple-950/70 border border-purple-700/50 flex items-center justify-center text-2xl text-purple-300 shrink-0">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-purple-700 to-indigo-900 border border-purple-400/60 flex items-center justify-center text-2xl text-amber-300 shrink-0 group-hover:scale-105 transition-transform shadow-md">
                 🎴
               </div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <h2 className="text-sm sm:text-base font-bold text-slate-300 font-serif tracking-wide">
+                  <h2 className="text-sm sm:text-base font-bold text-slate-100 group-hover:text-amber-300 font-serif tracking-wide transition-colors">
                     {isPt ? 'Construtor de Decks' : 'Deck Builder'}
                   </h2>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-purple-900/80 text-purple-300 border border-purple-600/40">
-                    {isPt ? 'Em Breve' : 'Coming Soon'}
+                  <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    {isPt ? 'Novo' : 'New'}
                   </span>
                 </div>
-                <p className="text-[11px] sm:text-xs text-slate-400/80 mt-0.5">
+                <p className="text-[11px] sm:text-xs text-slate-300/80 mt-0.5">
                   {isPt
-                    ? 'Monte e customize estratégias com seu catálogo de cartas.'
-                    : 'Build and customize custom strategies with your card catalog.'}
+                    ? 'Monte até 3 decks personalizados e escolha seu Deck Principal ★.'
+                    : 'Build up to 3 custom decks and select your Active Main Deck ★.'}
                 </p>
               </div>
             </div>
-            <span className="text-purple-400 text-sm font-bold pr-1">🔒</span>
-          </div>
+            <span className="text-purple-300 group-hover:text-amber-400 font-bold text-lg transition-transform group-hover:translate-x-1 pr-1">
+              ➔
+            </span>
+          </button>
 
           {/* Opção 4: ⚙️ Configurações */}
           <button
