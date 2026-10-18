@@ -4052,5 +4052,276 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       expect(yugi.graveyard.some((c) => c.uid === 'generic_st_destroyer_uid')).toBe(true);
     });
   });
+
+  describe('Sub-Wave 2A Spells Suite: LP Recovery, Direct Damage, and Spell/Trap Removal', () => {
+    it('1. Teste de Ativação de Magia com GAIN_LP (Dian Keto the Cure Master): recupera 1000 LP e envia para o cemitério', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+      player.lifePoints = 7000;
+
+      const dianKeto: CardInstance = {
+        uid: 'dian_keto_cure_master_uid',
+        data: {
+          id: '84257639',
+          name: 'Dian Keto the Cure Master',
+          namePt: 'Dian Keto, a Mestra da Cura',
+          type: 'Spell Card',
+          level: 0,
+          attack: 0,
+          defense: 0,
+          description: 'Increase your Life Points by 1000.',
+          effectDefinition: {
+            action: 'GAIN_LP',
+            value: 1000,
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.hand.push(dianKeto);
+
+      // Act
+      const activated = session.activateSpell(dianKeto.uid);
+
+      // Assert
+      expect(activated).toBe(true);
+      expect(player.lifePoints).toBe(8000);
+      expect(player.hand.some((c) => c.uid === dianKeto.uid)).toBe(false);
+      expect(player.graveyard.some((c) => c.uid === dianKeto.uid)).toBe(true);
+    });
+
+    it('2. Teste de Ativação de Magia com INFLICT_DAMAGE (Hinotama / Ookazi): causa dano direto e declara vitória ao zerar LPs', () => {
+      // Arrange 1: Dano direto padrão (8000 -> 7500) com Hinotama
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+      const opponent = session.player2;
+      expect(opponent.lifePoints).toBe(8000);
+
+      const hinotama: CardInstance = {
+        uid: 'hinotama_burn_500_uid',
+        data: {
+          id: '46130346',
+          name: 'Hinotama',
+          namePt: 'Hinotama',
+          type: 'Spell Card',
+          level: 0,
+          attack: 0,
+          defense: 0,
+          description: 'Inflict 500 points of damage to your opponent.',
+          effectDefinition: {
+            action: 'INFLICT_DAMAGE',
+            value: 500,
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.hand.push(hinotama);
+
+      // Act 1
+      const activated1 = session.activateSpell(hinotama.uid);
+
+      // Assert 1: Oponente recebe 500 de dano e a carta vai para o cemitério
+      expect(activated1).toBe(true);
+      expect(opponent.lifePoints).toBe(7500);
+      expect(player.hand.some((c) => c.uid === hinotama.uid)).toBe(false);
+      expect(player.graveyard.some((c) => c.uid === hinotama.uid)).toBe(true);
+      expect(session.matchState.isGameOver).toBe(false);
+
+      // Arrange 2: Dano fatal com Ookazi quando oponente tem <= 800 LP
+      opponent.lifePoints = 400;
+      const ookazi: CardInstance = {
+        uid: 'ookazi_burn_800_uid',
+        data: {
+          id: '19523799',
+          name: 'Ookazi',
+          namePt: 'Ookazi',
+          type: 'Spell Card',
+          level: 0,
+          attack: 0,
+          defense: 0,
+          description: 'Inflict 800 points of damage to your opponent.',
+          effectDefinition: {
+            action: 'INFLICT_DAMAGE',
+            value: 800,
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.hand.push(ookazi);
+
+      // Act 2
+      const activated2 = session.activateSpell(ookazi.uid);
+
+      // Assert 2: LPs do oponente zeram e vitória é declarada para o jogador ativo
+      expect(activated2).toBe(true);
+      expect(opponent.lifePoints).toBe(0);
+      expect(session.matchState.isGameOver).toBe(true);
+      expect(session.matchState.winnerPlayerId).toBe(player.id);
+      expect(session.matchState.winReason).toContain(opponent.nickname);
+      expect(player.graveyard.some((c) => c.uid === ookazi.uid)).toBe(true);
+    });
+
+    it('3. Teste de Ativação de Magia com DESTROY_SPELL_TRAP (De-Spell): destrói a carta na zona de M/A do oponente', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+      const opponent = session.player2;
+
+      // Coloque uma carta na zona de magia/armadilha do oponente (p2.spellTrapZones[0])
+      const opponentSetTrap: CardInstance = {
+        uid: 'target_opponent_trap_uid',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      opponent.spellTrapZones[0] = opponentSetTrap;
+
+      const deSpell: CardInstance = {
+        uid: 'de_spell_remover_uid',
+        data: {
+          id: '19159413',
+          name: 'De-Spell',
+          namePt: 'Desfazer Feitiço',
+          type: 'Spell Card',
+          level: 0,
+          attack: 0,
+          defense: 0,
+          description: 'Target 1 face-up Spell Card or 1 Set Spell/Trap Card on the field; destroy that target.',
+          effectDefinition: {
+            action: 'DESTROY_SPELL_TRAP',
+            target: {
+              scope: 'OPPONENT_SPELL_TRAPS',
+              maxTargets: 1,
+            },
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.hand.push(deSpell);
+
+      // Act: Ativar De-Spell fornecendo selectedTargetUids: [opponentSetTrap.uid]
+      const activated = session.activateSpell(deSpell.uid, undefined, [opponentSetTrap.uid]);
+
+      // Assert:
+      expect(activated).toBe(true);
+      // Carta do oponente destruída e removida da zona 0
+      expect(opponent.spellTrapZones[0]).toBeNull();
+      // Carta do oponente enviada para o cemitério dele (com isFaceDown desmarcado)
+      expect(opponent.graveyard.some((c) => c.uid === opponentSetTrap.uid)).toBe(true);
+      expect(opponent.graveyard.find((c) => c.uid === opponentSetTrap.uid)?.isFaceDown).toBe(false);
+      // De-Spell removido da mão e enviado para o cemitério do jogador
+      expect(player.hand.some((c) => c.uid === deSpell.uid)).toBe(false);
+      expect(player.graveyard.some((c) => c.uid === deSpell.uid)).toBe(true);
+    });
+
+    it('4. Teste de Ativação direta de Magias da Sub-Onda 2A de CLASSIC_CARDS: Sparks (-200), Raimei (-300), Final Flame (-600) e Dian Keto (+1000)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+      const opponent = session.player2;
+      player.lifePoints = 5000;
+      opponent.lifePoints = 8000;
+
+      const sparks: CardInstance = {
+        uid: 'sparks_card_uid',
+        data: CLASSIC_CARDS.SPARKS,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const raimei: CardInstance = {
+        uid: 'raimei_card_uid',
+        data: CLASSIC_CARDS.RAIMEI,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const finalFlame: CardInstance = {
+        uid: 'final_flame_card_uid',
+        data: CLASSIC_CARDS.FINAL_FLAME,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const dianKeto: CardInstance = {
+        uid: 'dian_keto_classic_uid',
+        data: CLASSIC_CARDS.DIAN_KETO,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      player.hand.push(sparks, raimei, finalFlame, dianKeto);
+
+      // Act & Assert 1: Sparks (-200)
+      expect(session.activateSpell(sparks.uid)).toBe(true);
+      expect(opponent.lifePoints).toBe(7800);
+
+      // Act & Assert 2: Raimei (-300)
+      expect(session.activateSpell(raimei.uid)).toBe(true);
+      expect(opponent.lifePoints).toBe(7500);
+
+      // Act & Assert 3: Final Flame (-600)
+      expect(session.activateSpell(finalFlame.uid)).toBe(true);
+      expect(opponent.lifePoints).toBe(6900);
+
+      // Act & Assert 4: Dian Keto (+1000)
+      expect(session.activateSpell(dianKeto.uid)).toBe(true);
+      expect(player.lifePoints).toBe(6000);
+
+      // All 4 spells resolved into graveyard
+      expect(player.graveyard.some((c) => c.uid === sparks.uid)).toBe(true);
+      expect(player.graveyard.some((c) => c.uid === raimei.uid)).toBe(true);
+      expect(player.graveyard.some((c) => c.uid === finalFlame.uid)).toBe(true);
+      expect(player.graveyard.some((c) => c.uid === dianKeto.uid)).toBe(true);
+    });
+  });
 });
+
 

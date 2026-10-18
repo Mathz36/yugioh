@@ -9,7 +9,8 @@ export type CardEffectType =
   | 'HAND_TRIGGER'
   | 'IGNITION'
   | 'TRIGGER'
-  | 'QUICK';
+  | 'QUICK'
+  | 'NORMAL';
 
 export interface CardEffectDefinition {
   trigger?: CardEffectType;

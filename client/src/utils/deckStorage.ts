@@ -57,8 +57,15 @@ export const getAllCatalogCards = (): CardData[] => {
 export type CardFilterType = 'ALL' | 'MONSTER' | 'SPELL' | 'TRAP';
 
 export const isMonsterType = (type?: string): boolean => !!type && type.toLowerCase().includes('monster');
-export const isSpellType = (type?: string): boolean => !!type && type.toLowerCase().includes('spell');
-export const isTrapType = (type?: string): boolean => !!type && type.toLowerCase().includes('trap');
+export const isSpellType = (type?: string): boolean =>
+  !!type &&
+  (type.toLowerCase().includes('spell') ||
+    type.toLowerCase().includes('magia') ||
+    type.toLowerCase().includes('mágica'));
+export const isTrapType = (type?: string): boolean =>
+  !!type &&
+  (type.toLowerCase().includes('trap') ||
+    type.toLowerCase().includes('armadilha'));
 
 export const filterCatalogByType = (cards: CardData[], filter: CardFilterType): CardData[] => {
   if (filter === 'MONSTER') return cards.filter((c) => isMonsterType(c.type));

@@ -93,6 +93,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
   const [targetHitZone, setTargetHitZone] = useState<{ isPlayer: boolean; zoneIndex: number | null } | null>(null);
   const [destroyedCardUids, setDestroyedCardUids] = useState<string[]>([]);
   const [floatingDamage, setFloatingDamage] = useState<{ amount: number; isPlayer: boolean; zoneIndex: number | null } | null>(null);
+  const [floatingHeal, setFloatingHeal] = useState<{ amount: number } | null>(null);
 
   // Dispara a animação visual de destruição de cartas e limpa automaticamente após 600ms,
   // garantindo que nenhuma carta fique presa invisível (opacity: 0) no tabuleiro
@@ -157,6 +158,20 @@ export const Playmat: React.FC<PlaymatProps> = ({
               : maxTargets > 1
               ? `🎯 Choose up to ${maxTargets} opponent monsters to return to hand!`
               : '🎯 Choose 1 opponent monster to return to hand!',
+        };
+      case 'DESTROY_SPELL_TRAP':
+        return {
+          icon: '🌪️',
+          badgeSelected: isPt ? 'DESTRUIR M/A' : 'DESTROY S/T',
+          confirmVerb: isPt ? 'Destruição de Magia/Armadilha' : 'Spell/Trap Destruction',
+          promptMessage: (maxTargets: number) =>
+            isPt
+              ? maxTargets > 1
+                ? `🎯 Escolha até ${maxTargets} cartas de Magia/Armadilha do adversário para destruir!`
+                : '🎯 Escolha 1 carta de Magia/Armadilha do adversário para destruir!'
+              : maxTargets > 1
+              ? `🎯 Choose up to ${maxTargets} opponent Spell/Trap cards to destroy!`
+              : '🎯 Choose 1 opponent Spell/Trap card to destroy!',
         };
       default:
         return {
@@ -758,7 +773,72 @@ export const Playmat: React.FC<PlaymatProps> = ({
       return true;
     }
 
+    if (
+      effectDef.action === 'DESTROY_SPELL_TRAP' ||
+      target?.scope === 'OPPONENT_SPELL_TRAP' ||
+      target?.scope === 'OPPONENT_SPELL_TRAPS'
+    ) {
+      const opponentSpellTrapCount = p2.spellTrapZones.filter((st) => st !== null).length;
+      if (opponentSpellTrapCount < 1) {
+        showNotification(
+          languagePt
+            ? '⚠️ O adversário não possui Cartas Mágicas ou Armadilhas no campo!'
+            : '⚠️ Opponent has no Spell or Trap cards on the field!'
+        );
+        return false;
+      }
+
+      const maxTargets = target?.maxTargets || 1;
+      const actionMeta = getTacticalActionMeta('DESTROY_SPELL_TRAP', languagePt);
+
+      setTacticalTargetSelection({
+        zoneIndex,
+        cardName: card.data.namePt || card.data.name,
+        action: 'DESTROY_SPELL_TRAP',
+        maxTargets,
+        selectedUids: [],
+        cardUid: options?.cardUid ?? card.uid,
+        isSpell: options?.isSpell ?? false,
+      });
+
+      showNotification(actionMeta.promptMessage(Math.min(maxTargets, opponentSpellTrapCount)));
+      return true;
+    }
+
     return false;
+  };
+
+  // Clique na Zona de Magia/Armadilha do Oponente (Seleção Tática de Alvo com Mira)
+  const handleOpponentSpellTrapZoneClick = (zoneIndex: number) => {
+    const card = p2.spellTrapZones[zoneIndex];
+    if (card) setInspectedCard(card);
+
+    if (tacticalTargetSelection && tacticalTargetSelection.action === 'DESTROY_SPELL_TRAP' && card) {
+      const isAlreadySelected = tacticalTargetSelection.selectedUids.includes(card.uid);
+      let nextSelectedUids: string[];
+
+      if (isAlreadySelected) {
+        nextSelectedUids = tacticalTargetSelection.selectedUids.filter((uid) => uid !== card.uid);
+      } else {
+        if (tacticalTargetSelection.selectedUids.length >= tacticalTargetSelection.maxTargets) {
+          if (tacticalTargetSelection.maxTargets === 1) {
+            nextSelectedUids = [card.uid];
+          } else {
+            nextSelectedUids = [
+              ...tacticalTargetSelection.selectedUids.slice(0, tacticalTargetSelection.maxTargets - 1),
+              card.uid,
+            ];
+          }
+        } else {
+          nextSelectedUids = [...tacticalTargetSelection.selectedUids, card.uid];
+        }
+      }
+
+      setTacticalTargetSelection({
+        ...tacticalTargetSelection,
+        selectedUids: nextSelectedUids,
+      });
+    }
   };
 
   // Clique na Zona de Monstro do Jogador
@@ -1173,6 +1253,60 @@ export const Playmat: React.FC<PlaymatProps> = ({
       return;
     }
 
+    // Efeito de Recuperação de Vida (Cura): GAIN_LP
+    if (action === 'GAIN_LP') {
+      const value = Number(card.data.effectDefinition?.value || 1000);
+      soundFX.playDrawCard();
+      setFloatingHeal({ amount: value });
+      setTimeout(() => setFloatingHeal(null), 1400);
+
+      const success = session.activateSpell(card.uid, zoneIndex);
+      if (success) {
+        setSelectedHandCardUid(null);
+        setSpellChoiceModal(null);
+        showNotification(
+          languagePt
+            ? `💚 ${cardDisplayName} ativado! Você recuperou ${value} Pontos de Vida!`
+            : `💚 ${cardDisplayName} activated! You gained ${value} Life Points!`
+        );
+        forceUpdate();
+      }
+      return;
+    }
+
+    // Efeito de Dano Direto: INFLICT_DAMAGE
+    if (action === 'INFLICT_DAMAGE') {
+      const value = Number(card.data.effectDefinition?.value || 800);
+      soundFX.playAttackStrike();
+      setIsCameraShaking(true);
+      setTimeout(() => setIsCameraShaking(false), 350);
+      setFloatingDamage({ amount: value, isPlayer: false, zoneIndex: null });
+      setTimeout(() => setFloatingDamage(null), 1400);
+
+      const success = session.activateSpell(card.uid, zoneIndex);
+      if (success) {
+        setSelectedHandCardUid(null);
+        setSpellChoiceModal(null);
+        showNotification(
+          languagePt
+            ? `🔥 ${cardDisplayName} causou ${value} de dano direto aos LPs do adversário!`
+            : `🔥 ${cardDisplayName} inflicted ${value} direct damage to opponent's LP!`
+        );
+        forceUpdate();
+      }
+      return;
+    }
+
+    // Efeito de Destruição de Magia/Armadilha: DESTROY_SPELL_TRAP
+    if (action === 'DESTROY_SPELL_TRAP') {
+      if (checkCardRequiresTargeting(card, zoneIndex ?? 0, { isSpell: true, cardUid: card.uid })) {
+        setSelectedHandCardUid(null);
+        setSpellChoiceModal(null);
+        return;
+      }
+      return;
+    }
+
     // Outras cartas mágicas (verifica antes se requerem mira tática via metadados)
     if (checkCardRequiresTargeting(card, zoneIndex ?? 0, { isSpell: true, cardUid: card.uid })) {
       setSelectedHandCardUid(null);
@@ -1425,6 +1559,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
     setSlamZone(null);
     setTargetHitZone(null);
     setFloatingDamage(null);
+    setFloatingHeal(null);
     setCountdown(5);
     forceUpdate();
   };
@@ -1857,38 +1992,76 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
           {/* 5 Zonas de Magias e Armadilhas do Oponente */}
           <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
-            {p2.spellTrapZones.map((slot, i) => (
-              <div
-                key={`p2-st-${i}`}
-                onMouseEnter={() => slot && setInspectedCard(slot)}
-                className={`h-16 sm:h-18 lg:h-20 rounded-lg border-2 border-dashed flex items-center justify-center relative p-0.5 transition-all ${
-                  slot
-                    ? 'border-emerald-600/70 bg-emerald-950/25 shadow-[0_0_12px_rgba(16,185,129,0.25)]'
-                    : 'border-emerald-950/70 bg-emerald-950/15 hover:border-emerald-700/40'
-                }`}
-              >
-                {slot ? (
-                  <div className="w-full h-full relative rounded-lg flex items-center justify-center group overflow-hidden">
-                    <img
-                      src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
-                      alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
-                      className="max-h-full max-w-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
-                    />
-                    {!slot.isFaceDown && (
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-1.5 pointer-events-none rounded-lg">
-                        <div className="text-[10px] font-black text-emerald-200 truncate drop-shadow text-center">
-                          {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
+            {p2.spellTrapZones.map((slot, i) => {
+              const isTacticalTargeting = Boolean(
+                tacticalTargetSelection &&
+                tacticalTargetSelection.action === 'DESTROY_SPELL_TRAP' &&
+                slot !== null
+              );
+              const isTacticalSelected = Boolean(
+                tacticalTargetSelection &&
+                slot &&
+                tacticalTargetSelection.selectedUids.includes(slot.uid)
+              );
+
+              return (
+                <div
+                  key={`p2-st-${i}`}
+                  onClick={() => handleOpponentSpellTrapZoneClick(i)}
+                  onMouseEnter={() => slot && setInspectedCard(slot)}
+                  className={`h-16 sm:h-18 lg:h-20 rounded-lg border-2 border-dashed flex items-center justify-center relative p-0.5 transition-all ${
+                    slot ? 'cursor-pointer' : ''
+                  } ${
+                    isTacticalSelected
+                      ? 'ring-4 ring-cyan-400 bg-cyan-950/40 scale-105 shadow-[0_0_30px_rgba(34,211,238,0.9)] animate-pulse border-cyan-300'
+                      : isTacticalTargeting
+                      ? 'ring-2 ring-cyan-500/80 hover:ring-4 hover:ring-cyan-300 scale-102 hover:scale-105 shadow-[0_0_20px_rgba(6,182,212,0.6)] animate-pulse border-cyan-400'
+                      : slot
+                      ? 'border-emerald-600/70 bg-emerald-950/25 shadow-[0_0_12px_rgba(16,185,129,0.25)] hover:border-emerald-400'
+                      : 'border-emerald-950/70 bg-emerald-950/15 hover:border-emerald-700/40'
+                  }`}
+                >
+                  {/* Indicador de Mira Tática em Magia/Armadilha */}
+                  {isTacticalTargeting && (
+                    <div
+                      className={`absolute -top-3.5 z-40 text-white font-black text-[9px] px-2 py-0.5 rounded-full shadow-lg border animate-bounce flex items-center gap-1 uppercase tracking-wider ${
+                        isTacticalSelected
+                          ? 'bg-gradient-to-r from-cyan-500 to-blue-600 border-yellow-300 shadow-[0_0_15px_rgba(34,211,238,0.9)]'
+                          : 'bg-cyan-900/90 border-cyan-400 text-cyan-200'
+                      }`}
+                    >
+                      <span>🌪️</span>
+                      <span>
+                        {isTacticalSelected
+                          ? languagePt ? 'DESTRUIR' : 'DESTROY'
+                          : languagePt ? 'ALVO M/A' : 'TARGET S/T'}
+                      </span>
+                    </div>
+                  )}
+
+                  {slot ? (
+                    <div className="w-full h-full relative rounded-lg flex items-center justify-center group overflow-hidden">
+                      <img
+                        src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
+                        alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
+                        className="max-h-full max-w-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
+                      />
+                      {!slot.isFaceDown && (
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-1.5 pointer-events-none rounded-lg">
+                          <div className="text-[10px] font-black text-emerald-200 truncate drop-shadow text-center">
+                            {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <span className="text-[10px] text-emerald-900/60 font-serif tracking-widest uppercase select-none">
-                    M / A
-                  </span>
-                )}
-              </div>
-            ))}
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-emerald-900/60 font-serif tracking-widest uppercase select-none">
+                      M / A
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Fileira de Monstros do Oponente - Prioridade e Destaque para Monstros */}
@@ -2056,14 +2229,14 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     if (tacticalTargetSelection.selectedUids.length === 0) {
                       showNotification(
                         languagePt
-                          ? '⚠️ Clique em um monstro com o selo "ESCOLHER ALVO" para selecionar!'
-                          : '⚠️ Click an opponent monster with the "SELECT TARGET" badge!'
+                          ? '⚠️ Clique em um alvo com o selo "ESCOLHER ALVO" para selecionar!'
+                          : '⚠️ Click a target with the "SELECT TARGET" badge!'
                       );
                       return;
                     }
 
                     if (tacticalTargetSelection.isSpell && tacticalTargetSelection.cardUid) {
-                      if (tacticalTargetSelection.action === 'DESTROY_MONSTER') {
+                      if (tacticalTargetSelection.action === 'DESTROY_MONSTER' || tacticalTargetSelection.action === 'DESTROY_SPELL_TRAP') {
                         triggerCardDestruction(tacticalTargetSelection.selectedUids);
                         soundFX.playDestruction();
                       } else if (tacticalTargetSelection.action === 'RETURN_TO_HAND') {
@@ -2367,7 +2540,15 @@ export const Playmat: React.FC<PlaymatProps> = ({
             </div>
             <div>
               <h2 className="font-extrabold text-amber-300 text-xs sm:text-sm font-serif tracking-wide truncate max-w-[120px] sm:max-w-[140px]">{p1.nickname}</h2>
-              <div ref={playerLpRef} className="bg-black/95 border-2 border-red-600 rounded-lg px-2.5 py-0.5 text-lg sm:text-xl font-mono font-black text-red-400 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider mt-0.5">
+              <div ref={playerLpRef} className="bg-black/95 border-2 border-red-600 rounded-lg px-2.5 py-0.5 text-lg sm:text-xl font-mono font-black text-red-400 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider mt-0.5 relative">
+                {/* Texto Flutuante de Recuperação de Vida (Cura) */}
+                {floatingHeal && (
+                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-50 pointer-events-none anim-damage-float whitespace-nowrap">
+                    <span className="text-xl sm:text-2xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-t from-emerald-500 via-green-400 to-teal-200 drop-shadow-[0_0_15px_rgba(52,211,153,1)]">
+                      +{floatingHeal.amount} LP
+                    </span>
+                  </div>
+                )}
                 {p1.lifePoints} <span className="text-xs font-sans text-red-400 font-normal">LP</span>
               </div>
             </div>

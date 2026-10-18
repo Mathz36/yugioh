@@ -525,6 +525,27 @@
     "attribute": "EARTH"
   },
   {
+    "id": "19159413",
+    "name": "De-Spell",
+    "type": "Spell Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "Target 1 face-up Spell, or 1 Set Spell/Trap, on the field; destroy that target if it is a Spell. (If the target is Set, reveal it.)",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/19159413.jpg",
+    "race": "Normal",
+    "namePt": "Desencantar",
+    "descriptionPt": "Escolha 1 Magia com a face para cima ou 1 Magia/Armadilha Baixada no campo; destrua aquele alvo se for uma Magia.",
+    "effectType": "NORMAL",
+    "effectDefinition": {
+      "action": "DESTROY_SPELL_TRAP",
+      "target": {
+        "scope": "OPPONENT_SPELL_TRAP",
+        "maxTargets": 1
+      }
+    }
+  },
+  {
     "id": "73481154",
     "name": "Destroyer Golem",
     "type": "Normal Monster",
@@ -535,6 +556,25 @@
     "imageUrl": "https://images.ygoprodeck.com/images/cards/73481154.jpg",
     "race": "Rock",
     "attribute": "EARTH"
+  },
+  {
+    "id": "84257640",
+    "name": "Dian Keto the Cure Master",
+    "type": "Spell Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "Increase your Life Points by 1000 points.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/84257640.jpg",
+    "race": "Normal",
+    "namePt": "Dian Keto, o Mestre da Cura",
+    "descriptionPt": "Aumente seus Pontos de Vida em 1000.",
+    "effectType": "NORMAL",
+    "effectDefinition": {
+      "action": "GAIN_LP",
+      "value": 1000,
+      "description_pt": "Aumente seus Pontos de Vida em 1000."
+    }
   },
   {
     "id": "76446915",
@@ -645,6 +685,24 @@
     "imageUrl": "https://images.ygoprodeck.com/images/cards/2863439.jpg",
     "race": "Winged Beast",
     "attribute": "LIGHT"
+  },
+  {
+    "id": "73134082",
+    "name": "Final Flame",
+    "type": "Spell Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "Inflict 600 points of damage to your opponent's Life Points.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/73134082.jpg",
+    "race": "Normal",
+    "namePt": "Chama Final",
+    "descriptionPt": "Cause 600 pontos de dano aos Pontos de Vida do seu oponente.",
+    "effectType": "NORMAL",
+    "effectDefinition": {
+      "action": "INFLICT_DAMAGE",
+      "value": 600
+    }
   },
   {
     "id": "46534755",
@@ -980,6 +1038,24 @@
     "imageUrl": "https://images.ygoprodeck.com/images/cards/54579801.jpg",
     "race": "Aqua",
     "attribute": "WATER"
+  },
+  {
+    "id": "46130346",
+    "name": "Hinotama",
+    "type": "Spell Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "Inflict 500 damage to your opponent.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/46130346.jpg",
+    "race": "Normal",
+    "namePt": "Hinotama",
+    "descriptionPt": "Cause 500 de dano ao seu oponente.",
+    "effectType": "NORMAL",
+    "effectDefinition": {
+      "action": "INFLICT_DAMAGE",
+      "value": 500
+    }
   },
   {
     "id": "96851799",
@@ -1689,6 +1765,24 @@
     "attribute": "EARTH"
   },
   {
+    "id": "19523799",
+    "name": "Ookazi",
+    "type": "Spell Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "Inflict 800 damage to your opponent.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/19523799.jpg",
+    "race": "Normal",
+    "namePt": "Ookazi",
+    "descriptionPt": "Cause 800 de dano ao seu oponente.",
+    "effectType": "NORMAL",
+    "effectDefinition": {
+      "action": "INFLICT_DAMAGE",
+      "value": 800
+    }
+  },
+  {
     "id": "14531242",
     "name": "Opticlops",
     "type": "Normal Monster",
@@ -1867,6 +1961,24 @@
     "imageUrl": "https://images.ygoprodeck.com/images/cards/73081602.jpg",
     "race": "Winged Beast",
     "attribute": "WIND"
+  },
+  {
+    "id": "56260110",
+    "name": "Raimei",
+    "type": "Spell Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "Decrease your opponent's Life Points by 300 points.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/56260110.jpg",
+    "race": "Normal",
+    "namePt": "Raimei",
+    "descriptionPt": "Diminua os Pontos de Vida do seu oponente em 300 pontos.",
+    "effectType": "NORMAL",
+    "effectDefinition": {
+      "action": "INFLICT_DAMAGE",
+      "value": 300
+    }
   },
   {
     "id": "85309439",
@@ -2137,6 +2249,24 @@
     "imageUrl": "https://images.ygoprodeck.com/images/cards/4920010.jpg",
     "race": "Fiend",
     "attribute": "DARK"
+  },
+  {
+    "id": "76103675",
+    "name": "Sparks",
+    "type": "Spell Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "Inflict 200 points of damage to your opponent's Life Points.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/76103675.jpg",
+    "race": "Normal",
+    "namePt": "Faíscas",
+    "descriptionPt": "Cause 200 pontos de dano aos Pontos de Vida do seu oponente.",
+    "effectType": "NORMAL",
+    "effectDefinition": {
+      "action": "INFLICT_DAMAGE",
+      "value": 200
+    }
   },
   {
     "id": "85326399",

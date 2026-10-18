@@ -566,8 +566,8 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
               )}
             </div>
 
-            {/* Caixa de ATK / DEF em Destaque */}
-            {inspectedCard.attack !== undefined && (
+            {/* Caixa de ATK / DEF em Destaque (Apenas para Monstros) */}
+            {isMonsterType(inspectedCard.type) && inspectedCard.attack !== undefined && (
               <div className="bg-black/60 rounded-xl p-1.5 border border-amber-400/40 grid grid-cols-2 gap-2 text-center">
                 <div className="border-r border-purple-800/60">
                   <span className="text-[9px] font-mono text-slate-400 uppercase block">ATK</span>
@@ -581,6 +581,28 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                     {inspectedCard.defense ?? 0}
                   </span>
                 </div>
+              </div>
+            )}
+
+            {/* Destaque para Cartas Mágicas */}
+            {isSpellType(inspectedCard.type) && (
+              <div className="bg-emerald-950/40 rounded-xl p-1.5 border border-emerald-500/50 flex items-center justify-center gap-2 text-center">
+                <span className="text-xs">✨</span>
+                <span className="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider">
+                  {isPt ? 'Carta Mágica' : 'Spell Card'}
+                  {inspectedCard.race ? ` • ${inspectedCard.race}` : ''}
+                </span>
+              </div>
+            )}
+
+            {/* Destaque para Cartas Armadilhas */}
+            {isTrapType(inspectedCard.type) && (
+              <div className="bg-fuchsia-950/40 rounded-xl p-1.5 border border-fuchsia-500/50 flex items-center justify-center gap-2 text-center">
+                <span className="text-xs">🪤</span>
+                <span className="text-xs font-mono font-bold text-fuchsia-300 uppercase tracking-wider">
+                  {isPt ? 'Carta Armadilha' : 'Trap Card'}
+                  {inspectedCard.race ? ` • ${inspectedCard.race}` : ''}
+                </span>
               </div>
             )}
 
@@ -827,7 +849,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                 [
                   { id: 'ALL', labelPt: 'Todas', labelEn: 'All', icon: '🃏', count: catalogStats.total },
                   { id: 'MONSTER', labelPt: 'Monstros', labelEn: 'Monsters', icon: '👾', count: catalogStats.monsters },
-                  { id: 'SPELL', labelPt: 'Mágicas', labelEn: 'Spells', icon: '✨', count: catalogStats.spells },
+                  { id: 'SPELL', labelPt: 'Magia', labelEn: 'Spells', icon: '✨', count: catalogStats.spells },
                   { id: 'TRAP', labelPt: 'Armadilhas', labelEn: 'Traps', icon: '🪤', count: catalogStats.traps },
                 ] as const
               ).map((tab) => (
@@ -936,11 +958,11 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
 
                         <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
                           <span className="truncate pr-1">
-                            {card.attack !== undefined
+                            {isMonsterType(card.type) && card.attack !== undefined
                               ? `${card.attack}/${card.defense ?? 0}`
                               : isSpellType(card.type)
                               ? isPt
-                                ? 'Mágica'
+                                ? 'Magia'
                                 : 'Spell'
                               : isPt
                               ? 'Armadilha'

@@ -35,6 +35,76 @@ export interface DatabaseCardRow {
   effect_definition?: CardEffectDefinition | null;
 }
 
+export const SUB_WAVE_2A_METADATA: Record<string, { effectType: CardEffectType; effectDefinition: CardEffectDefinition; namePt?: string }> = {
+  // Dian Keto the Cure Master (84257640)
+  '84257640': {
+    namePt: 'Dian Keto, o Mestre da Cura',
+    effectType: 'NORMAL',
+    effectDefinition: {
+      action: 'GAIN_LP',
+      value: 1000,
+      description_pt: 'Aumente seus Pontos de Vida em 1000.',
+    },
+  },
+  // Sparks (76103675)
+  '76103675': {
+    namePt: 'Faíscas',
+    effectType: 'NORMAL',
+    effectDefinition: {
+      action: 'INFLICT_DAMAGE',
+      value: 200,
+    },
+  },
+  // Hinotama (46130346)
+  '46130346': {
+    namePt: 'Hinotama',
+    effectType: 'NORMAL',
+    effectDefinition: {
+      action: 'INFLICT_DAMAGE',
+      value: 500,
+    },
+  },
+  // Raimei (56260110)
+  '56260110': {
+    namePt: 'Raimei',
+    effectType: 'NORMAL',
+    effectDefinition: {
+      action: 'INFLICT_DAMAGE',
+      value: 300,
+    },
+  },
+  // Final Flame (73134082)
+  '73134082': {
+    namePt: 'Chama Final',
+    effectType: 'NORMAL',
+    effectDefinition: {
+      action: 'INFLICT_DAMAGE',
+      value: 600,
+    },
+  },
+  // Ookazi (19523799)
+  '19523799': {
+    namePt: 'Ookazi',
+    effectType: 'NORMAL',
+    effectDefinition: {
+      action: 'INFLICT_DAMAGE',
+      value: 800,
+    },
+  },
+  // De-Spell (19159413)
+  '19159413': {
+    namePt: 'Desencantar',
+    effectType: 'NORMAL',
+    effectDefinition: {
+      action: 'DESTROY_SPELL_TRAP',
+      target: {
+        scope: 'OPPONENT_SPELL_TRAP',
+        maxTargets: 1,
+      },
+    },
+  },
+};
+
 export class Wave1CatalogExporter {
   private readonly supabase: SupabaseClient;
 
@@ -99,11 +169,17 @@ export class Wave1CatalogExporter {
         (!Number.isNaN(rowNumericId) ? byId.get(String(rowNumericId)) : undefined) ||
         (row.name ? byName.get(row.name.toLowerCase().trim()) : undefined);
 
+      const subWave2AMatch =
+        SUB_WAVE_2A_METADATA[rowIdStr] ||
+        (!Number.isNaN(rowNumericId) ? SUB_WAVE_2A_METADATA[String(rowNumericId)] : undefined) ||
+        (row.name ? Object.entries(SUB_WAVE_2A_METADATA).find(([_, meta]) => meta.namePt?.toLowerCase() === row.name.toLowerCase() || row.name.toLowerCase().includes('dian keto'))?.[1] : undefined);
+
       const isNormalMonster = row.type === 'Normal Monster';
       const hasHomologatedEffect = Boolean(
         row.effect_type ||
         row.effect_definition ||
-        classicMatch?.effectDefinition
+        classicMatch?.effectDefinition ||
+        subWave2AMatch?.effectDefinition
       );
 
       // Wave 1 includes Normal Monsters and cards with homologated backend effects
@@ -140,20 +216,20 @@ export class Wave1CatalogExporter {
         card.attribute = row.attribute || classicMatch?.attribute;
       }
 
-      if (classicMatch?.namePt) {
-        card.namePt = classicMatch.namePt;
+      if (subWave2AMatch?.namePt || classicMatch?.namePt) {
+        card.namePt = subWave2AMatch?.namePt || classicMatch?.namePt;
       }
 
       if (classicMatch?.descriptionPt) {
         card.descriptionPt = classicMatch.descriptionPt;
       }
 
-      const effectType = (classicMatch?.effectType || row.effect_type) as CardEffectType | undefined;
+      const effectType = (subWave2AMatch?.effectType || classicMatch?.effectType || row.effect_type) as CardEffectType | undefined;
       if (effectType) {
         card.effectType = effectType;
       }
 
-      const effectDefinition = classicMatch?.effectDefinition || row.effect_definition;
+      const effectDefinition = subWave2AMatch?.effectDefinition || classicMatch?.effectDefinition || row.effect_definition;
       if (effectDefinition) {
         card.effectDefinition = effectDefinition;
       }
