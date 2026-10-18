@@ -57,12 +57,14 @@ describe('DuelMatchSession & DuelBot Integration', () => {
 
     // Act 2: Mudar para DEFENSE na Main Phase (mesmo no turno em que foi invocado) -> sucesso
     const changeToDef = session.changeMonsterPosition(0);
-    expect(changeToDef).toBe(true);
+    expect(changeToDef.success).toBe(true);
+    expect(changeToDef.flipped).toBe(false);
     expect(session.player1.monsterZones[0]?.position).toBe('DEFENSE');
 
     // Act 3: Mudar de volta para ATTACK ilimitadamente na Main Phase -> sucesso
     const changeBackToAtk = session.changeMonsterPosition(0);
-    expect(changeBackToAtk).toBe(true);
+    expect(changeBackToAtk.success).toBe(true);
+    expect(changeBackToAtk.flipped).toBe(false);
     expect(session.player1.monsterZones[0]?.position).toBe('ATTACK');
 
     // Act 4: Mudar novamente para DEFENSE antes da Batalha -> sucesso
@@ -75,7 +77,7 @@ describe('DuelMatchSession & DuelBot Integration', () => {
 
     // Act 6: Tentar mudar de posição durante a Fase de Batalha -> DEVE FALHAR
     const changeDuringBattle = session.changeMonsterPosition(0);
-    expect(changeDuringBattle).toBe(false);
+    expect(changeDuringBattle.success).toBe(false);
     expect(session.player1.monsterZones[0]?.position).toBe('DEFENSE'); // Permanece a posição fixada
 
     // Act 7: Passar o turno para o oponente -> a posição de DEFENSE prevalece
@@ -965,12 +967,13 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       const flipOnSameTurn = session.changeMonsterPosition(0);
 
       // Assert: Deve ser bloqueado
-      expect(flipOnSameTurn).toBe(false);
+      expect(flipOnSameTurn.success).toBe(false);
+      expect(flipOnSameTurn.flipped).toBe(false);
       expect(p1.monsterZones[0]?.isFaceDown).toBe(true);
       expect(p1.monsterZones[0]?.position).toBe('DEFENSE');
     });
 
-    it('Teste 8: Flip manual liberado nos turnos subsequentes disparando o efeito FLIP', () => {
+    it('Teste 8: Flip manual liberado nos turnos subsequentes disparando o efeito FLIP e retornando dados do efeito', () => {
       // Arrange
       const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
       const p1 = session.player1;
@@ -1008,10 +1011,17 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       session.matchState.phase = 'MAIN1';
 
       // Act: Virar manualmente para cima (Flip Summon)
-      const flipSuccess = session.changeMonsterPosition(0);
+      const flipResult = session.changeMonsterPosition(0);
 
       // Assert
-      expect(flipSuccess).toBe(true);
+      expect(flipResult.success).toBe(true);
+      expect(flipResult.flipped).toBe(true);
+      expect(flipResult.flipEffect).toBeDefined();
+      expect(flipResult.flipEffect?.action).toBe('DESTROY_MONSTER');
+      expect(flipResult.flipEffect?.cardName).toBe('Inseto Come-Homem');
+      expect(flipResult.flipEffect?.targetCardUid).toBe('blue_eyes_p2');
+      expect(flipResult.flipEffect?.targetName).toBe('Dragão Branco de Olhos Azuis');
+
       expect(p1.monsterZones[0]?.isFaceDown).toBe(false);
       expect(p1.monsterZones[0]?.position).toBe('ATTACK');
       expect(p1.monsterZones[0]?.hasChangedPositionThisTurn).toBe(true);
@@ -1074,6 +1084,121 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       // 5. Nenhum dano de batalha foi aplicado aos LPs
       expect(kaiba.lifePoints).toBe(8000);
       expect(yugi.lifePoints).toBe(8000);
+    });
+  });
+
+  describe('Regression Tests: FLIP Effects & Face-Down State Consistency', () => {
+    it('Teste 1: Soldado Pinguim não é destruído e devolve atacante', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Kaiba possui Blue-Eyes White Dragon (3000 ATK) em ATTACK
+      kaiba.monsterZones[0] = {
+        uid: 'kaiba_blue_eyes_attacker',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Yugi possui Penguin Soldier virado para baixo (isFaceDown = true) em DEFENSE
+      yugi.monsterZones[0] = {
+        uid: 'yugi_penguin_soldier',
+        data: CLASSIC_CARDS.PENGUIN_SOLDIER,
+        position: 'DEFENSE',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        isFaceDown: true,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Configura turno de ataque de Kaiba (Turno 2, Battle Phase)
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act: Kaiba declara ataque contra o Penguin Soldier (zona 0)
+      const attackSuccess = session.declareAttack(0, 0);
+
+      // Assert
+      // 1. O ataque tem sucesso e dispara o efeito FLIP
+      expect(attackSuccess).toBe(true);
+
+      // 2. O atacante (Blue-Eyes) é removido da zona de monstros e adicionado à mão do Kaiba
+      expect(kaiba.monsterZones[0]).toBeNull();
+      expect(kaiba.hand.some((c) => c.uid === 'kaiba_blue_eyes_attacker')).toBe(true);
+      expect(kaiba.graveyard.some((c) => c.uid === 'kaiba_blue_eyes_attacker')).toBe(false);
+
+      // 3. O defensor (Penguin Soldier) PERMANECE VIVO na zona de monstro de Yugi e com isFaceDown === false
+      expect(yugi.monsterZones[0]).not.toBeNull();
+      expect(yugi.monsterZones[0]?.uid).toBe('yugi_penguin_soldier');
+      expect(yugi.monsterZones[0]?.isFaceDown).toBe(false);
+      expect(yugi.graveyard.some((c) => c.uid === 'yugi_penguin_soldier')).toBe(false);
+
+      // 4. Nenhum dano de batalha é aplicado aos LPs de Yugi
+      expect(yugi.lifePoints).toBe(8000);
+      expect(kaiba.lifePoints).toBe(8000);
+    });
+
+    it('Teste 2: Flip manual do Man-Eater Bug ativa efeito e retorna dados do alvo', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi baixa Man-Eater Bug no Turno 1 em DEFENSE virado para baixo
+      const mebInHand = yugi.hand.find((c) => c.data.id === CLASSIC_CARDS.MAN_EATER_BUG.id);
+      expect(mebInHand).toBeDefined();
+
+      // Invocação set (Face-Down) no Turno 1 por Yugi
+      const summonSuccess = session.normalSummon(mebInHand!.uid, 0, 'DEFENSE', [], true);
+      expect(summonSuccess).toBe(true);
+      expect(yugi.monsterZones[0]?.isFaceDown).toBe(true);
+      expect(yugi.monsterZones[0]?.turnSet).toBe(1);
+
+      // Kaiba possui Vorse Raider (1900 ATK) em campo
+      kaiba.monsterZones[0] = {
+        uid: 'kaiba_vorse_raider_target',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Simula o avanço de turno para o Turno 3 (turno de Yugi, Main Phase 1)
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = yugi.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Act: Yugi clica para mudar a posição (Flip Manual / Invocação por Virar)
+      const changeResult = session.changeMonsterPosition(0);
+
+      // Assert
+      // 1. O método retorna { success: true, flipped: true, flipEffect: { action: 'DESTROY_MONSTER', ... } }
+      expect(changeResult.success).toBe(true);
+      expect(changeResult.flipped).toBe(true);
+      expect(changeResult.flipEffect).toBeDefined();
+      expect(changeResult.flipEffect?.action).toBe('DESTROY_MONSTER');
+      expect(changeResult.flipEffect?.targetCardUid).toBe('kaiba_vorse_raider_target');
+
+      // 2. O Man-Eater Bug é revelado (isFaceDown === false) em ATTACK
+      expect(yugi.monsterZones[0]?.isFaceDown).toBe(false);
+      expect(yugi.monsterZones[0]?.position).toBe('ATTACK');
+
+      // 3. O Vorse Raider do Kaiba é removido do campo e enviado ao cemitério
+      expect(kaiba.monsterZones[0]).toBeNull();
+      expect(kaiba.graveyard.some((c) => c.uid === 'kaiba_vorse_raider_target')).toBe(true);
     });
   });
 });

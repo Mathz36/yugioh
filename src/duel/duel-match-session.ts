@@ -9,6 +9,7 @@ import {
   DuelPhase,
   MatchTurnState,
   PlayerDuelState,
+  PositionChangeResult,
 } from './duel-types.js';
 
 export class DuelMatchSession {
@@ -240,11 +241,13 @@ export class DuelMatchSession {
     return true;
   }
 
-  public changeMonsterPosition(zoneIndex: number): boolean {
-    if (this.matchState.isGameOver) return false;
+  public changeMonsterPosition(zoneIndex: number): PositionChangeResult {
+    if (this.matchState.isGameOver) {
+      return { success: false, flipped: false };
+    }
     if (this.matchState.phase !== 'MAIN1' && this.matchState.phase !== 'MAIN2') {
       this.log('A posição de batalha só pode ser alterada durante a Fase Principal (antes ou depois da Batalha).');
-      return false;
+      return { success: false, flipped: false };
     }
 
     const player = this.getActivePlayer();
@@ -252,18 +255,18 @@ export class DuelMatchSession {
     const monster = player.monsterZones[zoneIndex];
     if (!monster) {
       this.log('Nenhum monstro na zona para alterar posição.');
-      return false;
+      return { success: false, flipped: false };
     }
 
     if (monster.hasAttacked) {
       this.log('Um monstro que já atacou não pode mudar de posição neste turno.');
-      return false;
+      return { success: false, flipped: false };
     }
 
     // Trava de Flip: se monster.isFaceDown && monster.turnSet === currentTurn, impede
     if (monster.isFaceDown && monster.turnSet === this.matchState.currentTurn) {
       this.log('⏳ Um monstro baixado para baixo só pode ser virado de face para cima a partir do próximo turno.');
-      return false;
+      return { success: false, flipped: false };
     }
 
     // Se estiver virado para baixo, ao mudar de posição é revelado (Flip Summon)
@@ -273,6 +276,8 @@ export class DuelMatchSession {
       monster.hasChangedPositionThisTurn = true;
       const cardName = monster.data.namePt || monster.data.name;
       this.log(`✨ INVOCAÇÃO POR VIRAR (FLIP)! ${player.nickname} revelou ${cardName} em Posição de Ataque!`);
+
+      let flipEffect: PositionChangeResult['flipEffect'];
 
       // Dispara efeito FLIP caso possua
       if (monster.data.effectType === 'FLIP') {
@@ -295,6 +300,18 @@ export class DuelMatchSession {
             opponent.graveyard.push(strongest.card);
             const targetName = strongest.card.data.namePt || strongest.card.data.name;
             this.log(`🪲 EFEITO FLIP ATIVADO! ${cardName} destruiu o monstro ${targetName} do oponente!`);
+
+            flipEffect = {
+              cardName,
+              action: 'DESTROY_MONSTER',
+              targetCardUid: strongest.card.uid,
+              targetName,
+            };
+          } else {
+            flipEffect = {
+              cardName,
+              action: 'DESTROY_MONSTER',
+            };
           }
         } else if (action === 'RETURN_TO_HAND') {
           // Penguin Soldier: Devolve 1 monstro do oponente para a mão
@@ -313,10 +330,22 @@ export class DuelMatchSession {
             opponent.hand.push(strongest.card);
             const targetName = strongest.card.data.namePt || strongest.card.data.name;
             this.log(`🐧 EFEITO FLIP ATIVADO! ${cardName} devolveu ${targetName} para a mão de ${opponent.nickname}!`);
+
+            flipEffect = {
+              cardName,
+              action: 'RETURN_TO_HAND',
+              targetCardUid: strongest.card.uid,
+              targetName,
+            };
+          } else {
+            flipEffect = {
+              cardName,
+              action: 'RETURN_TO_HAND',
+            };
           }
         }
       }
-      return true;
+      return { success: true, flipped: true, flipEffect };
     }
 
     monster.position = monster.position === 'ATTACK' ? 'DEFENSE' : 'ATTACK';
@@ -325,7 +354,7 @@ export class DuelMatchSession {
     const cardName = monster.data.namePt || monster.data.name;
     const newPosName = monster.position === 'ATTACK' ? 'Posição de Ataque (Vertical)' : 'Posição de Defesa (Horizontal)';
     this.log(`🔄 ${player.nickname} alterou ${cardName} para ${newPosName}.`);
-    return true;
+    return { success: true, flipped: false };
   }
 
   /**

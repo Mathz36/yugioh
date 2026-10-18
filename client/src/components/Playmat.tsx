@@ -361,8 +361,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                 }, 450);
               }
 
+              const isTargetFlipDefense = target.card.position === 'DEFENSE' && target.card.data.effectType === 'FLIP';
+
               // Checa se o alvo em DEFENSE possui Efeito FLIP
-              if (target.card.position === 'DEFENSE' && target.card.data.effectType === 'FLIP') {
+              if (isTargetFlipDefense) {
                 const flipName = (languagePt && target.card.data.namePt) ? target.card.data.namePt : target.card.data.name;
                 const action = target.card.data.effectDefinition?.action;
                 setFlipEffectBanner({ cardName: flipName, action: action || 'FLIP' });
@@ -374,6 +376,13 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                 } else if (action === 'RETURN_TO_HAND') {
                   soundFX.playReturnToHand();
                 }
+
+                // O efeito FLIP interrompe o ataque antes do cálculo de dano/destruição:
+                // O monstro do jogador NÃO morre!
+                session.declareAttack(attacker.index, target.index);
+                finishBotTurn();
+                forceUpdate();
+                return;
               }
 
               if (target.card.position === 'ATTACK') {
@@ -542,13 +551,42 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           return;
         }
 
-        const success = session.changeMonsterPosition(zoneIndex);
-        if (success) {
+        const posResult = session.changeMonsterPosition(zoneIndex);
+        if (posResult.success) {
           soundFX.playPlaceCard();
           setFlippedZones((prev) => [...prev, { isPlayer: true, zoneIndex }]);
           setTimeout(() => {
             setFlippedZones((prev) => prev.filter((z) => !(z.isPlayer && z.zoneIndex === zoneIndex)));
           }, 450);
+
+          if (posResult.flipped && posResult.flipEffect) {
+            setFlipEffectBanner(posResult.flipEffect);
+            setTimeout(() => setFlipEffectBanner(null), 3000);
+
+            if (posResult.flipEffect.action === 'DESTROY_MONSTER') {
+              soundFX.playDestruction();
+              if (posResult.flipEffect.targetCardUid) {
+                setDestroyedCardUids((prev) => [...prev, posResult.flipEffect!.targetCardUid!]);
+              }
+              if (posResult.flipEffect.targetName) {
+                showNotification(
+                  languagePt
+                    ? `🪲 Efeito FLIP: ${posResult.flipEffect.targetName} do oponente foi destruído!`
+                    : `🪲 FLIP Effect: Opponent's ${posResult.flipEffect.targetName} was destroyed!`
+                );
+              }
+            } else if (posResult.flipEffect.action === 'RETURN_TO_HAND') {
+              soundFX.playReturnToHand();
+              if (posResult.flipEffect.targetName) {
+                showNotification(
+                  languagePt
+                    ? `🐧 Efeito FLIP: ${posResult.flipEffect.targetName} foi devolvido para a mão do oponente!`
+                    : `🐧 FLIP Effect: ${posResult.flipEffect.targetName} was returned to opponent's hand!`
+                );
+              }
+            }
+          }
+
           forceUpdate();
         }
         return;
@@ -655,8 +693,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           }, 450);
         }
 
+        const isDefendingFlipDefense = defendingCard.position === 'DEFENSE' && defendingCard.data.effectType === 'FLIP';
+
         // Checa se o alvo em DEFENSE possui Efeito FLIP
-        if (defendingCard.position === 'DEFENSE' && defendingCard.data.effectType === 'FLIP') {
+        if (isDefendingFlipDefense) {
           const flipName = (languagePt && defendingCard.data.namePt) ? defendingCard.data.namePt : defendingCard.data.name;
           const action = defendingCard.data.effectDefinition?.action;
           setFlipEffectBanner({ cardName: flipName, action: action || 'FLIP' });
@@ -668,6 +708,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           } else if (action === 'RETURN_TO_HAND') {
             soundFX.playReturnToHand();
           }
+
+          // Interrompe o ataque: defensor não é destruído e não há dano
+          session.declareAttack(attackerZone, targetZoneIndex);
+          forceUpdate();
+          return;
         }
 
         let dmg = 0;

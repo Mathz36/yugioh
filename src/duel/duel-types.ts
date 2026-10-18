@@ -81,3 +81,15 @@ export interface MatchTurnState {
   log: string[];
 }
 
+export interface FlipEffectResult {
+  cardName: string;
+  action: string;
+  targetCardUid?: string;
+  targetName?: string;
+}
+
+export interface PositionChangeResult {
+  success: boolean;
+  flipped: boolean;
+  flipEffect?: FlipEffectResult;
+}
