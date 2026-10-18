@@ -58,6 +58,54 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     outcome?: 'HEADS' | 'TAILS';
   } | null>(null);
 
+  // Auxiliares de Tradução Dinâmica PT-BR / EN
+  const formatPhaseName = (phase: string): string => {
+    if (!languagePt) return phase;
+    switch (phase) {
+      case 'DRAW':
+        return 'COMPRA';
+      case 'STANDBY':
+        return 'ESPERA';
+      case 'MAIN1':
+        return 'PRINCIPAL 1';
+      case 'BATTLE':
+        return 'BATALHA';
+      case 'MAIN2':
+        return 'PRINCIPAL 2';
+      case 'END':
+        return 'FIM DE TURNO';
+      default:
+        return phase;
+    }
+  };
+
+  const formatCardType = (type: string): string => {
+    if (!languagePt) return type;
+    const lower = type.toLowerCase();
+    if (lower.includes('flip')) {
+      return 'Monstro de Efeito de Virar';
+    }
+    if (lower.includes('effect')) {
+      return 'Monstro de Efeito';
+    }
+    if (lower.includes('normal')) {
+      return 'Monstro Normal';
+    }
+    if (lower.includes('spell')) {
+      return 'Carta Mágica';
+    }
+    if (lower.includes('trap')) {
+      return 'Carta Armadilha';
+    }
+    if (lower.includes('fusion')) {
+      return 'Monstro de Fusão';
+    }
+    if (lower.includes('ritual')) {
+      return 'Monstro de Ritual';
+    }
+    return type;
+  };
+
   // Retorna a classe de chama da carta baseado em destruições e ataque direto
   const getCardFlameClass = (card: CardInstance | null): string => {
     if (!card) return '';
@@ -845,8 +893,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                 </div>
 
                 <div className="text-[10px] uppercase font-serif tracking-wider text-purple-300 border-b border-purple-900/60 pb-1 mb-1.5 flex justify-between">
-                  <span>{inspectedCard.data.type}</span>
-                  <span className="text-slate-400">Nível {inspectedCard.data.level}</span>
+                  <span>{formatCardType(inspectedCard.data.type)}</span>
+                  <span className="text-slate-400">
+                    {languagePt ? 'Nível' : 'Level'} {inspectedCard.data.level}
+                  </span>
                 </div>
 
                 <p className="text-[11px] text-amber-100/90 leading-relaxed italic bg-black/40 p-1.5 rounded border border-purple-950/80 min-h-[50px]">
@@ -1110,12 +1160,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         {/* FAIXA CENTRAL DO DUELO: CONTROLES & AURA DE FASE (HUD CENTRAL AMPLIADO) */}
         <div className="flex items-center justify-between px-7 py-2 bg-[#100a1c]/95 border-y-2 border-[#412760] shadow-[0_0_25px_rgba(65,39,96,0.8)] my-1">
           <div className="flex items-center space-x-3.5">
-            <span className="text-xs uppercase font-serif tracking-widest text-amber-400 font-black">FASE:</span>
+            <span className="text-xs uppercase font-serif tracking-widest text-amber-400 font-black">
+              {languagePt ? 'FASE:' : 'PHASE:'}
+            </span>
             <span className="px-3.5 py-1 rounded text-xs font-black tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.5)]">
-              {match.phase}
+              {formatPhaseName(match.phase)}
             </span>
             <span className="text-xs text-slate-300 font-mono font-bold">
-              Turno {match.currentTurn} • {isPlayerTurn ? `🌟 TURNO DE ${p1.nickname.toUpperCase()}` : `⏳ TURNO DE ${p2.nickname.toUpperCase()}`}
+              {languagePt ? 'Turno' : 'Turn'} {match.currentTurn} • {isPlayerTurn ? `🌟 ${languagePt ? 'TURNO DE' : "TURN OF"} ${p1.nickname.toUpperCase()}` : `⏳ ${languagePt ? 'TURNO DE' : "TURN OF"} ${p2.nickname.toUpperCase()}`}
             </span>
           </div>
 
@@ -1127,7 +1179,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                 onClick={() => handleOpponentZoneClick(null)}
                 className="px-6 py-1.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs uppercase tracking-widest rounded-full shadow-[0_0_25px_rgba(239,68,68,0.9)] border-2 border-yellow-300 animate-bounce flex items-center gap-1.5"
               >
-                <span>⚡</span> ATACAR DIRETAMENTE OS LPs!
+                <span>⚡</span> {languagePt ? 'ATACAR DIRETAMENTE OS LPs!' : 'DIRECT ATTACK LIFE POINTS!'}
               </button>
             )}
 
@@ -1138,14 +1190,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               disabled={!isPlayerTurn || match.isGameOver || match.phase === 'BATTLE'}
               className="px-5 py-1.5 bg-gradient-to-r from-indigo-700 to-purple-800 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-30 text-xs font-bold rounded-lg border border-indigo-400/50 shadow-md transition-all font-serif"
             >
-              Fase de Batalha ⚔️
+              {languagePt ? 'Fase de Batalha ⚔️' : 'Battle Phase ⚔️'}
             </button>
             <button
               onClick={handleEndTurn}
               disabled={!isPlayerTurn || match.isGameOver}
               className="px-5 py-1.5 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 disabled:opacity-30 text-xs font-black rounded-lg border border-amber-400 shadow-md transition-all text-slate-950 font-serif"
             >
-              Encerrar Turno 🛡️
+              {languagePt ? 'Encerrar Turno 🛡️' : 'End Turn 🛡️'}
             </button>
           </div>
         </div>
