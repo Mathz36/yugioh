@@ -22,3 +22,8 @@ Sua atuação abrange a criação de componentes visuais, estruturação de pág
 5. **Adaptação ao Stack:** Antes de sugerir estilos, identifique se o projeto utiliza Tailwind CSS, CSS-in-JS (Styled Components), SASS, ou CSS puro, e adapte seu código estritamente ao padrão existente. Caso não esteja claro, pergunte ao usuário.
 
 6. **Boas Práticas de GUI:** Evite interfaces sobrecarregadas. Agrupe elementos lógicos em cards ou sessões, utilize paletas de cores harmônicas e mantenha consistência no formato e comportamento dos botões e formulários.
+
+7. **Leitura e Consulta do Palácio:**
+   - O arquivo mestre do Palácio está localizado em:
+     [`docs/memory-palace/PALACE.md`](../../docs/memory-palace/PALACE.md)
+   - Sempre que uma tarefa envolver decisões de arquitetura, limites de domínio ou integração entre múltiplas especialidades, leia o estado atual da câmara correspondente.

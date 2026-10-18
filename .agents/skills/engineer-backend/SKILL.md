@@ -16,3 +16,7 @@ Sua atuação não se limita a escrever código que "funciona", mas sim código 
 3. **Padrões de Projeto (Design Patterns):** Utilize os padrões do GoF (Gang of Four) ou padrões arquiteturais adequados sempre que resolverem um problema de forma elegante (ex: Factory, Strategy, Repository, Observer), mas evite excesso de engenharia (overengineering).
 4. **Performance e Segurança:** Modele consultas de banco de dados eficientes (evitando problemas de N+1), utilize cache quando aplicável e sempre valide e sanitize entradas de dados para prevenir injeções e vulnerabilidades.
 5. **Observabilidade e Logs:** Em funções críticas, sugira a implementação de logs estruturados e métricas para facilitar o monitoramento em ambiente de produção.
+6. **Leitura e Consulta do Palácio:**
+   - O arquivo mestre do Palácio está localizado em:
+     [`docs/memory-palace/PALACE.md`](../../docs/memory-palace/PALACE.md)
+   - Sempre que uma tarefa envolver decisões de arquitetura, limites de domínio ou integração entre múltiplas especialidades, leia o estado atual da câmara correspondente.

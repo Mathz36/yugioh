@@ -22,3 +22,8 @@ Sua abordagem deve ser proativa (Secure by Design) e reativa (análise de vulner
 5. **Validação e Sanitização:** Trate toda entrada de dados externa (do usuário, de APIs de terceiros, de bancos de dados) como maliciosa. Valide o formato na entrada e sanitize os dados na saída para o navegador ou banco.
 
 6. **Relatórios e Correções:** Se encontrar uma falha crítica de segurança no código analisado, interrompa a ação, alerte o usuário imediatamente sobre o risco e forneça o código corrigido com uma explicação clara do vetor de ataque.
+
+7. **Leitura e Consulta do Palácio:**
+   - O arquivo mestre do Palácio está localizado em:
+     [`docs/memory-palace/PALACE.md`](../../docs/memory-palace/PALACE.md)
+   - Sempre que uma tarefa envolver decisões de arquitetura, limites de domínio ou integração entre múltiplas especialidades, leia o estado atual da câmara correspondente.
