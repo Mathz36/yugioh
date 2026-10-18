@@ -1,5 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { soundtrackManager } from '../utils/SoundtrackManager';
+import { getUserSettings, UserSettings } from '../utils/settings';
+import { SettingsModal } from './SettingsModal';
 
 interface GameMenuProps {
   userNickname: string;
@@ -8,101 +10,212 @@ interface GameMenuProps {
 }
 
 export const GameMenu: React.FC<GameMenuProps> = ({ userNickname, onPlayVsBot, onLogout }) => {
+  const [settings, setSettings] = useState<UserSettings>(() => getUserSettings(userNickname));
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   useEffect(() => {
+    const currentSettings = getUserSettings(userNickname);
+    setSettings(currentSettings);
+    soundtrackManager.setMuted(currentSettings.soundMuted);
     soundtrackManager.playMenuMusic();
-  }, []);
+  }, [userNickname]);
 
   const handleStartDuel = () => {
     soundtrackManager.unlockAudioContext();
     onPlayVsBot();
   };
-  return (
-    <div className="flex h-screen w-screen max-h-screen bg-[#07060a] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1b0e30] via-[#090710] to-[#030206] select-none text-slate-100 overflow-hidden font-sans items-center justify-center p-4">
-      <div className="w-full max-w-xl bg-[#0e091a]/95 border-2 border-amber-500/70 rounded-3xl p-8 shadow-[0_0_60px_rgba(245,158,11,0.35)] flex flex-col items-center relative overflow-hidden backdrop-blur-md">
-        
-        {/* Adornos místicos de fundo */}
-        <div className="absolute -top-32 -left-32 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -right-32 w-64 h-64 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Emblema do Olho do Milênio */}
-        <div className="flex items-center space-x-3 mb-2">
-          <span className="text-4xl text-amber-400 drop-shadow-[0_0_15px_rgba(245,158,11,0.9)] animate-pulse">
-            𓂀
-          </span>
+  const handleSettingsChanged = (newSettings: UserSettings) => {
+    setSettings(newSettings);
+  };
+
+  const isPt = settings.language === 'pt';
+
+  return (
+    <div className="relative w-screen h-screen overflow-hidden bg-black select-none text-slate-100 font-sans">
+      {/* 1. Background Cinematográfico com Vídeo em Tela Cheia e Realce de Nitidez/Brilho no Dragão */}
+      <video
+        src="/video/banner.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover object-right sm:object-center brightness-125 contrast-115 saturate-125 pointer-events-none"
+      />
+
+      {/* 2. Aura sutil azulada para destacar o Dragão Branco de Olhos Azuis na direita */}
+      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[60vw] h-[80vh] bg-sky-500/10 rounded-full blur-[130px] pointer-events-none" />
+
+      {/* 3. Gradiente restrito apenas à coluna esquerda (deixando o Dragão 100% limpo e em foco à direita) */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.72) 26%, rgba(0,0,0,0.15) 48%, rgba(0,0,0,0) 70%)',
+        }}
+      />
+
+      {/* 4. Coluna Lateral do Menu no Lado Esquerdo */}
+      <aside className="relative z-10 h-full w-full max-w-sm sm:max-w-md flex flex-col justify-between p-6 sm:p-8 overflow-y-auto">
+        
+        {/* Topo: Emblema e Título */}
+        <div className="space-y-4">
+          <div className="flex items-center space-x-3">
+            <span className="text-4xl text-amber-400 drop-shadow-[0_0_15px_rgba(245,158,11,0.9)] animate-pulse">
+              𓂀
+            </span>
+            <div className="h-6 w-[2px] bg-amber-500/40" />
+            <span className="text-xs font-mono tracking-widest text-amber-300/80 uppercase">
+              Duel Monsters
+            </span>
+          </div>
+
+          <div>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black font-serif tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-yellow-500 uppercase drop-shadow-[0_2px_12px_rgba(245,158,11,0.4)]">
+              {isPt ? 'Reino dos' : 'Duelist'}
+              <br />
+              {isPt ? 'Duelistas' : 'Kingdom'}
+            </h1>
+            <p className="text-xs sm:text-sm text-purple-300/80 font-mono tracking-wider mt-2">
+              {isPt ? 'Bem-vindo, Duelista' : 'Welcome, Duelist'}{' '}
+              <span className="text-amber-300 font-bold drop-shadow">[{userNickname}]</span>
+            </p>
+          </div>
         </div>
 
-        <h1 className="text-3xl sm:text-4xl font-black font-serif tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-yellow-500 text-center uppercase">
-          Reino dos Duelistas
-        </h1>
-        <p className="text-xs sm:text-sm text-purple-300/80 font-mono tracking-wider mt-1 mb-8 text-center">
-          Bem-vindo, Duelista <span className="text-amber-300 font-bold">[{userNickname}]</span>
-        </p>
-
-        {/* Grade de Modos de Jogo */}
-        <div className="w-full space-y-4">
+        {/* Centro: Opções Verticais de Console / Arcade */}
+        <nav aria-label="Menu Principal" className="w-full space-y-3 sm:space-y-3.5 my-6 sm:my-8">
           
-          {/* Opção 1: Duelo Solo vs IA (Seto Kaiba Bot) */}
+          {/* Opção 1: ⚔️ Duelo Solo (vs Bot - Seto Kaiba) com Destaque Dourado */}
           <button
             onClick={handleStartDuel}
-            className="w-full p-4 rounded-2xl bg-gradient-to-r from-amber-950/60 via-purple-950/40 to-slate-900 border-2 border-amber-500/80 hover:border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.25)] hover:shadow-[0_0_30px_rgba(245,158,11,0.5)] transition-all group flex items-center justify-between text-left cursor-pointer transform hover:-translate-y-0.5"
+            className="w-full p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-950/70 via-purple-950/50 to-slate-900/90 border-2 border-amber-400 hover:border-yellow-300 shadow-[0_0_25px_rgba(245,158,11,0.35)] hover:shadow-[0_0_40px_rgba(245,158,11,0.6)] transition-all duration-200 group flex items-center justify-between text-left cursor-pointer transform hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.99]"
           >
-            <div className="flex items-center space-x-4">
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center text-2xl shadow-lg border border-amber-300">
-                🤖
+            <div className="flex items-center space-x-3.5">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center text-2xl shadow-lg border border-amber-300 shrink-0 group-hover:rotate-6 transition-transform">
+                ⚔️
               </div>
               <div>
-                <h3 className="text-base font-extrabold text-amber-300 group-hover:text-amber-200 font-serif tracking-wide">
-                  Duelo Solo (vs Bot)
-                </h3>
-                <p className="text-xs text-slate-300/80 mt-0.5">
-                  Desafie a IA de Seto Kaiba com decks clássicos e regras sagradas.
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm sm:text-base font-black text-amber-300 group-hover:text-amber-200 font-serif tracking-wide">
+                    {isPt ? 'Duelo Solo (vs Bot)' : 'Solo Duel (vs Bot)'}
+                  </h2>
+                  <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded bg-amber-500 text-slate-950">
+                    Kaiba
+                  </span>
+                </div>
+                <p className="text-[11px] sm:text-xs text-slate-300/80 mt-0.5 leading-snug">
+                  {isPt
+                    ? 'Desafie a IA de Seto Kaiba com decks clássicos e regras sagradas.'
+                    : 'Challenge Seto Kaiba AI with classic decks and official rules.'}
                 </p>
               </div>
             </div>
-            <span className="text-amber-400 font-bold text-lg group-hover:translate-x-1 transition-transform pr-2">
+            <span className="text-amber-400 font-bold text-lg group-hover:translate-x-1.5 transition-transform pr-1">
               ➔
             </span>
           </button>
 
-          {/* Opção 2: Duelo Online (PvP) - Em Breve */}
-          <div className="w-full p-4 rounded-2xl bg-slate-950/60 border-2 border-purple-900/50 shadow-inner flex items-center justify-between text-left opacity-75 relative overflow-hidden">
-            <div className="flex items-center space-x-4">
-              <div className="w-14 h-14 rounded-xl bg-purple-950/80 border border-purple-700/60 flex items-center justify-center text-2xl text-purple-400">
+          {/* Opção 2: 🌐 Duelo Online (PvP) */}
+          <div className="w-full p-3.5 sm:p-4 rounded-2xl bg-slate-950/70 border border-purple-900/50 flex items-center justify-between text-left opacity-70 hover:opacity-85 transition-opacity">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-purple-950/70 border border-purple-700/50 flex items-center justify-center text-2xl text-purple-300 shrink-0">
                 🌐
               </div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <h3 className="text-base font-extrabold text-slate-300 font-serif tracking-wide">
-                    Duelo Online (PvP)
-                  </h3>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-purple-900/70 text-purple-300 border border-purple-600/40">
-                    Em Breve
+                  <h2 className="text-sm sm:text-base font-bold text-slate-300 font-serif tracking-wide">
+                    {isPt ? 'Duelo Online (PvP)' : 'Online Duel (PvP)'}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-purple-900/80 text-purple-300 border border-purple-600/40">
+                    {isPt ? 'Em Breve' : 'Coming Soon'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400/80 mt-0.5">
-                  Partidas ranqueadas em tempo real contra duelistas ao redor do mundo.
+                <p className="text-[11px] sm:text-xs text-slate-400/80 mt-0.5">
+                  {isPt
+                    ? 'Partidas competitivas em tempo real contra outros duelistas.'
+                    : 'Real-time competitive matches against other duelists.'}
                 </p>
               </div>
             </div>
-            <span className="text-purple-500 font-bold text-sm pr-2">🔒</span>
+            <span className="text-purple-400 text-sm font-bold pr-1">🔒</span>
           </div>
 
-        </div>
+          {/* Opção 3: 🎴 Construtor de Decks */}
+          <div className="w-full p-3.5 sm:p-4 rounded-2xl bg-slate-950/70 border border-purple-900/50 flex items-center justify-between text-left opacity-70 hover:opacity-85 transition-opacity">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-purple-950/70 border border-purple-700/50 flex items-center justify-center text-2xl text-purple-300 shrink-0">
+                🎴
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h2 className="text-sm sm:text-base font-bold text-slate-300 font-serif tracking-wide">
+                    {isPt ? 'Construtor de Decks' : 'Deck Builder'}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-purple-900/80 text-purple-300 border border-purple-600/40">
+                    {isPt ? 'Em Breve' : 'Coming Soon'}
+                  </span>
+                </div>
+                <p className="text-[11px] sm:text-xs text-slate-400/80 mt-0.5">
+                  {isPt
+                    ? 'Monte e customize estratégias com seu catálogo de cartas.'
+                    : 'Build and customize custom strategies with your card catalog.'}
+                </p>
+              </div>
+            </div>
+            <span className="text-purple-400 text-sm font-bold pr-1">🔒</span>
+          </div>
 
-        {/* Rodapé do Menu com Botão de Sair */}
-        <div className="mt-8 w-full flex items-center justify-between pt-4 border-t border-purple-900/50">
-          <span className="text-[11px] text-purple-400/60 font-mono">
-            Modo Competitivo • Regras Clássicas
+          {/* Opção 4: ⚙️ Configurações */}
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="w-full p-3.5 sm:p-4 rounded-2xl bg-slate-950/80 border border-slate-700/70 hover:border-amber-400/80 shadow-md transition-all group flex items-center justify-between text-left cursor-pointer transform hover:-translate-y-0.5"
+          >
+            <div className="flex items-center space-x-3.5">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center text-2xl text-amber-300 shrink-0 group-hover:rotate-45 transition-transform duration-300">
+                ⚙️
+              </div>
+              <div>
+                <h2 className="text-sm sm:text-base font-bold text-slate-200 group-hover:text-amber-300 font-serif tracking-wide transition-colors">
+                  {isPt ? 'Configurações' : 'Settings'}
+                </h2>
+                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
+                  {isPt
+                    ? `Trilha: ${settings.soundMuted ? 'Mutada' : 'Ativa'} • Idioma: ${isPt ? 'PT-BR' : 'EN'}`
+                    : `Music: ${settings.soundMuted ? 'Muted' : 'Active'} • Language: ${isPt ? 'PT-BR' : 'EN'}`}
+                </p>
+              </div>
+            </div>
+            <span className="text-slate-400 group-hover:text-amber-300 font-bold text-lg transition-transform group-hover:translate-x-1 pr-1">
+              ➔
+            </span>
+          </button>
+
+        </nav>
+
+        {/* Rodapé: Botão de Desconectar e Informações */}
+        <footer className="pt-4 border-t border-purple-900/40 flex items-center justify-between">
+          <span className="text-[11px] text-purple-300/60 font-mono">
+            {isPt ? 'Regras Oficiais • Reino dos Duelistas' : 'Official Rules • Duelist Kingdom'}
           </span>
           <button
             onClick={onLogout}
-            className="text-xs text-rose-400 hover:text-rose-300 font-bold uppercase tracking-wider hover:underline transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-rose-400 hover:text-rose-200 hover:bg-rose-950/40 border border-transparent hover:border-rose-900/60 font-bold uppercase tracking-wider transition-all cursor-pointer"
           >
-            Desconectar 🚪
+            <span>🚪</span>
+            <span>{isPt ? 'Desconectar' : 'Disconnect'}</span>
           </button>
-        </div>
+        </footer>
 
-      </div>
+      </aside>
+
+      {/* Modal de Configurações Persistentes */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        userNickname={userNickname}
+        onSettingsChanged={handleSettingsChanged}
+      />
     </div>
   );
 };

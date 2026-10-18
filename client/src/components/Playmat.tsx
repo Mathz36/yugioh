@@ -5,6 +5,8 @@ import { CardInstance, BattlePosition } from '@duel/duel-types';
 import { DuelBot } from '@duel/duel-bot';
 import { soundFX } from '../utils/soundFX';
 import { soundtrackManager } from '../utils/SoundtrackManager';
+import { getUserSettings, UserSettings } from '../utils/settings';
+import { SettingsModal } from './SettingsModal';
 
 export interface PlaymatProps {
   playerNickname?: string;
@@ -55,9 +57,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   } | null>(null);
   const [selectedAttackerZone, setSelectedAttackerZone] = useState<number | null>(null);
   const [inspectedCard, setInspectedCard] = useState<CardInstance | null>(null);
-  const [languagePt, setLanguagePt] = useState<boolean>(true);
+  const [languagePt, setLanguagePt] = useState<boolean>(() => getUserSettings(playerNickname).language === 'pt');
   const [showSurrenderModal, setShowSurrenderModal] = useState<boolean>(false);
-  const [soundMuted, setSoundMuted] = useState<boolean>(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [soundMuted, setSoundMuted] = useState<boolean>(() => getUserSettings(playerNickname).soundMuted);
   const [, setRefreshKey] = useState(0);
 
   // Estados de Animação e VFX Dinâmicos
@@ -272,10 +275,24 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     }
   }, [match.isGameOver, match.winnerPlayerId, p1.id]);
 
+  // Carrega e sincroniza preferências persistentes do usuário
+  useEffect(() => {
+    const persisted = getUserSettings(playerNickname);
+    setSoundMuted(persisted.soundMuted);
+    setLanguagePt(persisted.language === 'pt');
+    soundtrackManager.setMuted(persisted.soundMuted);
+  }, [playerNickname]);
+
   // Controle de Mute
   useEffect(() => {
     soundtrackManager.setMuted(soundMuted);
   }, [soundMuted]);
+
+  const handleSettingsChangedInPlaymat = (newSettings: UserSettings) => {
+    setSoundMuted(newSettings.soundMuted);
+    setLanguagePt(newSettings.language === 'pt');
+    soundtrackManager.setMuted(newSettings.soundMuted);
+  };
 
   // Efeito da Contagem Regressiva de 5 segundos
   useEffect(() => {
@@ -1488,38 +1505,20 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             
             <div className="flex items-center space-x-1.5">
               <button
-                onClick={() => {
-                  soundtrackManager.unlockAudioContext();
-                  const nextMuted = !soundMuted;
-                  setSoundMuted(nextMuted);
-                  if (!nextMuted) {
-                    soundtrackManager.playMatchMusic();
-                  }
-                }}
-                className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider border transition-colors ${
-                  soundMuted
-                    ? 'bg-slate-900 border-slate-700 text-slate-400'
-                    : 'bg-amber-950/80 border-amber-500/70 hover:border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.3)]'
-                }`}
-                title={soundMuted ? 'Desmutar Trilha Sonora' : 'Mutar Trilha Sonora'}
+                onClick={() => setIsSettingsModalOpen(true)}
+                className="w-7 h-7 rounded-lg bg-purple-950/80 border border-purple-500/50 hover:border-amber-400 text-amber-300 hover:text-amber-200 flex items-center justify-center text-xs transition-colors shadow-sm cursor-pointer"
+                title={languagePt ? 'Configurações de Áudio e Idioma' : 'Audio and Language Settings'}
+                aria-label={languagePt ? 'Abrir Configurações' : 'Open Settings'}
               >
-                {soundMuted ? '🔇 Trilha' : '🎵 Trilha'}
+                ⚙️
               </button>
 
               <button
-                onClick={() => setLanguagePt(!languagePt)}
-                className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-purple-950/80 border border-purple-500/50 hover:border-amber-400 text-amber-300 transition-colors"
-                title="Alternar idioma das cartas e do chat"
-              >
-                {languagePt ? '🇧🇷 PT-BR' : '🇺🇸 EN'}
-              </button>
-              
-              <button
                 onClick={() => setShowSurrenderModal(true)}
-                className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-red-950/80 border border-red-500/50 hover:border-red-400 text-red-300 transition-colors"
-                title="Sair ou Render-se do Duelo"
+                className="px-2.5 py-1 rounded text-[10px] font-bold tracking-wider bg-red-950/80 border border-red-500/50 hover:border-red-400 text-red-300 transition-colors cursor-pointer"
+                title={languagePt ? 'Sair ou Render-se do Duelo' : 'Surrender or Exit Duel'}
               >
-                🏳️ Sair
+                🏳️ {languagePt ? 'Sair' : 'Exit'}
               </button>
             </div>
           </div>
@@ -2552,6 +2551,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             </div>
           </div>
         )}
+
+        {/* Modal de Configurações Persistentes da Mesa de Duelo */}
+        <SettingsModal
+          isOpen={isSettingsModalOpen}
+          onClose={() => setIsSettingsModalOpen(false)}
+          userNickname={playerNickname}
+          onSettingsChanged={handleSettingsChangedInPlaymat}
+        />
       </main>
     </div>
   );
