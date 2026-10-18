@@ -21,6 +21,21 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const opponentZoneRefs = useRef<(HTMLDivElement | null)[]>([]);
   const playerLpRef = useRef<HTMLDivElement | null>(null);
   const opponentLpRef = useRef<HTMLDivElement | null>(null);
+  const activeTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const scheduleTimer = (callback: () => void, delayMs: number) => {
+    const id = setTimeout(() => {
+      activeTimersRef.current = activeTimersRef.current.filter((t) => t !== id);
+      callback();
+    }, delayMs);
+    activeTimersRef.current.push(id);
+    return id;
+  };
+
+  const clearAllTimers = () => {
+    activeTimersRef.current.forEach((id) => clearTimeout(id));
+    activeTimersRef.current = [];
+  };
 
   // Modais e Estados Visuais
   const [countdown, setCountdown] = useState<number | null>(5); // Contagem regressiva inicial de 5s
@@ -56,6 +71,17 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const [targetHitZone, setTargetHitZone] = useState<{ isPlayer: boolean; zoneIndex: number | null } | null>(null);
   const [destroyedCardUids, setDestroyedCardUids] = useState<string[]>([]);
   const [floatingDamage, setFloatingDamage] = useState<{ amount: number; isPlayer: boolean; zoneIndex: number | null } | null>(null);
+
+  // Dispara a animação visual de destruição de cartas e limpa automaticamente após 600ms,
+  // garantindo que nenhuma carta fique presa invisível (opacity: 0) no tabuleiro
+  const triggerCardDestruction = (uids: string | string[]) => {
+    const list = Array.isArray(uids) ? uids : [uids];
+    if (list.length === 0) return;
+    setDestroyedCardUids((prev) => [...prev, ...list]);
+    setTimeout(() => {
+      setDestroyedCardUids((prev) => prev.filter((id) => !list.includes(id)));
+    }, 600);
+  };
   const [isCameraShaking, setIsCameraShaking] = useState<boolean>(false);
   const [recentDrawnUids, setRecentDrawnUids] = useState<string[]>([]);
   const [flippedZones, setFlippedZones] = useState<{ isPlayer: boolean; zoneIndex: number }[]>([]);
@@ -230,6 +256,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     soundtrackManager.playMatchMusic();
 
     return () => {
+      clearAllTimers();
       soundtrackManager.stopCurrentMusic();
     };
   }, []);
@@ -289,24 +316,57 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     forceUpdate();
 
     // Executa a IA do Bot com feedback visual e tempos reais
-    setTimeout(() => {
+    scheduleTimer(() => {
       const bot = session.getActivePlayer();
       const opponent = session.getOpponentPlayer();
       if (session.matchState.isGameOver) return;
 
-      // 1. Bot Summon com animação de Slam
+      // 1a. Bot avalia e ativa Magias / posiciona Armadilhas antes de invocar
+      DuelBot.evaluateAndPlaySpellsAndTraps(session);
+      forceUpdate();
+      if (session.matchState.isGameOver) return;
+
+      // 1b. Bot Summon com animação de Slam
       if (!bot.hasNormalSummonedThisTurn) {
         const summonResult = DuelBot.evaluateAndSummon(session);
         if (summonResult) {
           soundFX.playPlaceCard();
           setSlamZone({ isPlayer: false, zoneIndex: summonResult.zoneIndex });
-          setTimeout(() => setSlamZone(null), 500);
+          scheduleTimer(() => setSlamZone(null), 500);
+
+          // Verifica se o Jogador possui Trap Hole (Buraco Armadilha) armada contra a invocação do Bot
+          if (!summonResult.summonedCard.isFaceDown) {
+            const summonedUid = summonResult.summonedCard.uid;
+            const summonedName =
+              languagePt && summonResult.summonedCard.data.namePt
+                ? summonResult.summonedCard.data.namePt
+                : summonResult.summonedCard.data.name;
+            const trapTriggered = DuelBot.tryActivateTrapHoleOnSummon(
+              session,
+              p1.id,
+              summonResult.zoneIndex
+            );
+            if (trapTriggered) {
+              soundFX.playDestruction();
+              triggerCardDestruction(summonedUid);
+              showNotification(
+                languagePt
+                  ? `🕳️ Buraco Armadilha ativado! ${summonedName} foi destruído!`
+                  : `🕳️ Trap Hole activated! ${summonedName} was destroyed!`
+              );
+            }
+          }
           forceUpdate();
         }
       }
 
+      // 1c. Reavalia Magias/Armadilhas pós-invocação
+      DuelBot.evaluateAndPlaySpellsAndTraps(session);
+      forceUpdate();
+      if (session.matchState.isGameOver) return;
+
       // 2. Transição para Battle Phase
-      setTimeout(() => {
+      scheduleTimer(() => {
         session.nextPhase(); // Move to BATTLE
         forceUpdate();
 
@@ -343,18 +403,18 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           // Animação de investida do Bot (Lunge) com vetor direcional exato
           setLungingZone({ isPlayer: false, zoneIndex: attacker.index, deltaX, deltaY });
 
-          setTimeout(() => {
+          scheduleTimer(() => {
             soundFX.playAttackStrike();
             setIsCameraShaking(true);
-            setTimeout(() => setIsCameraShaking(false), 280);
+            scheduleTimer(() => setIsCameraShaking(false), 280);
 
             const finishBotTurn = () => {
-              setTimeout(() => {
+              scheduleTimer(() => {
                 setLungingZone(null);
                 forceUpdate();
 
                 // 3. Fim do turno do Bot, retornando ao jogador
-                setTimeout(() => {
+                scheduleTimer(() => {
                   session.nextPhase(); // MAIN2
                   session.nextPhase(); // END -> Turno do Jogador
                   showNotification(`⚔️ É a vez de ${p1.nickname} duelar!`);
@@ -364,7 +424,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   if (lastCard) {
                     soundFX.playDrawCard();
                     setRecentDrawnUids([lastCard.uid]);
-                    setTimeout(() => setRecentDrawnUids([]), 900);
+                    scheduleTimer(() => setRecentDrawnUids([]), 900);
                   }
                 }, 600);
               }, 540);
@@ -372,7 +432,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
             const executePlayerDamageOrKuriboh = (
               dmgAmount: number,
-              onDamageConfirmed: () => void
+              onDamageConfirmed: () => void,
+              onShieldedAttack: () => void
             ) => {
               if (dmgAmount > 0 && session.canActivateKuriboh(p1.id)) {
                 setKuribohPrompt({
@@ -382,7 +443,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     soundFX.playMagicShield();
                     showNotification('🛡️ Kuriboh absorveu todo o dano do ataque!');
                     setKuribohPrompt(null);
-                    // Dano zerado: não deduz LP do jogador
+                    // Executa o combate no motor (destruindo monstro se houver), com dano zerado pelo escudo do Kuriboh
+                    onShieldedAttack();
                     finishBotTurn();
                   },
                   onDecline: () => {
@@ -400,14 +462,20 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             if (opponentMonsters.length === 0) {
               // Ataque Direto nos LPs do Jogador!
               setTargetHitZone({ isPlayer: true, zoneIndex: null });
-              setTimeout(() => setTargetHitZone(null), 500);
+              scheduleTimer(() => setTargetHitZone(null), 500);
               const dmg = session.getEffectiveAttack(attacker.card, bot, opponent);
 
-              executePlayerDamageOrKuriboh(dmg, () => {
-                setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: null });
-                setTimeout(() => setFloatingDamage(null), 1200);
-                session.declareAttack(attacker.index, null);
-              });
+              executePlayerDamageOrKuriboh(
+                dmg,
+                () => {
+                  setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: null });
+                  scheduleTimer(() => setFloatingDamage(null), 1200);
+                  session.declareAttack(attacker.index, null);
+                },
+                () => {
+                  session.declareAttack(attacker.index, null);
+                }
+              );
             } else {
               // Encontra melhor alvo vulnerável considerando ATK efetivo
               const target =
@@ -421,17 +489,16 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                 }) || opponentMonsters[0];
 
               setTargetHitZone({ isPlayer: true, zoneIndex: target.index });
-              setTimeout(() => setTargetHitZone(null), 500);
+              scheduleTimer(() => setTargetHitZone(null), 500);
 
               const attackerEffAtk = session.getEffectiveAttack(attacker.card, bot, opponent);
               const defenderEffAtk = session.getEffectiveAttack(target.card, opponent, bot);
 
-              // Se a carta do jogador estava virada para baixo, revela e aciona animação 3D de flip
+              // Checa se a carta do jogador estava virada para baixo antes de revelar
               const wasFaceDown = Boolean(target.card.isFaceDown);
               if (wasFaceDown) {
-                target.card.isFaceDown = false;
                 setFlippedZones((prev) => [...prev, { isPlayer: true, zoneIndex: target.index }]);
-                setTimeout(() => {
+                scheduleTimer(() => {
                   setFlippedZones((prev) => prev.filter((z) => !(z.isPlayer && z.zoneIndex === target.index)));
                 }, 450);
               }
@@ -441,15 +508,41 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               // Checa se o alvo em DEFENSE possui Efeito FLIP (apenas se estava virado para baixo)
               if (isTargetFlipDefense) {
                 const flipName = (languagePt && target.card.data.namePt) ? target.card.data.namePt : target.card.data.name;
+                const attackerName = (languagePt && attacker.card.data.namePt) ? attacker.card.data.namePt : attacker.card.data.name;
                 const action = target.card.data.effectDefinition?.action;
                 setFlipEffectBanner({ cardName: flipName, action: action || 'FLIP' });
-                setTimeout(() => setFlipEffectBanner(null), 2500);
+                scheduleTimer(() => setFlipEffectBanner(null), 2500);
 
                 if (action === 'DESTROY_MONSTER') {
-                  setDestroyedCardUids((prev) => [...prev, attacker.card.uid]);
+                  showNotification(
+                    languagePt
+                      ? `🪲 CONTRA-ATAQUE FLIP! ${flipName} destruiu ${attackerName}!`
+                      : `🪲 FLIP COUNTER-ATTACK! ${flipName} destroyed ${attackerName}!`
+                  );
                   soundFX.playDestruction();
+                  setIsCameraShaking(true);
+                  scheduleTimer(() => setIsCameraShaking(false), 400);
+                  triggerCardDestruction(attacker.card.uid);
+
+                  scheduleTimer(() => {
+                    session.declareAttack(attacker.index, target.index);
+                    finishBotTurn();
+                    forceUpdate();
+                  }, 650);
+                  return;
                 } else if (action === 'RETURN_TO_HAND') {
+                  showNotification(
+                    languagePt
+                      ? `🐧 CONTRA-ATAQUE FLIP! ${flipName} devolveu ${attackerName} para a mão!`
+                      : `🐧 FLIP COUNTER-ATTACK! ${flipName} returned ${attackerName} to hand!`
+                  );
                   soundFX.playReturnToHand();
+                  scheduleTimer(() => {
+                    session.declareAttack(attacker.index, target.index);
+                    finishBotTurn();
+                    forceUpdate();
+                  }, 650);
+                  return;
                 }
 
                 // O efeito FLIP interrompe o ataque antes do cálculo de dano/destruição:
@@ -463,37 +556,43 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               if (target.card.position === 'ATTACK') {
                 if (attackerEffAtk > defenderEffAtk) {
                   const dmg = attackerEffAtk - defenderEffAtk;
-                  setDestroyedCardUids((prev) => [...prev, target.card.uid]);
+                  triggerCardDestruction(target.card.uid);
                   soundFX.playDestruction();
 
-                  executePlayerDamageOrKuriboh(dmg, () => {
-                    setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: target.index });
-                    setTimeout(() => setFloatingDamage(null), 1200);
-                    session.declareAttack(attacker.index, target.index);
-                  });
+                  executePlayerDamageOrKuriboh(
+                    dmg,
+                    () => {
+                      setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: target.index });
+                      scheduleTimer(() => setFloatingDamage(null), 1200);
+                      session.declareAttack(attacker.index, target.index);
+                    },
+                    () => {
+                      session.declareAttack(attacker.index, target.index);
+                    }
+                  );
                 } else if (attackerEffAtk < defenderEffAtk) {
                   const dmg = defenderEffAtk - attackerEffAtk;
-                  setDestroyedCardUids((prev) => [...prev, attacker.card.uid]);
+                  triggerCardDestruction(attacker.card.uid);
                   soundFX.playDestruction();
                   setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: attacker.index });
-                  setTimeout(() => setFloatingDamage(null), 1200);
+                  scheduleTimer(() => setFloatingDamage(null), 1200);
                   session.declareAttack(attacker.index, target.index);
                   finishBotTurn();
                 } else {
                   // Empate
-                  setDestroyedCardUids((prev) => [...prev, attacker.card.uid, target.card.uid]);
+                  triggerCardDestruction([attacker.card.uid, target.card.uid]);
                   soundFX.playDestruction();
                   session.declareAttack(attacker.index, target.index);
                   finishBotTurn();
                 }
               } else if (target.card.position === 'DEFENSE') {
                 if (attackerEffAtk > target.card.data.defense) {
-                  setDestroyedCardUids((prev) => [...prev, target.card.uid]);
+                  triggerCardDestruction(target.card.uid);
                   soundFX.playDestruction();
                 } else if (attackerEffAtk < target.card.data.defense) {
                   const dmg = target.card.data.defense - attackerEffAtk;
                   setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: attacker.index });
-                  setTimeout(() => setFloatingDamage(null), 1200);
+                  scheduleTimer(() => setFloatingDamage(null), 1200);
                 }
                 session.declareAttack(attacker.index, target.index);
                 finishBotTurn();
@@ -504,7 +603,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           }, 280);
         } else {
           // Sem ataques, passa o turno de volta
-          setTimeout(() => {
+          scheduleTimer(() => {
             session.nextPhase(); // MAIN2
             session.nextPhase(); // END -> Turno do Jogador
             showNotification(`⚔️ É a vez de ${p1.nickname} duelar!`);
@@ -514,12 +613,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             if (lastCard) {
               soundFX.playDrawCard();
               setRecentDrawnUids([lastCard.uid]);
-              setTimeout(() => setRecentDrawnUids([]), 900);
+              scheduleTimer(() => setRecentDrawnUids([]), 900);
             }
           }, 600);
         }
-      }, 600);
-    }, 700);
+      }, 950);
+    }, 950);
   };
 
   const handleSelectHandCard = (card: CardInstance) => {
@@ -632,10 +731,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     // 2. Mudança de Posição Ilimitada ao Clicar na Carta (Apenas na Fase Principal)
     if (match.phase === 'MAIN1' || match.phase === 'MAIN2') {
       if (selectedHandCardUid === null && selectedAttackerZone === null) {
-        // Trava visual se foi baixado/invocado no mesmo turno
+        // Trava de Flip: Um monstro baixado virado para baixo não pode ser virado no mesmo turno
         if (
-          currentMonster.turnSummoned === match.currentTurn ||
-          (currentMonster.turnSet !== undefined && currentMonster.turnSet === match.currentTurn)
+          currentMonster.isFaceDown &&
+          currentMonster.turnSet !== undefined &&
+          currentMonster.turnSet === match.currentTurn
         ) {
           showNotification(
             languagePt
@@ -656,8 +756,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         const opponentMonsterCount = p2.monsterZones.filter((m) => m !== null).length;
         const cardDisplayName = (languagePt && currentMonster.data.namePt) ? currentMonster.data.namePt : currentMonster.data.name;
 
-        if (isManEater && opponentMonsterCount > 1) {
-          // Man-Eater Bug mira 1 monstro se houver > 1
+        if (isManEater && opponentMonsterCount >= 1) {
+          // Man-Eater Bug mira 1 monstro sempre que houver pelo menos 1 monstro no campo do adversário
           setTacticalTargetSelection({
             zoneIndex,
             cardName: cardDisplayName,
@@ -673,13 +773,13 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           return;
         }
 
-        if (isPenguin && opponentMonsterCount > 2) {
-          // Penguin Soldier mira até 2 monstros se houver > 2
+        if (isPenguin && opponentMonsterCount >= 1) {
+          // Penguin Soldier mira até 2 monstros sempre que houver pelo menos 1 monstro no campo do adversário
           setTacticalTargetSelection({
             zoneIndex,
             cardName: cardDisplayName,
             action: 'RETURN_TO_HAND',
-            maxTargets: 2,
+            maxTargets: Math.min(2, opponentMonsterCount),
             selectedUids: [],
           });
           showNotification(
@@ -735,7 +835,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           soundFX.playDestruction();
           const targetUids = posResult.flipEffect.targetCardUids || (posResult.flipEffect.targetCardUid ? [posResult.flipEffect.targetCardUid] : []);
           if (targetUids.length > 0) {
-            setDestroyedCardUids((prev) => [...prev, ...targetUids]);
+            triggerCardDestruction(targetUids);
           }
           if (posResult.flipEffect.targetName) {
             showNotification(
@@ -785,7 +885,31 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       // 1. VFX de Posicionamento: Card Slam e Som de Impacto
       soundFX.playPlaceCard();
       setSlamZone({ isPlayer: true, zoneIndex });
-      setTimeout(() => setSlamZone(null), 500);
+      scheduleTimer(() => setSlamZone(null), 500);
+
+      // 2. Verifica se o Bot possui Trap Hole (Buraco Armadilha) armada contra a Invocação Normal aberta do Jogador
+      if (!isFaceDown) {
+        const summonedCard = p1.monsterZones[zoneIndex];
+        if (summonedCard) {
+          const summonedUid = summonedCard.uid;
+          const summonedName =
+            languagePt && summonedCard.data.namePt
+              ? summonedCard.data.namePt
+              : summonedCard.data.name;
+          const trapTriggered = DuelBot.tryActivateTrapHoleOnSummon(session, p2.id, zoneIndex);
+          if (trapTriggered) {
+            soundFX.playDestruction();
+            setIsCameraShaking(true);
+            scheduleTimer(() => setIsCameraShaking(false), 400);
+            triggerCardDestruction(summonedUid);
+            showNotification(
+              languagePt
+                ? `🕳️ ARMADILHA DO OPONENTE! Buraco Armadilha destruiu ${summonedName}!`
+                : `🕳️ OPPONENT TRAP! Trap Hole destroyed ${summonedName}!`
+            );
+          }
+        }
+      }
 
       forceUpdate();
     } else {
@@ -917,7 +1041,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       p2.monsterZones.forEach((m) => m && allMonsterUids.push(m.uid));
 
       if (allMonsterUids.length > 0) {
-        setDestroyedCardUids((prev) => [...prev, ...allMonsterUids]);
+        triggerCardDestruction(allMonsterUids);
       }
       soundFX.playDestruction();
       setIsCameraShaking(true);
@@ -1069,7 +1193,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           setTimeout(() => setFlipEffectBanner(null), 2500);
 
           if (action === 'DESTROY_MONSTER') {
-            setDestroyedCardUids((prev) => [...prev, attackingCard.uid]);
+            triggerCardDestruction(attackingCard.uid);
             soundFX.playDestruction();
           } else if (action === 'RETURN_TO_HAND') {
             soundFX.playReturnToHand();
@@ -1085,21 +1209,21 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         if (defendingCard.position === 'ATTACK') {
           if (attackerEffAtk > defenderEffAtk) {
             dmg = attackerEffAtk - defenderEffAtk;
-            setDestroyedCardUids((prev) => [...prev, defendingCard.uid]);
+            triggerCardDestruction(defendingCard.uid);
             soundFX.playDestruction();
           } else if (attackerEffAtk < defenderEffAtk) {
             dmg = defenderEffAtk - attackerEffAtk;
-            setDestroyedCardUids((prev) => [...prev, attackingCard.uid]);
+            triggerCardDestruction(attackingCard.uid);
             soundFX.playDestruction();
           } else {
             // Empate
-            setDestroyedCardUids((prev) => [...prev, attackingCard.uid, defendingCard.uid]);
+            triggerCardDestruction([attackingCard.uid, defendingCard.uid]);
             soundFX.playDestruction();
           }
         } else {
           // DEFENSE
           if (attackerEffAtk > defendingCard.data.defense) {
-            setDestroyedCardUids((prev) => [...prev, defendingCard.uid]);
+            triggerCardDestruction(defendingCard.uid);
             soundFX.playDestruction();
           } else if (attackerEffAtk < defendingCard.data.defense) {
             dmg = defendingCard.data.defense - attackerEffAtk;
@@ -1151,14 +1275,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         setIsCameraShaking(true);
         setTimeout(() => setIsCameraShaking(false), 350);
 
-        setDestroyedCardUids((prev) => [...prev, ...result.destroyedUids]);
+        triggerCardDestruction(result.destroyedUids);
         showNotification(languagePt ? '⚡ TEMPO ACELERADO! O oponente teve seu campo destruído!' : '⚡ TIME ACCELERATED! Opponent field was destroyed!');
       } else {
         soundFX.playDestruction();
         setIsCameraShaking(true);
         setTimeout(() => setIsCameraShaking(false), 350);
 
-        setDestroyedCardUids((prev) => [...prev, ...result.destroyedUids]);
+        triggerCardDestruction(result.destroyedUids);
         if (result.burnDamage > 0) {
           setFloatingDamage({ amount: result.burnDamage, isPlayer: true, zoneIndex: null });
           setTimeout(() => setFloatingDamage(null), 1400);
@@ -1177,6 +1301,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
   // Desistir / Sair da Partida
   const handleConfirmSurrender = () => {
+    clearAllTimers();
     session.surrender(p1.id);
     setShowSurrenderModal(false);
     forceUpdate();
@@ -1186,11 +1311,20 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   };
 
   const handleResetMatch = () => {
+    clearAllTimers();
     soundtrackManager.playMatchMusic();
     setSession(new DuelMatchSession(playerNickname, createYugiDeck(), 'Seto Kaiba (Bot)', createKaibaDeck()));
     setSelectedHandCardUid(null);
     setSelectedAttackerZone(null);
     setPendingSummonZone(null);
+    setSelectedTributeZones([]);
+    setSummonChoiceModal(null);
+    setSpellChoiceModal(null);
+    setKuribohPrompt(null);
+    setLungingZone(null);
+    setSlamZone(null);
+    setTargetHitZone(null);
+    setFloatingDamage(null);
     setCountdown(5);
     forceUpdate();
   };
@@ -1832,16 +1966,25 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           {tacticalTargetSelection && (
             <div className="flex items-center gap-2 animate-fadeIn">
               <button
-                onClick={() =>
+                disabled={tacticalTargetSelection.selectedUids.length === 0}
+                onClick={() => {
+                  if (tacticalTargetSelection.selectedUids.length === 0) {
+                    showNotification(
+                      languagePt
+                        ? '⚠️ Clique em um monstro com o selo "ESCOLHER ALVO" para selecionar!'
+                        : '⚠️ Click an opponent monster with the "SELECT TARGET" badge!'
+                    );
+                    return;
+                  }
                   executeFlipPositionChange(
                     tacticalTargetSelection.zoneIndex,
                     tacticalTargetSelection.selectedUids
-                  )
-                }
+                  );
+                }}
                 className={`px-4 sm:px-5 py-1 text-xs font-black uppercase tracking-wider rounded-full shadow-lg transition-all flex items-center gap-1.5 border ${
                   tacticalTargetSelection.selectedUids.length > 0
-                    ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-600 hover:from-cyan-400 hover:to-blue-400 text-slate-950 border-cyan-200 shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-pulse'
-                    : 'bg-cyan-950/90 text-cyan-200 border-cyan-500/50 hover:bg-cyan-900'
+                    ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-600 hover:from-cyan-400 hover:to-blue-400 text-slate-950 border-cyan-200 shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-pulse cursor-pointer'
+                    : 'bg-slate-900/90 text-cyan-400/60 border-cyan-500/30 cursor-not-allowed opacity-75'
                 }`}
               >
                 <span>{tacticalTargetSelection.action === 'DESTROY_MONSTER' ? '🪲' : '🐧'}</span>
@@ -1851,8 +1994,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                       ? `Confirmar ${tacticalTargetSelection.action === 'DESTROY_MONSTER' ? 'Destruição' : 'Retorno'} (${tacticalTargetSelection.selectedUids.length})`
                       : `Confirm ${tacticalTargetSelection.action === 'DESTROY_MONSTER' ? 'Destruction' : 'Return'} (${tacticalTargetSelection.selectedUids.length})`
                     : languagePt
-                    ? 'Confirmar Alvo Mais Forte'
-                    : 'Confirm Strongest Target'}
+                    ? 'Escolha o Alvo Acima'
+                    : 'Select Target Above'}
                 </span>
               </button>
 

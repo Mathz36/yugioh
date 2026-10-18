@@ -18,6 +18,7 @@ export class DuelMatchSession {
   public player1: PlayerDuelState;
   public player2: PlayerDuelState;
   private instanceCounter = 0;
+  private pendingDamageShieldForPlayerId: string | null = null;
 
   constructor(
     p1Name: string,
@@ -187,6 +188,11 @@ export class DuelMatchSession {
     const isSpellOrTrap = typeLower.includes('spell') || typeLower.includes('mágica') || typeLower.includes('trap') || typeLower.includes('armadilha');
     if (isSpellOrTrap) {
       this.log('Apenas Cartas de Monstro podem ser invocadas.');
+      return false;
+    }
+
+    if (typeof card.data.level !== 'number' || card.data.level < 1) {
+      this.log('Nível de monstro inválido.');
       return false;
     }
 
@@ -699,12 +705,13 @@ export class DuelMatchSession {
     let effectiveAtk = cardInstance.data.attack;
 
     // Efeito CONTINUOUS delegado aos ACTION_HANDLERS (ex: BOOST_ATK)
-    if (
-      cardInstance.data.effectType === 'CONTINUOUS' ||
+    const isBoostAtkEffect =
       cardInstance.data.effectDefinition?.action === 'BOOST_ATK' ||
-      cardInstance.data.id === '78193831' ||
-      cardInstance.data.name.toLowerCase().includes('buster blader')
-    ) {
+      (!cardInstance.data.effectDefinition &&
+        (cardInstance.data.id === '78193831' ||
+          cardInstance.data.name.toLowerCase().includes('buster blader')));
+
+    if (isBoostAtkEffect) {
       const res = ACTION_HANDLERS.BOOST_ATK({
         cardInstance,
         player: owner,
@@ -754,6 +761,10 @@ export class DuelMatchSession {
       opponent: this.getOpponentPlayer(),
       logFn: (msg) => this.log(msg),
     });
+
+    if (res.prevented) {
+      this.pendingDamageShieldForPlayerId = player.id;
+    }
 
     return res.prevented;
   }
@@ -889,11 +900,22 @@ export class DuelMatchSession {
         return false;
       }
 
-      const damage = attackerEffectiveAtk;
-      defenderPlayer.lifePoints = Math.max(0, defenderPlayer.lifePoints - damage);
+      const isShielded = this.pendingDamageShieldForPlayerId === defenderPlayer.id;
+      if (isShielded) {
+        this.pendingDamageShieldForPlayerId = null;
+      }
+
+      const damage = isShielded ? 0 : attackerEffectiveAtk;
+      if (damage > 0) {
+        defenderPlayer.lifePoints = Math.max(0, defenderPlayer.lifePoints - damage);
+      }
       attackingCard.hasAttacked = true;
       attackingCard.hasAttackedDirectly = true;
-      this.log(`⚔️ ATAQUE DIRETO! ${attackerName} atacou diretamente causando ${damage} de dano!`);
+      if (isShielded) {
+        this.log(`⚔️ ATAQUE DIRETO! ${attackerName} atacou diretamente, mas o dano de batalha foi reduzido a 0 por Kuriboh!`);
+      } else {
+        this.log(`⚔️ ATAQUE DIRETO! ${attackerName} atacou diretamente causando ${damage} de dano!`);
+      }
 
       if (defenderPlayer.lifePoints <= 0) {
         this.declareGameOver(attackerPlayer.id, `Os Pontos de Vida de ${defenderPlayer.nickname} chegaram a 0!`);
@@ -972,6 +994,7 @@ export class DuelMatchSession {
     // Se o efeito FLIP destruiu ou devolveu o monstro atacante para a mão:
     // INTERROMPE o ataque imediatamente: o defensor permanece vivo e não sofre dano de batalha
     if (attackerRemovedByFlip) {
+      this.pendingDamageShieldForPlayerId = null;
       attackingCard.hasAttacked = true;
       return true;
     }
@@ -1011,15 +1034,26 @@ export class DuelMatchSession {
     }
 
     if (result.attackerDamageTaken > 0) {
-      attackerPlayer.lifePoints = Math.max(0, attackerPlayer.lifePoints - result.attackerDamageTaken);
-      this.log(`🩸 ${attackerPlayer.nickname} recebeu ${result.attackerDamageTaken} de dano de batalha!`);
+      if (this.pendingDamageShieldForPlayerId === attackerPlayer.id) {
+        this.pendingDamageShieldForPlayerId = null;
+        this.log(`🛡️ O dano de batalha contra ${attackerPlayer.nickname} foi reduzido a 0 por Kuriboh!`);
+      } else {
+        attackerPlayer.lifePoints = Math.max(0, attackerPlayer.lifePoints - result.attackerDamageTaken);
+        this.log(`🩸 ${attackerPlayer.nickname} recebeu ${result.attackerDamageTaken} de dano de batalha!`);
+      }
     }
 
     if (result.defenderDamageTaken > 0) {
-      defenderPlayer.lifePoints = Math.max(0, defenderPlayer.lifePoints - result.defenderDamageTaken);
-      this.log(`🩸 ${defenderPlayer.nickname} recebeu ${result.defenderDamageTaken} de dano de batalha!`);
+      if (this.pendingDamageShieldForPlayerId === defenderPlayer.id) {
+        this.pendingDamageShieldForPlayerId = null;
+        this.log(`🛡️ O dano de batalha contra ${defenderPlayer.nickname} foi reduzido a 0 por Kuriboh!`);
+      } else {
+        defenderPlayer.lifePoints = Math.max(0, defenderPlayer.lifePoints - result.defenderDamageTaken);
+        this.log(`🩸 ${defenderPlayer.nickname} recebeu ${result.defenderDamageTaken} de dano de batalha!`);
+      }
     }
 
+    this.pendingDamageShieldForPlayerId = null;
     attackingCard.hasAttacked = true;
 
     if (attackerPlayer.lifePoints <= 0) {
@@ -1039,6 +1073,7 @@ export class DuelMatchSession {
 
   public endTurn(): void {
     if (this.matchState.isGameOver) return;
+    this.pendingDamageShieldForPlayerId = null;
 
     // Reset flags de turno
     const player = this.getActivePlayer();

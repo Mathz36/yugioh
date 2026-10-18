@@ -4,7 +4,7 @@ import { CardInstance } from './duel-types.js';
 export class DuelBot {
   /**
    * Executes a full AI bot turn automatically:
-   * 1. Evaluates hand and summons the strongest possible monster (Main Phase 1)
+   * 1. Evaluates hand, activates tactical Spells, sets Traps, and summons the strongest possible monster (Main Phase 1)
    * 2. Transitions to Battle Phase and attacks optimal targets or direct attacks
    * 3. Transitions to Main Phase 2 / End Phase
    */
@@ -12,17 +12,24 @@ export class DuelBot {
     if (session.matchState.isGameOver) return;
 
     const bot = session.getActivePlayer();
-    const opponent = session.getOpponentPlayer();
 
     // Ensure we are in MAIN1
     if (session.matchState.phase !== 'MAIN1') {
       session.matchState.phase = 'MAIN1';
     }
 
-    // 1. Main Phase 1: Try to Summon
+    // 1a. Main Phase 1: Evaluate and play Spells/Traps before summoning
+    this.evaluateAndPlaySpellsAndTraps(session);
+    if (session.matchState.isGameOver) return;
+
+    // 1b. Main Phase 1: Try to Summon
     if (!bot.hasNormalSummonedThisTurn) {
       this.evaluateAndSummon(session);
     }
+
+    // 1c. Re-evaluate Spells/Traps after Pot of Greed draws or post-summon state
+    this.evaluateAndPlaySpellsAndTraps(session);
+    if (session.matchState.isGameOver) return;
 
     // 2. Battle Phase
     const currentPhase = session.nextPhase();
@@ -36,6 +43,108 @@ export class DuelBot {
     session.nextPhase(); // End turn, passing back to user
   }
 
+  /**
+   * Evaluates and plays Spells (Pot of Greed, Dark Hole, Fissure) and sets Traps (Trap Hole) during Main Phase.
+   */
+  public static evaluateAndPlaySpellsAndTraps(session: DuelMatchSession): void {
+    if (session.matchState.isGameOver) return;
+    if (session.matchState.phase !== 'MAIN1' && session.matchState.phase !== 'MAIN2') return;
+
+    const bot = session.getActivePlayer();
+    const opponent = session.getOpponentPlayer();
+
+    // 1. Activate Pot of Greed (DRAW_CARDS) first to maximize options
+    let potCard = bot.hand.find(
+      (c) =>
+        c.data.effectDefinition?.action === 'DRAW_CARDS' ||
+        c.data.id === '55144522'
+    );
+    while (potCard && bot.deck.length >= 2 && !session.matchState.isGameOver) {
+      const activated = session.activateSpell(potCard.uid);
+      if (!activated) break;
+      potCard = bot.hand.find(
+        (c) =>
+          c.data.effectDefinition?.action === 'DRAW_CARDS' ||
+          c.data.id === '55144522'
+      );
+    }
+
+    // 2. Check Dark Hole (DESTROY_ALL_MONSTERS): use if opponent has more monsters OR a stronger monster than bot
+    const darkHoleCard = bot.hand.find(
+      (c) =>
+        c.data.effectDefinition?.action === 'DESTROY_ALL_MONSTERS' ||
+        c.data.id === '53129443'
+    );
+    if (darkHoleCard) {
+      const botMonsters = bot.monsterZones.filter((m): m is CardInstance => m !== null);
+      const oppMonsters = opponent.monsterZones.filter((m): m is CardInstance => m !== null);
+      const maxBotAtk = botMonsters.reduce(
+        (max, m) => Math.max(max, session.getEffectiveAttack(m, bot, opponent)),
+        0
+      );
+      const maxOppAtk = oppMonsters.reduce(
+        (max, m) => Math.max(max, m.isFaceDown ? 0 : session.getEffectiveAttack(m, opponent, bot)),
+        0
+      );
+
+      if (oppMonsters.length > 0 && (oppMonsters.length > botMonsters.length || maxOppAtk > maxBotAtk)) {
+        session.activateSpell(darkHoleCard.uid);
+      }
+    }
+
+    // 3. Check Fissure (DESTROY_LOWEST_ATK_MONSTER): use if opponent has at least 1 face-up monster
+    const fissureCard = bot.hand.find(
+      (c) =>
+        c.data.effectDefinition?.action === 'DESTROY_LOWEST_ATK_MONSTER' ||
+        c.data.id === '66788016'
+    );
+    if (fissureCard) {
+      const oppFaceUpMonsters = opponent.monsterZones.filter(
+        (m): m is CardInstance => m !== null && !m.isFaceDown
+      );
+      if (oppFaceUpMonsters.length > 0) {
+        session.activateSpell(fissureCard.uid);
+      }
+    }
+
+    // 4. Set Trap cards (e.g., Trap Hole) in any available Spell/Trap Zone
+    const trapCards = bot.hand.filter((c) => {
+      const typeLower = (c.data.type || '').toLowerCase();
+      return (
+        c.data.effectDefinition?.action === 'TRAP_TRIGGER_ON_SUMMON' ||
+        typeLower.includes('trap') ||
+        typeLower.includes('armadilha')
+      );
+    });
+
+    for (const trap of trapCards) {
+      const emptyStZone = bot.spellTrapZones.findIndex((z) => z === null);
+      if (emptyStZone === -1) break;
+      session.setSpellTrap(trap.uid, emptyStZone);
+    }
+  }
+
+  /**
+   * Checks if the defending player has a ready Trap Hole when a monster is Normal Summoned face-up,
+   * and activates it automatically if the defender is the Bot (or when invoked by the engine/UI).
+   */
+  public static tryActivateTrapHoleOnSummon(
+    session: DuelMatchSession,
+    defenderPlayerId: string,
+    summonedZoneIndex: number
+  ): boolean {
+    const attackerPlayer =
+      defenderPlayerId === session.player1.id ? session.player2 : session.player1;
+    const summonedMonster = attackerPlayer.monsterZones[summonedZoneIndex];
+    if (!summonedMonster || summonedMonster.isFaceDown) return false;
+
+    const check = session.canActivateTrapHole(summonedMonster, defenderPlayerId);
+    if (check.canActivate && check.trapZoneIndex !== -1) {
+      return session.activateTrapHole(defenderPlayerId, check.trapZoneIndex, summonedZoneIndex);
+    }
+    return false;
+  }
+
   public static evaluateAndSummon(session: DuelMatchSession): { summonedCard: CardInstance; zoneIndex: number } | null {
     const bot = session.getActivePlayer();
 
@@ -47,8 +156,18 @@ export class DuelBot {
       .map((m, idx) => ({ card: m, index: idx }))
       .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
 
-    // Sort hand by attack descending
-    const summonableCards = [...bot.hand].sort((a, b) => b.data.attack - a.data.attack);
+    // Filter only monster cards and sort hand by attack descending
+    const summonableCards = bot.hand
+      .filter((c) => {
+        const typeLower = (c.data.type || '').toLowerCase();
+        const isSpellOrTrap =
+          typeLower.includes('spell') ||
+          typeLower.includes('mágica') ||
+          typeLower.includes('trap') ||
+          typeLower.includes('armadilha');
+        return !isSpellOrTrap && c.data.level >= 1;
+      })
+      .sort((a, b) => b.data.attack - a.data.attack);
 
     // Prioritize highest level/attack we can legally afford
     for (const card of summonableCards) {
@@ -136,4 +255,5 @@ export class DuelBot {
     }
   }
 }
+
 

@@ -43,14 +43,28 @@ export type ActionHandlerResult =
   | CoinTossClearResult;
 
 /**
- * Checks whether a card matches the given condition (e.g. race === 'Dragon')
+ * Checks whether a monster card matches the given race condition (e.g. race === 'Dragon').
+ * Prioritizes explicit `card.data.race` metadata and ignores Spell/Trap cards.
  */
 function matchesRaceOrType(card: CardInstance, targetRace: string): boolean {
+  const typeLower = (card.data.type || '').toLowerCase();
+  if (
+    typeLower.includes('spell') ||
+    typeLower.includes('mágica') ||
+    typeLower.includes('trap') ||
+    typeLower.includes('armadilha')
+  ) {
+    return false;
+  }
+
   const normRace = targetRace.toLowerCase();
   const race = (card.data.race || '').toLowerCase();
+  if (race) {
+    return race === normRace;
+  }
+
   const name = (card.data.name || '').toLowerCase();
-  const type = (card.data.type || '').toLowerCase();
-  return race === normRace || name.includes(normRace) || type.includes(normRace);
+  return name.includes(normRace) || typeLower.includes(normRace);
 }
 
 /**
@@ -59,14 +73,14 @@ function matchesRaceOrType(card: CardInstance, targetRace: string): boolean {
 export const ACTION_HANDLERS = {
   /**
    * BOOST_ATK: Calculates continuous dynamic attack boost based on condition (e.g. Dragon monsters in opponent field / GY).
+   * Face-down monsters on the field do not reveal their race and are not counted.
    */
   BOOST_ATK(context: ActionExecutionContext): BoostAtkResult {
     const { cardInstance, opponent } = context;
     const effectDef = cardInstance.data.effectDefinition;
-    if (!effectDef) return { bonus: 0 };
 
-    const boostValue = typeof effectDef.value === 'number' ? effectDef.value : 500;
-    const condition = effectDef.condition;
+    const boostValue = typeof effectDef?.value === 'number' ? effectDef.value : 500;
+    const condition = effectDef?.condition;
 
     // Check condition target race (e.g., 'Dragon' or condition.target_race)
     let targetRace = 'Dragon';
@@ -77,7 +91,7 @@ export const ACTION_HANDLERS = {
     }
 
     const dragonsOnField = opponent.monsterZones.filter(
-      (m): m is CardInstance => m !== null && matchesRaceOrType(m, targetRace)
+      (m): m is CardInstance => m !== null && !m.isFaceDown && matchesRaceOrType(m, targetRace)
     ).length;
 
     const dragonsInGY = opponent.graveyard.filter((m) => matchesRaceOrType(m, targetRace)).length;

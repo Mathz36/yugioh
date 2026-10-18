@@ -3080,5 +3080,518 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       expect(p1.spellTrapZones[0]).toBeNull();
       expect(p1.graveyard.some((c) => c.uid === darkHole.uid)).toBe(true);
     });
+
+    it('Teste 13 (Resolução tática do Man-Eater Bug em Flip Summon: destrói estritamente o alvo selecionado)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi possui Man-Eater Bug virado para baixo em DEFENSE (baixado no turno 1)
+      const manEaterBug = {
+        uid: 'yugi_meb_tactical',
+        data: CLASSIC_CARDS.MAN_EATER_BUG,
+        position: 'DEFENSE' as const,
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.monsterZones[0] = manEaterBug;
+
+      // Kaiba possui 3 monstros em campo
+      const kaibaMon0 = {
+        uid: 'kaiba_mon_0_blue_eyes',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const kaibaMon1 = {
+        uid: 'kaiba_mon_1_vorse_raider',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const kaibaMon2 = {
+        uid: 'kaiba_mon_2_battle_ox',
+        data: CLASSIC_CARDS.BATTLE_OX,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = kaibaMon0;
+      kaiba.monsterZones[1] = kaibaMon1;
+      kaiba.monsterZones[2] = kaibaMon2;
+
+      // Avança para o turno 3 (Turno de Yugi, MAIN1)
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = yugi.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Act: Yugi realiza Flip Summon do Man-Eater Bug selecionando estritamente kaibaMon1 (Vorse Raider)
+      const flipResult = session.changeMonsterPosition(0, [kaibaMon1.uid]);
+
+      // Assert:
+      expect(flipResult.success).toBe(true);
+      expect(flipResult.flipped).toBe(true);
+
+      // Apenas o alvo selecionado (Vorse Raider) é destruído e vai ao cemitério
+      expect(kaiba.monsterZones[1]).toBeNull();
+      expect(kaiba.graveyard.some((c) => c.uid === kaibaMon1.uid)).toBe(true);
+
+      // Monstros não selecionados (Blue-Eyes e Battle Ox) permanecem intactos na mesa
+      expect(kaiba.monsterZones[0]).not.toBeNull();
+      expect(kaiba.monsterZones[0]?.uid).toBe(kaibaMon0.uid);
+      expect(kaiba.graveyard.some((c) => c.uid === kaibaMon0.uid)).toBe(false);
+
+      expect(kaiba.monsterZones[2]).not.toBeNull();
+      expect(kaiba.monsterZones[2]?.uid).toBe(kaibaMon2.uid);
+      expect(kaiba.graveyard.some((c) => c.uid === kaibaMon2.uid)).toBe(false);
+
+      // Man-Eater Bug virou para cima em modo de ataque e permanece em campo
+      expect(yugi.monsterZones[0]?.uid).toBe(manEaterBug.uid);
+      expect(yugi.monsterZones[0]?.isFaceDown).toBe(false);
+      expect(yugi.monsterZones[0]?.position).toBe('ATTACK');
+    });
+
+    it('Teste 14 (Resolução tática do Man-Eater Bug virado por ataque: destrói atacante antes do cálculo de dano e defensor sobrevive)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi possui Man-Eater Bug virado para baixo em DEFENSE (450 ATK / 600 DEF)
+      const manEaterBug = {
+        uid: 'yugi_meb_battle_tactical',
+        data: CLASSIC_CARDS.MAN_EATER_BUG,
+        position: 'DEFENSE' as const,
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.monsterZones[0] = manEaterBug;
+
+      // Kaiba possui 2 monstros: Blue-Eyes (3000 ATK atacante) e Vorse Raider (1900 ATK espectador)
+      const blueEyesAttacker = {
+        uid: 'kaiba_blue_eyes_attacker',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const vorseRaiderBench = {
+        uid: 'kaiba_vorse_bench',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = blueEyesAttacker;
+      kaiba.monsterZones[1] = vorseRaiderBench;
+
+      // Turno 2: Turno de Kaiba, Battle Phase
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act: Kaiba ataca com Blue-Eyes contra o Man-Eater Bug de Yugi.
+      // O defensor Yugi seleciona estritamente o atacante (blueEyesAttacker.uid) como alvo do efeito FLIP.
+      const attackSuccess = session.declareAttack(0, 0, [blueEyesAttacker.uid]);
+
+      // Assert:
+      expect(attackSuccess).toBe(true);
+
+      // 1. O atacante Blue-Eyes foi destruído pelo efeito FLIP do Man-Eater Bug antes do cálculo de dano
+      expect(kaiba.monsterZones[0]).toBeNull();
+      expect(kaiba.graveyard.some((c) => c.uid === blueEyesAttacker.uid)).toBe(true);
+
+      // 2. O defensor Man-Eater Bug NÃO é destruído e PERMANECE VIVO no campo com a face para cima
+      expect(yugi.monsterZones[0]).not.toBeNull();
+      expect(yugi.monsterZones[0]?.uid).toBe(manEaterBug.uid);
+      expect(yugi.monsterZones[0]?.isFaceDown).toBe(false);
+      expect(yugi.graveyard.some((c) => c.uid === manEaterBug.uid)).toBe(false);
+
+      // 3. O monstro espectador Vorse Raider permanece intacto no campo
+      expect(kaiba.monsterZones[1]).not.toBeNull();
+      expect(kaiba.monsterZones[1]?.uid).toBe(vorseRaiderBench.uid);
+      expect(kaiba.graveyard.some((c) => c.uid === vorseRaiderBench.uid)).toBe(false);
+
+      // 4. Nenhum dano de batalha foi sofrido por Yugi
+      expect(yugi.lifePoints).toBe(8000);
+    });
+
+    it('Teste 15 (Regressão: Monstro colocado de face para cima PODE mudar para posição de defesa no mesmo turno da invocação)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+
+      // Invocação Normal de Feral Imp de face para cima em modo de ataque no Turno 1
+      const feralImp = {
+        uid: 'feral_imp_face_up_turn1',
+        data: CLASSIC_CARDS.FERAL_IMP,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.monsterZones[0] = feralImp;
+      session.matchState.currentTurn = 1;
+      session.matchState.activePlayerId = player.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Act: Jogador altera a posição da carta de face para cima para Defesa
+      const changeResult = session.changeMonsterPosition(0);
+
+      // Assert:
+      expect(changeResult.success).toBe(true);
+      expect(changeResult.flipped).toBe(false);
+      expect(player.monsterZones[0]?.position).toBe('DEFENSE');
+      expect(player.monsterZones[0]?.isFaceDown).toBe(false);
+
+      // Pode voltar para ATAQUE na mesma Main Phase
+      const changeBackResult = session.changeMonsterPosition(0);
+      expect(changeBackResult.success).toBe(true);
+      expect(player.monsterZones[0]?.position).toBe('ATTACK');
+    });
+
+    it('Teste 16 (Regressão: Soldado Pinguim atacado virado para baixo devolve o atacante para a mão e defensor sobrevive)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi possui Penguin Soldier virado para baixo em DEFENSE
+      const penguinSoldier = {
+        uid: 'yugi_penguin_soldier_combat_test',
+        data: CLASSIC_CARDS.PENGUIN_SOLDIER,
+        position: 'DEFENSE' as const,
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.monsterZones[0] = penguinSoldier;
+
+      // Kaiba possui Blue-Eyes White Dragon em ATTACK (3000 ATK)
+      const blueEyes = {
+        uid: 'kaiba_blue_eyes_attacker_test',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = blueEyes;
+      const initialKaibaHandCount = kaiba.hand.length;
+
+      // Turno 2 (Turno de Kaiba), BATTLE Phase
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act: Kaiba ataca com Blue-Eyes contra o Penguin Soldier virado para baixo
+      const attackSuccess = session.declareAttack(0, 0);
+
+      // Assert:
+      expect(attackSuccess).toBe(true);
+
+      // 1. O Blue-Eyes atacante é removido da zona de monstros do oponente
+      expect(kaiba.monsterZones[0]).toBeNull();
+
+      // 2. O Blue-Eyes atacante retornou para a mão de Kaiba
+      expect(kaiba.hand.some((c) => c.uid === blueEyes.uid)).toBe(true);
+      expect(kaiba.hand.length).toBe(initialKaibaHandCount + 1);
+
+      // 3. O defensor Penguin Soldier PERMANECE VIVO no campo de Yugi virado para cima
+      expect(yugi.monsterZones[0]).not.toBeNull();
+      expect(yugi.monsterZones[0]?.uid).toBe(penguinSoldier.uid);
+      expect(yugi.monsterZones[0]?.isFaceDown).toBe(false);
+      expect(yugi.graveyard.some((c) => c.uid === penguinSoldier.uid)).toBe(false);
+
+      // 4. Nenhum dano de batalha foi aplicado aos LPs de Yugi
+      expect(yugi.lifePoints).toBe(8000);
+    });
+  });
+
+  describe('Architecture Audit Regression Suite (D1, D2, D4, D5, D8)', () => {
+    it('D1: activateKuriboh arms a battle damage shield so declareAttack destroys the weaker monster while dealing 0 LP damage', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      yugi.monsterZones[0] = {
+        uid: 'yugi_celtic_guardian',
+        data: CLASSIC_CARDS.CELTIC_GUARDIAN, // 1400 ATK
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.hand.push({
+        uid: 'yugi_kuriboh_shield',
+        data: CLASSIC_CARDS.KURIBOH,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      });
+
+      kaiba.monsterZones[0] = {
+        uid: 'kaiba_vorse_raider',
+        data: CLASSIC_CARDS.VORSE_RAIDER, // 1900 ATK
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act: Yugi activates Kuriboh before declareAttack resolves
+      const shielded = session.activateKuriboh(yugi.id);
+      const attackResolved = session.declareAttack(0, 0);
+
+      // Assert: Celtic Guardian is destroyed, Vorse Raider is marked hasAttacked, and Yugi takes 0 LP damage
+      expect(shielded).toBe(true);
+      expect(attackResolved).toBe(true);
+      expect(yugi.monsterZones[0]).toBeNull();
+      expect(yugi.graveyard.some((c) => c.uid === 'yugi_celtic_guardian')).toBe(true);
+      expect(kaiba.monsterZones[0]?.hasAttacked).toBe(true);
+      expect(yugi.lifePoints).toBe(8000);
+    });
+
+    it('D2: DuelBot evaluates and plays Pot of Greed, Fissure, sets Trap Hole, and triggers Trap Hole on opponent summon', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi has a face-up monster on field
+      yugi.monsterZones[0] = {
+        uid: 'yugi_feral_imp',
+        data: CLASSIC_CARDS.FERAL_IMP,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Turn 2: Kaiba's Main Phase 1 with Pot of Greed, Fissure, and Trap Hole in hand
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'MAIN1';
+      kaiba.hand = [
+        {
+          uid: 'bot_pot',
+          data: CLASSIC_CARDS.POT_OF_GREED,
+          position: 'ATTACK',
+          hasAttacked: false,
+          hasChangedPositionThisTurn: false,
+          turnSummoned: 0,
+          monstersDestroyedCount: 0,
+          hasAttackedDirectly: false,
+        },
+        {
+          uid: 'bot_fissure',
+          data: CLASSIC_CARDS.FISSURE,
+          position: 'ATTACK',
+          hasAttacked: false,
+          hasChangedPositionThisTurn: false,
+          turnSummoned: 0,
+          monstersDestroyedCount: 0,
+          hasAttackedDirectly: false,
+        },
+        {
+          uid: 'bot_trap_hole',
+          data: CLASSIC_CARDS.TRAP_HOLE,
+          position: 'ATTACK',
+          hasAttacked: false,
+          hasChangedPositionThisTurn: false,
+          turnSummoned: 0,
+          monstersDestroyedCount: 0,
+          hasAttackedDirectly: false,
+        },
+      ];
+
+      // Act 1: Bot plays Spells & sets Trap Hole
+      DuelBot.evaluateAndPlaySpellsAndTraps(session);
+
+      // Assert 1: Pot of Greed & Fissure were activated, Feral Imp was destroyed, and Trap Hole was set
+      expect(kaiba.graveyard.some((c) => c.uid === 'bot_pot')).toBe(true);
+      expect(kaiba.graveyard.some((c) => c.uid === 'bot_fissure')).toBe(true);
+      expect(yugi.monsterZones[0]).toBeNull();
+      expect(kaiba.spellTrapZones.some((c) => c?.uid === 'bot_trap_hole' && c.isFaceDown)).toBe(true);
+
+      // Act 2: Advance to Turn 3 (Yugi's turn); Yugi summons La Jinn (1800 ATK) and Bot triggers Trap Hole
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = yugi.id;
+      session.matchState.phase = 'MAIN1';
+      yugi.hasNormalSummonedThisTurn = false;
+      yugi.hand.push({
+        uid: 'yugi_la_jinn',
+        data: CLASSIC_CARDS.LA_JINN,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      });
+
+      const summoned = session.normalSummon('yugi_la_jinn', 0, 'ATTACK');
+      const trapTriggered = DuelBot.tryActivateTrapHoleOnSummon(session, kaiba.id, 0);
+
+      // Assert 2: La Jinn was destroyed by Bot's Trap Hole
+      expect(summoned).toBe(true);
+      expect(trapTriggered).toBe(true);
+      expect(yugi.monsterZones[0]).toBeNull();
+      expect(yugi.graveyard.some((c) => c.uid === 'yugi_la_jinn')).toBe(true);
+    });
+
+    it('D4 & D5: Buster Blader counts Hyozanryu (race Dragon), ignores face-down opponent Dragons, and non-BOOST_ATK CONTINUOUS monsters get no Dragon bonus', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      const busterBlader = {
+        uid: 'yugi_bb',
+        data: CLASSIC_CARDS.BUSTER_BLADER, // 2600 ATK
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const genericContinuousMonster = {
+        uid: 'yugi_other_continuous',
+        data: {
+          ...CLASSIC_CARDS.DARK_MAGICIAN,
+          effectType: 'CONTINUOUS' as const,
+          effectDefinition: undefined,
+        },
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.monsterZones[0] = busterBlader;
+      yugi.monsterZones[1] = genericContinuousMonster;
+
+      // Kaiba has 1 face-up Hyozanryu ('Dragon' race, even though name lacks 'Dragon') and 1 face-downoum Dragon
+      kaiba.monsterZones[0] = {
+        uid: 'kaiba_hyozanryu_faceup',
+        data: CLASSIC_CARDS.HYOZANRYU,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[1] = {
+        uid: 'kaiba_koumori_facedown',
+        data: CLASSIC_CARDS.KOUMORI_DRAGON,
+        position: 'DEFENSE',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Act
+      const bbEffectiveAtk = session.getEffectiveAttack(busterBlader, yugi, kaiba);
+      const otherContinuousAtk = session.getEffectiveAttack(genericContinuousMonster, yugi, kaiba);
+
+      // Assert: Buster Blader gets +500 only from face-up Hyozanryu (2600 + 500 = 3100), not from face-down Koumori Dragon;
+      // and genericContinuousMonster remains at base 2500 ATK
+      expect(bbEffectiveAtk).toBe(3100);
+      expect(otherContinuousAtk).toBe(2500);
+    });
+
+    it('D8: normalSummon rejects malformed monster cards with level < 1 gracefully without throwing', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      yugi.hand.push({
+        uid: 'malformed_lvl0_monster',
+        data: {
+          ...CLASSIC_CARDS.KURIBOH,
+          level: 0,
+        },
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      });
+
+      // Act & Assert
+      expect(() => session.normalSummon('malformed_lvl0_monster', 0, 'ATTACK')).not.toThrow();
+      expect(session.normalSummon('malformed_lvl0_monster', 0, 'ATTACK')).toBe(false);
+    });
   });
 });
+
