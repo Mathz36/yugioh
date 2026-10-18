@@ -505,7 +505,11 @@ describe('DuelMatchSession & DuelBot Integration', () => {
         description: 'FLIP: Target 1 monster on the field; destroy that target.',
         imageUrl: '',
         effectType: 'FLIP',
-        effectDefinition: { action: 'DESTROY_MONSTER', target: 'ATTACKER_OR_FIELD' },
+        effectDefinition: {
+          trigger: 'FLIP',
+          action: 'DESTROY_MONSTER',
+          target: { scope: 'OPPONENT_MONSTERS', minTargets: 1, maxTargets: 1 },
+        },
       },
       position: 'DEFENSE',
       isFaceDown: true,
@@ -576,7 +580,11 @@ describe('DuelMatchSession & DuelBot Integration', () => {
         description: 'FLIP: Target up to 2 monsters on the field; return those targets to the hand.',
         imageUrl: '',
         effectType: 'FLIP',
-        effectDefinition: { action: 'RETURN_TO_HAND', count: 1, target: 'ATTACKER_MONSTER' },
+        effectDefinition: {
+          trigger: 'FLIP',
+          action: 'RETURN_TO_HAND',
+          target: { scope: 'OPPONENT_MONSTERS', minTargets: 1, maxTargets: 2 },
+        },
       },
       position: 'DEFENSE',
       isFaceDown: true,
@@ -3591,6 +3599,457 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       // Act & Assert
       expect(() => session.normalSummon('malformed_lvl0_monster', 0, 'ATTACK')).not.toThrow();
       expect(session.normalSummon('malformed_lvl0_monster', 0, 'ATTACK')).toBe(false);
+    });
+  });
+
+  describe('Declarative & Generic Card Effects Resolution Suite (AAA Pattern)', () => {
+    it('1. Efeito FLIP Declarativo Genérico (Destruição com Alvo Escolhido): apenas o alvo selecionado é destruído', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Carta mock sem nome específico (ex: "Generic Destroyer Bug") com effectType FLIP e effectDefinition declarativa
+      const genericDestroyerBug: CardInstance = {
+        uid: 'generic_destroyer_bug_uid',
+        data: {
+          id: 'mock_flip_destroy_999',
+          name: 'Generic Destroyer Bug',
+          type: 'Flip Effect Monster',
+          level: 2,
+          attack: 500,
+          defense: 500,
+          description: 'FLIP: Target 1 monster on the field; destroy it.',
+          effectType: 'FLIP',
+          effectDefinition: {
+            action: 'DESTROY_MONSTER',
+            target: {
+              scope: 'OPPONENT_MONSTERS',
+              maxTargets: 1,
+            },
+          },
+        },
+        position: 'DEFENSE',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.monsterZones[0] = genericDestroyerBug;
+
+      // Invoque 2 monstros no oponente (Kaiba)
+      const opponentMonster1: CardInstance = {
+        uid: 'opponent_mon_1_uid',
+        data: CLASSIC_CARDS.CELTIC_GUARDIAN,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const opponentMonster2: CardInstance = {
+        uid: 'opponent_mon_2_uid',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = opponentMonster1;
+      kaiba.monsterZones[1] = opponentMonster2;
+
+      // Avança para o turno 3 (Turno de Yugi, MAIN1)
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = yugi.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Act: Mude a posição para ataque com selectedTargetUids: [monstro_2.uid]
+      const changePosResult = session.changeMonsterPosition(0, [opponentMonster2.uid]);
+
+      // Assert:
+      expect(changePosResult.success).toBe(true);
+      expect(changePosResult.flipped).toBe(true);
+      expect(changePosResult.flipEffect?.action).toBe('DESTROY_MONSTER');
+
+      // Estritamente o monstro_2 é destruído e enviado ao cemitério
+      expect(kaiba.monsterZones[1]).toBeNull();
+      expect(kaiba.graveyard.some((c) => c.uid === opponentMonster2.uid)).toBe(true);
+
+      // Monstro_1 permanece intacto no campo e fora do cemitério
+      expect(kaiba.monsterZones[0]).not.toBeNull();
+      expect(kaiba.monsterZones[0]?.uid).toBe(opponentMonster1.uid);
+      expect(kaiba.graveyard.some((c) => c.uid === opponentMonster1.uid)).toBe(false);
+
+      // O monstro com efeito FLIP agora está com a face para cima em modo de ataque
+      expect(yugi.monsterZones[0]?.uid).toBe(genericDestroyerBug.uid);
+      expect(yugi.monsterZones[0]?.isFaceDown).toBe(false);
+      expect(yugi.monsterZones[0]?.position).toBe('ATTACK');
+    });
+
+    it('2. Teste de Efeito FLIP Declarativo Genérico (Múltiplos Alvos / Retorno para Mão): ambos os alvos voltam para a mão', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Carta mock genérica com RETURN_TO_HAND e maxTargets: 2
+      const genericBouncer: CardInstance = {
+        uid: 'generic_bouncer_uid',
+        data: {
+          id: 'mock_flip_return_888',
+          name: 'Generic Bouncer',
+          type: 'Flip Effect Monster',
+          level: 2,
+          attack: 400,
+          defense: 400,
+          description: 'FLIP: Target up to 2 monsters on the field; return them to the hand.',
+          effectType: 'FLIP',
+          effectDefinition: {
+            action: 'RETURN_TO_HAND',
+            target: {
+              scope: 'OPPONENT_MONSTERS',
+              maxTargets: 2,
+            },
+          },
+        },
+        position: 'DEFENSE',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.monsterZones[0] = genericBouncer;
+
+      // Kaiba possui 3 monstros no campo
+      const targetMon1: CardInstance = {
+        uid: 'target_mon_1_uid',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const targetMon2: CardInstance = {
+        uid: 'target_mon_2_uid',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const safeMon3: CardInstance = {
+        uid: 'safe_mon_3_uid',
+        data: CLASSIC_CARDS.BATTLE_OX,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = targetMon1;
+      kaiba.monsterZones[1] = targetMon2;
+      kaiba.monsterZones[2] = safeMon3;
+
+      const initialKaibaHandCount = kaiba.hand.length;
+
+      // Avança para o turno 3 (Turno de Yugi, MAIN1)
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = yugi.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Act: Disparar efeito virando a carta com 2 alvos selecionados: [targetMon1.uid, targetMon2.uid]
+      const changePosResult = session.changeMonsterPosition(0, [targetMon1.uid, targetMon2.uid]);
+
+      // Assert:
+      expect(changePosResult.success).toBe(true);
+      expect(changePosResult.flipped).toBe(true);
+      expect(changePosResult.flipEffect?.action).toBe('RETURN_TO_HAND');
+
+      // Ambos os alvos selecionados voltam para a mão do oponente
+      expect(kaiba.monsterZones[0]).toBeNull();
+      expect(kaiba.monsterZones[1]).toBeNull();
+      expect(kaiba.hand.some((c) => c.uid === targetMon1.uid)).toBe(true);
+      expect(kaiba.hand.some((c) => c.uid === targetMon2.uid)).toBe(true);
+      expect(kaiba.hand.length).toBe(initialKaibaHandCount + 2);
+
+      // O terceiro monstro (não selecionado) permanece intacto no campo
+      expect(kaiba.monsterZones[2]).not.toBeNull();
+      expect(kaiba.monsterZones[2]?.uid).toBe(safeMon3.uid);
+      expect(kaiba.hand.some((c) => c.uid === safeMon3.uid)).toBe(false);
+    });
+
+    it('3. Teste de Efeito Contínuo Declarativo (Boost de ATK condicional por Raça): adiciona +500 por cada Dragão no campo/cemitério dinamicamente', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Carta mock genérica SEM checagem de nome 'Buster Blader'
+      const genericDragonSlayer: CardInstance = {
+        uid: 'generic_dragon_slayer_uid',
+        data: {
+          id: 'mock_continuous_boost_777',
+          name: 'Generic Dragon Slayer Warrior',
+          type: 'Effect Monster',
+          level: 7,
+          attack: 2000,
+          defense: 1500,
+          description: 'Gains 500 ATK for each Dragon monster on your opponent field or GY.',
+          effectType: 'CONTINUOUS',
+          effectDefinition: {
+            action: 'BOOST_ATK',
+            value: 500,
+            condition: {
+              target_race: 'Dragon',
+            },
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.monsterZones[0] = genericDragonSlayer;
+
+      // Estado 0: Nenhum Dragão no oponente -> ATK base 2000
+      expect(session.getEffectiveAttack(genericDragonSlayer, yugi, kaiba)).toBe(2000);
+
+      // Estado 1: 1 Dragão face-up no campo do oponente (Blue-Eyes)
+      kaiba.monsterZones[0] = {
+        uid: 'kaiba_field_dragon_1',
+        data: CLASSIC_CARDS.BLUE_EYES, // race: 'Dragon'
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Act & Assert 1: 2000 + 500 = 2500 ATK
+      expect(session.getEffectiveAttack(genericDragonSlayer, yugi, kaiba)).toBe(2500);
+
+      // Estado 2: Adiciona 1 Dragão no cemitério do oponente (Curse of Dragon)
+      kaiba.graveyard.push({
+        uid: 'kaiba_gy_dragon_2',
+        data: CLASSIC_CARDS.CURSE_OF_DRAGON, // race: 'Dragon'
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      });
+
+      // Act & Assert 2: 2000 + (2 * 500) = 3000 ATK
+      expect(session.getEffectiveAttack(genericDragonSlayer, yugi, kaiba)).toBe(3000);
+
+      // Estado 3: Adiciona mais 1 Dragão no cemitério (Baby Dragon)
+      kaiba.graveyard.push({
+        uid: 'kaiba_gy_dragon_3',
+        data: CLASSIC_CARDS.BABY_DRAGON, // race: 'Dragon'
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      });
+
+      // Act & Assert 3: 2000 + (3 * 500) = 3500 ATK
+      expect(session.getEffectiveAttack(genericDragonSlayer, yugi, kaiba)).toBe(3500);
+
+      // Assegure que monstros virados para baixo ou monstros de outras raças não dão bônus
+      kaiba.monsterZones[1] = {
+        uid: 'kaiba_field_dragon_facedown',
+        data: CLASSIC_CARDS.LUSTER_DRAGON,
+        position: 'DEFENSE',
+        isFaceDown: true, // Face-down não revela raça
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[2] = {
+        uid: 'kaiba_field_non_dragon',
+        data: CLASSIC_CARDS.CELTIC_GUARDIAN, // race: 'Warrior'
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Mantém os 3500 ATK (3 dragões válidos: 1 no campo revelado + 2 no cemitério)
+      expect(session.getEffectiveAttack(genericDragonSlayer, yugi, kaiba)).toBe(3500);
+    });
+
+    it('4. Teste de Handler Genérico GAIN_LP: incrementa os Pontos de Vida do jogador declarativamente', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      yugi.lifePoints = 6500;
+
+      const healingSpell: CardInstance = {
+        uid: 'generic_healing_spell_uid',
+        data: {
+          id: 'mock_spell_heal_101',
+          name: 'Generic Healing Potion',
+          type: 'Spell Card',
+          level: 0,
+          attack: 0,
+          defense: 0,
+          description: 'Increase your Life Points by 1000.',
+          effectDefinition: {
+            action: 'GAIN_LP',
+            value: 1000,
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.hand.push(healingSpell);
+
+      // Act
+      const activated = session.activateSpell('generic_healing_spell_uid');
+
+      // Assert
+      expect(activated).toBe(true);
+      expect(yugi.lifePoints).toBe(7500);
+      expect(yugi.graveyard.some((c) => c.uid === 'generic_healing_spell_uid')).toBe(true);
+    });
+
+    it('5. Teste de Handler Genérico INFLICT_DAMAGE: decrementa os Pontos de Vida do oponente declarativamente', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+      kaiba.lifePoints = 8000;
+
+      const burnSpell: CardInstance = {
+        uid: 'generic_burn_spell_uid',
+        data: {
+          id: 'mock_spell_burn_202',
+          name: 'Generic Fireball',
+          type: 'Spell Card',
+          level: 0,
+          attack: 0,
+          defense: 0,
+          description: 'Inflict 800 damage to your opponent.',
+          effectDefinition: {
+            action: 'INFLICT_DAMAGE',
+            value: 800,
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.hand.push(burnSpell);
+
+      // Act
+      const activated = session.activateSpell('generic_burn_spell_uid');
+
+      // Assert
+      expect(activated).toBe(true);
+      expect(kaiba.lifePoints).toBe(7200);
+      expect(yugi.graveyard.some((c) => c.uid === 'generic_burn_spell_uid')).toBe(true);
+    });
+
+    it('6. Teste de Handler Genérico DESTROY_SPELL_TRAP: destrói carta mágica/armadilha do oponente e envia ao cemitério', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      const opponentSetTrap: CardInstance = {
+        uid: 'opponent_set_trap_uid',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.spellTrapZones[2] = opponentSetTrap;
+
+      const spellRemovalCard: CardInstance = {
+        uid: 'generic_st_destroyer_uid',
+        data: {
+          id: 'mock_spell_st_destroy_303',
+          name: 'Generic Typhoon',
+          type: 'Spell Card',
+          level: 0,
+          attack: 0,
+          defense: 0,
+          description: 'Destroy 1 Spell/Trap Card your opponent controls.',
+          effectDefinition: {
+            action: 'DESTROY_SPELL_TRAP',
+            target: {
+              scope: 'OPPONENT_SPELL_TRAPS',
+              maxTargets: 1,
+            },
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.hand.push(spellRemovalCard);
+
+      // Act
+      const activated = session.activateSpell('generic_st_destroyer_uid', undefined, ['opponent_set_trap_uid']);
+
+      // Assert
+      expect(activated).toBe(true);
+      expect(kaiba.spellTrapZones[2]).toBeNull();
+      expect(kaiba.graveyard.some((c) => c.uid === 'opponent_set_trap_uid')).toBe(true);
+      expect(yugi.graveyard.some((c) => c.uid === 'generic_st_destroyer_uid')).toBe(true);
     });
   });
 });

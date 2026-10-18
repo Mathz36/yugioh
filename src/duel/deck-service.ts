@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { CardData, CardEffectType } from './duel-types.js';
 import { CLASSIC_CARDS, createKaibaDeck, createYugiDeck } from './starter-decks.js';
+import duelistKingdomCatalog from '../../client/src/data/duelist-kingdom-catalog.json';
 
 export const MAX_CUSTOM_DECKS = 3;
 export const MAX_CARD_COPIES = 3;
@@ -112,9 +113,36 @@ class MemoryStorage implements StorageLike {
 
 const fallbackMemoryStorage = new MemoryStorage();
 
-const CLASSIC_CARD_BY_ID: Map<string, CardData> = new Map(
-  Object.values(CLASSIC_CARDS).map((card) => [String(card.id), card])
-);
+const CLASSIC_CARD_BY_ID: Map<string, CardData> = new Map();
+
+// Seed catalog cards from Duelist Kingdom Wave 1
+if (Array.isArray(duelistKingdomCatalog)) {
+  for (const raw of duelistKingdomCatalog as any[]) {
+    if (raw && raw.id) {
+      CLASSIC_CARD_BY_ID.set(String(raw.id), {
+        id: String(raw.id),
+        name: String(raw.name),
+        namePt: raw.namePt || raw.name_pt || undefined,
+        type: String(raw.type || 'Normal Monster'),
+        level: Number(raw.level ?? 4),
+        attack: Number(raw.attack ?? 0),
+        defense: Number(raw.defense ?? 0),
+        race: raw.race || undefined,
+        attribute: raw.attribute || undefined,
+        description: String(raw.description || ''),
+        descriptionPt: raw.descriptionPt || raw.description_pt || undefined,
+        imageUrl: raw.imageUrl || raw.image_url || undefined,
+        effectType: (raw.effectType || raw.effect_type) as CardEffectType | undefined,
+        effectDefinition: raw.effectDefinition || raw.effect_definition || undefined,
+      });
+    }
+  }
+}
+
+// Overlay classic cards from starter decks (preserving any custom effectDefinitions)
+for (const card of Object.values(CLASSIC_CARDS)) {
+  CLASSIC_CARD_BY_ID.set(String(card.id), card);
+}
 
 /**
  * Service responsible for CRUD operations of user decks (pre-built starter decks

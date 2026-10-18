@@ -111,9 +111,11 @@ export const Playmat: React.FC<PlaymatProps> = ({
   const [tacticalTargetSelection, setTacticalTargetSelection] = useState<{
     zoneIndex: number;
     cardName: string;
-    action: 'DESTROY_MONSTER' | 'RETURN_TO_HAND';
+    action: string;
     maxTargets: number;
     selectedUids: string[];
+    cardUid?: string;
+    isSpell?: boolean;
   } | null>(null);
   const [kuribohPrompt, setKuribohPrompt] = useState<{
     pendingDamage: number;
@@ -124,6 +126,54 @@ export const Playmat: React.FC<PlaymatProps> = ({
     isSpinning: boolean;
     outcome?: 'HEADS' | 'TAILS';
   } | null>(null);
+
+  // Metadados visuais e mensagens dinâmicas para ações táticas genéricas com alvo
+  const getTacticalActionMeta = (action: string, isPt: boolean) => {
+    switch (action) {
+      case 'DESTROY_MONSTER':
+        return {
+          icon: '🪲',
+          badgeSelected: isPt ? 'DESTRUIR' : 'DESTROY',
+          confirmVerb: isPt ? 'Destruição' : 'Destruction',
+          promptMessage: (maxTargets: number) =>
+            isPt
+              ? maxTargets > 1
+                ? `🎯 Escolha até ${maxTargets} monstros do adversário para destruir!`
+                : '🎯 Escolha 1 monstro do adversário para destruir!'
+              : maxTargets > 1
+              ? `🎯 Choose up to ${maxTargets} opponent monsters to destroy!`
+              : '🎯 Choose 1 opponent monster to destroy!',
+        };
+      case 'RETURN_TO_HAND':
+        return {
+          icon: '🐧',
+          badgeSelected: isPt ? 'RETORNAR' : 'RETURN',
+          confirmVerb: isPt ? 'Retorno' : 'Return',
+          promptMessage: (maxTargets: number) =>
+            isPt
+              ? maxTargets > 1
+                ? `🎯 Escolha até ${maxTargets} monstros do adversário para retornar à mão!`
+                : '🎯 Escolha 1 monstro do adversário para retornar à mão!'
+              : maxTargets > 1
+              ? `🎯 Choose up to ${maxTargets} opponent monsters to return to hand!`
+              : '🎯 Choose 1 opponent monster to return to hand!',
+        };
+      default:
+        return {
+          icon: '🎯',
+          badgeSelected: isPt ? 'SELECIONADO' : 'SELECTED',
+          confirmVerb: isPt ? 'Alvo' : 'Target',
+          promptMessage: (maxTargets: number) =>
+            isPt
+              ? maxTargets > 1
+                ? `🎯 Escolha até ${maxTargets} alvos do adversário!`
+                : '🎯 Escolha 1 alvo do adversário!'
+              : maxTargets > 1
+              ? `🎯 Choose up to ${maxTargets} opponent targets!`
+              : '🎯 Choose 1 opponent target!',
+        };
+    }
+  };
 
   // Auxiliares de Tradução Dinâmica PT-BR / EN
   const formatPhaseName = (phase: string): string => {
@@ -670,6 +720,47 @@ export const Playmat: React.FC<PlaymatProps> = ({
     setSelectedTributeZones([]);
   };
 
+  /**
+   * Verifica de forma 100% genérica e orientada a metadados se a carta exige seleção tática de alvos.
+   * Qualquer monstro de virar (FLIP) ou magia com `effectDefinition.target` utiliza a mesma interface de mira.
+   */
+  const checkCardRequiresTargeting = (
+    card: CardInstance,
+    zoneIndex: number = 0,
+    options?: { isSpell?: boolean; cardUid?: string }
+  ): boolean => {
+    const effectDef = card.data.effectDefinition;
+    const target = effectDef?.target;
+    if (!effectDef || !target || typeof target !== 'object') {
+      return false;
+    }
+
+    if (target.scope === 'OPPONENT_MONSTERS') {
+      const opponentMonsterCount = p2.monsterZones.filter((m) => m !== null).length;
+      if (opponentMonsterCount < 1) {
+        return false;
+      }
+
+      const maxTargets = target.maxTargets || 1;
+      const actionMeta = getTacticalActionMeta(effectDef.action, languagePt);
+
+      setTacticalTargetSelection({
+        zoneIndex,
+        cardName: card.data.namePt || card.data.name,
+        action: effectDef.action,
+        maxTargets,
+        selectedUids: [],
+        cardUid: options?.cardUid ?? card.uid,
+        isSpell: options?.isSpell ?? false,
+      });
+
+      showNotification(actionMeta.promptMessage(Math.min(maxTargets, opponentMonsterCount)));
+      return true;
+    }
+
+    return false;
+  };
+
   // Clique na Zona de Monstro do Jogador
   const handlePlayerMonsterZoneClick = (zoneIndex: number) => {
     if (!isPlayerTurn || match.isGameOver) return;
@@ -781,48 +872,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
           return;
         }
 
-        // Verifica se é monstro com efeito FLIP virado para baixo que suporta mira tática
-        const isManEater =
-          currentMonster.isFaceDown &&
-          (currentMonster.data.id === '54652250' || currentMonster.data.name.toLowerCase().includes('man-eater'));
-        const isPenguin =
-          currentMonster.isFaceDown &&
-          (currentMonster.data.id === '93920745' || currentMonster.data.name.toLowerCase().includes('penguin'));
-
-        const opponentMonsterCount = p2.monsterZones.filter((m) => m !== null).length;
-        const cardDisplayName = (languagePt && currentMonster.data.namePt) ? currentMonster.data.namePt : currentMonster.data.name;
-
-        if (isManEater && opponentMonsterCount >= 1) {
-          // Man-Eater Bug mira 1 monstro sempre que houver pelo menos 1 monstro no campo do adversário
-          setTacticalTargetSelection({
-            zoneIndex,
-            cardName: cardDisplayName,
-            action: 'DESTROY_MONSTER',
-            maxTargets: 1,
-            selectedUids: [],
-          });
-          showNotification(
-            languagePt
-              ? '🎯 Escolha 1 monstro do adversário para destruir!'
-              : '🎯 Choose 1 opponent monster to destroy!'
-          );
-          return;
-        }
-
-        if (isPenguin && opponentMonsterCount >= 1) {
-          // Penguin Soldier mira até 2 monstros sempre que houver pelo menos 1 monstro no campo do adversário
-          setTacticalTargetSelection({
-            zoneIndex,
-            cardName: cardDisplayName,
-            action: 'RETURN_TO_HAND',
-            maxTargets: Math.min(2, opponentMonsterCount),
-            selectedUids: [],
-          });
-          showNotification(
-            languagePt
-              ? '🎯 Escolha até 2 monstros do adversário para retornar à mão!'
-              : '🎯 Choose up to 2 opponent monsters to return to hand!'
-          );
+        // Verifica de forma 100% genérica se a carta virada para baixo requer mira tática via metadados
+        if (currentMonster.isFaceDown && checkCardRequiresTargeting(currentMonster, zoneIndex)) {
           return;
         }
 
@@ -1122,7 +1173,13 @@ export const Playmat: React.FC<PlaymatProps> = ({
       return;
     }
 
-    // Outras cartas mágicas
+    // Outras cartas mágicas (verifica antes se requerem mira tática via metadados)
+    if (checkCardRequiresTargeting(card, zoneIndex ?? 0, { isSpell: true, cardUid: card.uid })) {
+      setSelectedHandCardUid(null);
+      setSpellChoiceModal(null);
+      return;
+    }
+
     const success = session.activateSpell(card.uid, zoneIndex);
     if (success) {
       setSelectedHandCardUid(null);
@@ -1139,13 +1196,13 @@ export const Playmat: React.FC<PlaymatProps> = ({
     }
   };
 
-  // Clique no Monstro do Oponente (Declaração de Ataque)
+  // Clique no Monstro do Oponente (Declaração de Ataque ou Seleção Tática de Alvo)
   const handleOpponentZoneClick = (targetZoneIndex: number | null) => {
     if (targetZoneIndex !== null) {
       const monster = p2.monsterZones[targetZoneIndex];
       if (monster) setInspectedCard(monster);
 
-      // Se a seleção tática de efeito FLIP (Man-Eater Bug ou Penguin Soldier) estiver ativa:
+      // Se a seleção tática genérica de alvos (monstro FLIP ou magia com alvo) estiver ativa:
       if (tacticalTargetSelection && monster) {
         const isAlreadySelected = tacticalTargetSelection.selectedUids.includes(monster.uid);
         let nextSelectedUids: string[];
@@ -1154,7 +1211,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           nextSelectedUids = tacticalTargetSelection.selectedUids.filter((uid) => uid !== monster.uid);
         } else {
           if (tacticalTargetSelection.selectedUids.length >= tacticalTargetSelection.maxTargets) {
-            // Se atingiu o limite: se maxTargets === 1, substitui; se > 1, substitui o último
+            // Se atingiu o limite maxTargets: se maxTargets === 1, substitui; se > 1, substitui o último
             if (tacticalTargetSelection.maxTargets === 1) {
               nextSelectedUids = [monster.uid];
             } else {
@@ -1906,25 +1963,26 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     </div>
                   )}
 
-                  {/* Indicador de Seleção Tática do Efeito FLIP */}
-                  {isTacticalTargeting && tacticalTargetSelection && (
-                    <div
-                      className={`absolute -top-3.5 z-40 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border animate-bounce flex items-center gap-1 uppercase tracking-wider ${
-                        isTacticalSelected
-                          ? 'bg-gradient-to-r from-cyan-500 to-blue-600 border-yellow-300 shadow-[0_0_15px_rgba(34,211,238,0.9)]'
-                          : 'bg-cyan-900/90 border-cyan-400 text-cyan-200'
-                      }`}
-                    >
-                      <span>{tacticalTargetSelection.action === 'DESTROY_MONSTER' ? '🪲' : '🐧'}</span>{' '}
-                      {isTacticalSelected
-                        ? tacticalTargetSelection.action === 'DESTROY_MONSTER'
-                          ? languagePt ? 'DESTRUIR' : 'DESTROY'
-                          : languagePt ? 'RETORNAR' : 'RETURN'
-                        : languagePt
-                        ? 'ESCOLHER ALVO'
-                        : 'SELECT TARGET'}
-                    </div>
-                  )}
+                  {/* Indicador Genérico de Seleção Tática de Efeito com Alvo */}
+                  {isTacticalTargeting && tacticalTargetSelection && (() => {
+                    const actionMeta = getTacticalActionMeta(tacticalTargetSelection.action, languagePt);
+                    return (
+                      <div
+                        className={`absolute -top-3.5 z-40 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border animate-bounce flex items-center gap-1 uppercase tracking-wider ${
+                          isTacticalSelected
+                            ? 'bg-gradient-to-r from-cyan-500 to-blue-600 border-yellow-300 shadow-[0_0_15px_rgba(34,211,238,0.9)]'
+                            : 'bg-cyan-900/90 border-cyan-400 text-cyan-200'
+                        }`}
+                      >
+                        <span>{actionMeta.icon}</span>{' '}
+                        {isTacticalSelected
+                          ? actionMeta.badgeSelected
+                          : languagePt
+                          ? 'ESCOLHER ALVO'
+                          : 'SELECT TARGET'}
+                      </div>
+                    );
+                  })()}
 
                   {slot ? (
                     <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDefense ? 'card-defense-wrapper' : 'overflow-hidden'} ${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass} ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
@@ -1987,51 +2045,77 @@ export const Playmat: React.FC<PlaymatProps> = ({
             </span>
           </div>
 
-          {/* Botão de Confirmação de Mira Tática (Man-Eater Bug & Penguin Soldier) */}
-          {tacticalTargetSelection && (
-            <div className="flex items-center gap-2 animate-fadeIn">
-              <button
-                disabled={tacticalTargetSelection.selectedUids.length === 0}
-                onClick={() => {
-                  if (tacticalTargetSelection.selectedUids.length === 0) {
-                    showNotification(
-                      languagePt
-                        ? '⚠️ Clique em um monstro com o selo "ESCOLHER ALVO" para selecionar!'
-                        : '⚠️ Click an opponent monster with the "SELECT TARGET" badge!'
-                    );
-                    return;
-                  }
-                  executeFlipPositionChange(
-                    tacticalTargetSelection.zoneIndex,
-                    tacticalTargetSelection.selectedUids
-                  );
-                }}
-                className={`px-4 sm:px-5 py-1 text-xs font-black uppercase tracking-wider rounded-full shadow-lg transition-all flex items-center gap-1.5 border ${
-                  tacticalTargetSelection.selectedUids.length > 0
-                    ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-600 hover:from-cyan-400 hover:to-blue-400 text-slate-950 border-cyan-200 shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-pulse cursor-pointer'
-                    : 'bg-slate-900/90 text-cyan-400/60 border-cyan-500/30 cursor-not-allowed opacity-75'
-                }`}
-              >
-                <span>{tacticalTargetSelection.action === 'DESTROY_MONSTER' ? '🪲' : '🐧'}</span>
-                <span>
-                  {tacticalTargetSelection.selectedUids.length > 0
-                    ? languagePt
-                      ? `Confirmar ${tacticalTargetSelection.action === 'DESTROY_MONSTER' ? 'Destruição' : 'Retorno'} (${tacticalTargetSelection.selectedUids.length})`
-                      : `Confirm ${tacticalTargetSelection.action === 'DESTROY_MONSTER' ? 'Destruction' : 'Return'} (${tacticalTargetSelection.selectedUids.length})`
-                    : languagePt
-                    ? 'Escolha o Alvo Acima'
-                    : 'Select Target Above'}
-                </span>
-              </button>
+          {/* Botão Genérico de Confirmação de Mira Tática (Monstros FLIP e Magias com Alvo) */}
+          {tacticalTargetSelection && (() => {
+            const actionMeta = getTacticalActionMeta(tacticalTargetSelection.action, languagePt);
+            return (
+              <div className="flex items-center gap-2 animate-fadeIn">
+                <button
+                  disabled={tacticalTargetSelection.selectedUids.length === 0}
+                  onClick={() => {
+                    if (tacticalTargetSelection.selectedUids.length === 0) {
+                      showNotification(
+                        languagePt
+                          ? '⚠️ Clique em um monstro com o selo "ESCOLHER ALVO" para selecionar!'
+                          : '⚠️ Click an opponent monster with the "SELECT TARGET" badge!'
+                      );
+                      return;
+                    }
 
-              <button
-                onClick={() => setTacticalTargetSelection(null)}
-                className="px-2.5 py-0.5 text-[10px] sm:text-[11px] font-bold text-slate-400 hover:text-slate-200 bg-slate-900/80 rounded-full border border-slate-700 uppercase transition-colors"
-              >
-                {languagePt ? 'Cancelar' : 'Cancel'}
-              </button>
-            </div>
-          )}
+                    if (tacticalTargetSelection.isSpell && tacticalTargetSelection.cardUid) {
+                      if (tacticalTargetSelection.action === 'DESTROY_MONSTER') {
+                        triggerCardDestruction(tacticalTargetSelection.selectedUids);
+                        soundFX.playDestruction();
+                      } else if (tacticalTargetSelection.action === 'RETURN_TO_HAND') {
+                        soundFX.playReturnToHand();
+                      } else {
+                        soundFX.playPlaceCard();
+                      }
+
+                      const success = session.activateSpell(
+                        tacticalTargetSelection.cardUid,
+                        tacticalTargetSelection.zoneIndex,
+                        tacticalTargetSelection.selectedUids
+                      );
+                      setTacticalTargetSelection(null);
+                      if (success) {
+                        forceUpdate();
+                      }
+                      return;
+                    }
+
+                    executeFlipPositionChange(
+                      tacticalTargetSelection.zoneIndex,
+                      tacticalTargetSelection.selectedUids
+                    );
+                  }}
+                  className={`px-4 sm:px-5 py-1 text-xs font-black uppercase tracking-wider rounded-full shadow-lg transition-all flex items-center gap-1.5 border ${
+                    tacticalTargetSelection.selectedUids.length > 0
+                      ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-600 hover:from-cyan-400 hover:to-blue-400 text-slate-950 border-cyan-200 shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-pulse cursor-pointer'
+                      : 'bg-slate-900/90 text-cyan-400/60 border-cyan-500/30 cursor-not-allowed opacity-75'
+                  }`}
+                >
+                  <span>{actionMeta.icon}</span>
+                  <span>
+                    {tacticalTargetSelection.selectedUids.length > 0
+                      ? languagePt
+                        ? `Confirmar ${actionMeta.confirmVerb} (${tacticalTargetSelection.selectedUids.length})`
+                        : `Confirm ${actionMeta.confirmVerb} (${tacticalTargetSelection.selectedUids.length})`
+                      : languagePt
+                      ? 'Escolha o Alvo Acima'
+                      : 'Select Target Above'}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setTacticalTargetSelection(null)}
+                  className="px-2.5 py-0.5 text-[10px] sm:text-[11px] font-bold text-slate-400 hover:text-slate-200 bg-slate-900/80 rounded-full border border-slate-700 uppercase transition-colors"
+                >
+                  {languagePt ? 'Cancelar' : 'Cancel'}
+                </button>
+              </div>
+            );
+          })()}
 
           {/* Botão de Ataque Direto */}
           {match.phase === 'BATTLE' &&

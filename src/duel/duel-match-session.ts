@@ -260,7 +260,11 @@ export class DuelMatchSession {
    * Activates a Spell card from hand or spell/trap zone.
    * Resolves the spell effect and sends the card to the GY.
    */
-  public activateSpell(cardUid: string, zoneIndex?: number): boolean {
+  public activateSpell(
+    cardUid: string,
+    zoneIndex?: number,
+    selectedTargetUids?: string[]
+  ): boolean {
     if (this.matchState.isGameOver) return false;
     if (this.matchState.phase !== 'MAIN1' && this.matchState.phase !== 'MAIN2') {
       this.log('Cartas Mágicas só podem ser ativadas durante a Fase Principal.');
@@ -341,12 +345,63 @@ export class DuelMatchSession {
         },
         (c, own, opp) => this.getEffectiveAttack(c, own, opp)
       );
+    } else if (action === 'DESTROY_MONSTER') {
+      ACTION_HANDLERS.DESTROY_MONSTER(
+        {
+          cardInstance,
+          player,
+          opponent,
+          targetUids: selectedTargetUids,
+          logFn: (msg) => this.log(msg),
+        },
+        (c, own, opp) => this.getEffectiveAttack(c, own, opp)
+      );
+    } else if (action === 'RETURN_TO_HAND') {
+      ACTION_HANDLERS.RETURN_TO_HAND(
+        {
+          cardInstance,
+          player,
+          opponent,
+          targetUids: selectedTargetUids,
+          logFn: (msg) => this.log(msg),
+        },
+        (c, own, opp) => this.getEffectiveAttack(c, own, opp)
+      );
+    } else if (action === 'GAIN_LP') {
+      ACTION_HANDLERS.GAIN_LP({
+        cardInstance,
+        player,
+        opponent,
+        logFn: (msg) => this.log(msg),
+      });
+    } else if (action === 'INFLICT_DAMAGE') {
+      ACTION_HANDLERS.INFLICT_DAMAGE({
+        cardInstance,
+        player,
+        opponent,
+        logFn: (msg) => this.log(msg),
+      });
+      if (opponent.lifePoints <= 0) {
+        this.declareGameOver(
+          player.id,
+          `Os Pontos de Vida de ${opponent.nickname} chegaram a 0!`
+        );
+      }
+    } else if (action === 'DESTROY_SPELL_TRAP') {
+      ACTION_HANDLERS.DESTROY_SPELL_TRAP({
+        cardInstance,
+        player,
+        opponent,
+        targetUids: selectedTargetUids,
+        logFn: (msg) => this.log(msg),
+      });
     } else {
       const cardName = cardInstance.data.namePt || cardInstance.data.name;
       this.log(`✨ ${player.nickname} ativou a Carta Mágica ${cardName}!`);
     }
 
     // Standard Normal Spell: goes to graveyard upon resolution
+    cardInstance.isFaceDown = false;
     player.graveyard.push(cardInstance);
     return true;
   }
@@ -390,9 +445,9 @@ export class DuelMatchSession {
   }
 
   /**
-   * Checks whether the defender has a set Trap Hole ready to trigger against a summoned monster:
-   * - Must have Trap Hole set face-down in spell/trap zone with turnSet < currentTurn.
-   * - Target monster must have effective ATK >= 1000.
+   * Checks whether the defender has a set summon-reaction Trap ready to trigger against a summoned monster:
+   * - Must have a face-down trap with action TRAP_TRIGGER_ON_SUMMON or DESTROY_SUMMONED_MONSTER set with turnSet < currentTurn.
+   * - Target monster must have effective ATK >= minAtk (defaults to 1000).
    */
   public canActivateTrapHole(
     targetMonster: CardInstance,
@@ -401,25 +456,21 @@ export class DuelMatchSession {
     const defender = this.player1.id === defenderPlayerId ? this.player1 : this.player2;
     const attacker = this.player1.id === defenderPlayerId ? this.player2 : this.player1;
 
-    // Check effective attack of target monster >= 1000
     const effectiveAtk = this.getEffectiveAttack(targetMonster, attacker, defender);
-    if (effectiveAtk < 1000) {
-      return { canActivate: false, trapZoneIndex: -1 };
-    }
 
-    // Look for face-down Trap Hole set before the current turn
     const trapZoneIndex = defender.spellTrapZones.findIndex((card) => {
       if (!card || !card.isFaceDown) return false;
       if (typeof card.turnSet !== 'number' || card.turnSet >= this.matchState.currentTurn) return false;
 
-      const isTrapHoleCard =
-        card.data.id === '04206964' ||
-        card.data.id === '4206964' ||
-        card.data.name.toLowerCase().includes('trap hole') ||
-        card.data.effectDefinition?.action === 'TRAP_TRIGGER_ON_SUMMON' ||
-        card.data.effectDefinition?.action === 'DESTROY_SUMMONED_MONSTER';
+      const action = card.data.effectDefinition?.action;
+      const isSummonTrapCard =
+        action === 'TRAP_TRIGGER_ON_SUMMON' ||
+        action === 'DESTROY_SUMMONED_MONSTER';
 
-      return isTrapHoleCard;
+      if (!isSummonTrapCard) return false;
+
+      const minAtk = card.data.effectDefinition?.minAtk ?? 1000;
+      return effectiveAtk >= minAtk;
     });
 
     if (trapZoneIndex === -1) {
@@ -430,8 +481,8 @@ export class DuelMatchSession {
   }
 
   /**
-   * Activates Trap Hole in response to a summoned monster:
-   * Sends the Trap Hole to the defender's GY, destroys the summoned monster sending it to the GY,
+   * Activates a summon-reaction Trap (e.g. Trap Hole) in response to a summoned monster:
+   * Sends the Trap to the defender's GY, destroys the summoned monster sending it to the GY,
    * and records everything in the duel log.
    */
   public activateTrapHole(
@@ -472,19 +523,20 @@ export class DuelMatchSession {
       return false;
     }
 
-    // Send Trap Hole to defender's graveyard
+    // Send Trap to defender's graveyard
     defender.spellTrapZones[trapZoneIndex] = null;
     trapCard.isFaceDown = false;
     defender.graveyard.push(trapCard);
 
-    // Destroy the summoned monster and send to attacker's graveyard
-    attacker.monsterZones[summonedMonsterZoneIndex] = null;
-    attacker.graveyard.push(summonedMonster);
+    // Destroy the summoned monster via declarative handler
+    ACTION_HANDLERS.DESTROY_SUMMONED_MONSTER({
+      cardInstance: trapCard,
+      player: defender,
+      opponent: attacker,
+      targetUids: [summonedMonster.uid],
+      logFn: (msg) => this.log(msg),
+    });
 
-    const trapName = trapCard.data.namePt || trapCard.data.name;
-    const monsterName = summonedMonster.data.namePt || summonedMonster.data.name;
-
-    this.log(`🪤 ARMADILHA ATIVADA! ${defender.nickname} ativou ${trapName}! O monstro recém-invocado ${monsterName} caiu no buraco e foi destruído!`);
     return true;
   }
 
@@ -493,10 +545,7 @@ export class DuelMatchSession {
    * Enforces rules:
    * - Cannot be activated on the same turn it was set.
    * - Must be face-down in spell/trap zone.
-   * - For Trap Hole (DESTROY_SUMMONED_MONSTER):
-   *     - Target monster must be controlled by the opponent.
-   *     - Target monster must have been summoned this turn.
-   *     - Target monster must have effective ATK >= 1000.
+   * - Dispatches effect declaratively based on effectDefinition.action.
    * Sends the trap card to the graveyard upon successful activation.
    */
   public activateTrap(trapCardUid: string, targetMonsterUid?: string): boolean {
@@ -537,13 +586,7 @@ export class DuelMatchSession {
 
     const action = trapCard.data.effectDefinition?.action;
 
-    // Trap Hole reaction validation (supports TRAP_TRIGGER_ON_SUMMON and DESTROY_SUMMONED_MONSTER)
-    if (
-      action === 'TRAP_TRIGGER_ON_SUMMON' ||
-      action === 'DESTROY_SUMMONED_MONSTER' ||
-      trapCard.data.id === '04206964' ||
-      trapCard.data.name.toLowerCase().includes('trap hole')
-    ) {
+    if (action === 'TRAP_TRIGGER_ON_SUMMON' || action === 'DESTROY_SUMMONED_MONSTER') {
       if (!targetMonsterUid) {
         this.log('Nenhum monstro alvo foi especificado para a Carta Armadilha.');
         return false;
@@ -561,7 +604,7 @@ export class DuelMatchSession {
         return false;
       }
 
-      // Calculate effective ATK: must be >= 1000 (or minAtk defined on effect)
+      // Calculate effective ATK: must be >= minAtk (defaults to 1000)
       const minAtk = trapCard.data.effectDefinition?.minAtk ?? 1000;
       const effectiveAtk = this.getEffectiveAttack(targetMonster, opponent, trapOwner);
       if (effectiveAtk < minAtk) {
@@ -581,6 +624,34 @@ export class DuelMatchSession {
       if (!result.destroyed) {
         return false;
       }
+    } else if (action === 'GAIN_LP') {
+      ACTION_HANDLERS.GAIN_LP({
+        cardInstance: trapCard,
+        player: trapOwner,
+        opponent,
+        logFn: (msg) => this.log(msg),
+      });
+    } else if (action === 'INFLICT_DAMAGE') {
+      ACTION_HANDLERS.INFLICT_DAMAGE({
+        cardInstance: trapCard,
+        player: trapOwner,
+        opponent,
+        logFn: (msg) => this.log(msg),
+      });
+      if (opponent.lifePoints <= 0) {
+        this.declareGameOver(
+          trapOwner.id,
+          `Os Pontos de Vida de ${opponent.nickname} chegaram a 0!`
+        );
+      }
+    } else if (action === 'DESTROY_SPELL_TRAP') {
+      ACTION_HANDLERS.DESTROY_SPELL_TRAP({
+        cardInstance: trapCard,
+        player: trapOwner,
+        opponent,
+        targetUids: targetMonsterUid ? [targetMonsterUid] : undefined,
+        logFn: (msg) => this.log(msg),
+      });
     } else {
       const cardName = trapCard.data.namePt || trapCard.data.name;
       this.log(`🪤 ${trapOwner.nickname} ativou a Carta Armadilha ${cardName}!`);
@@ -635,8 +706,8 @@ export class DuelMatchSession {
 
       let flipEffect: PositionChangeResult['flipEffect'];
 
-      // Dispara efeito FLIP caso possua
-      if (monster.data.effectType === 'FLIP') {
+      // Dispara efeito FLIP caso possua, delegando exclusivamente para ACTION_HANDLERS via effectDefinition.action
+      if (monster.data.effectType === 'FLIP' || monster.data.effectDefinition?.trigger === 'FLIP') {
         const action = monster.data.effectDefinition?.action;
 
         if (action === 'DESTROY_MONSTER') {
@@ -679,6 +750,50 @@ export class DuelMatchSession {
             targetCardUids: res.returnedCardUids,
             targetNames: res.returnedNames,
           };
+        } else if (action === 'GAIN_LP') {
+          ACTION_HANDLERS.GAIN_LP({
+            cardInstance: monster,
+            player,
+            opponent,
+            logFn: (msg) => this.log(msg),
+          });
+          flipEffect = {
+            cardName,
+            action: 'GAIN_LP',
+          };
+        } else if (action === 'INFLICT_DAMAGE') {
+          ACTION_HANDLERS.INFLICT_DAMAGE({
+            cardInstance: monster,
+            player,
+            opponent,
+            logFn: (msg) => this.log(msg),
+          });
+          if (opponent.lifePoints <= 0) {
+            this.declareGameOver(
+              player.id,
+              `Os Pontos de Vida de ${opponent.nickname} chegaram a 0!`
+            );
+          }
+          flipEffect = {
+            cardName,
+            action: 'INFLICT_DAMAGE',
+          };
+        } else if (action === 'DESTROY_SPELL_TRAP') {
+          const res = ACTION_HANDLERS.DESTROY_SPELL_TRAP({
+            cardInstance: monster,
+            player,
+            opponent,
+            targetUids: selectedTargetUids,
+            logFn: (msg) => this.log(msg),
+          });
+          flipEffect = {
+            cardName,
+            action: 'DESTROY_SPELL_TRAP',
+            targetCardUid: res.destroyedCardUids[0],
+            targetName: res.destroyedNames[0],
+            targetCardUids: res.destroyedCardUids,
+            targetNames: res.destroyedNames,
+          };
         }
       }
       return { success: true, flipped: true, flipEffect };
@@ -695,7 +810,7 @@ export class DuelMatchSession {
 
   /**
    * Calculates the dynamic effective ATK of a monster on the field,
-   * applying continuous effects (e.g. Buster Blader gaining +500 ATK per Dragon).
+   * applying continuous effects strictly via effectDefinition.action === 'BOOST_ATK' or effectType === 'CONTINUOUS'.
    */
   public getEffectiveAttack(
     cardInstance: CardInstance,
@@ -704,14 +819,10 @@ export class DuelMatchSession {
   ): number {
     let effectiveAtk = cardInstance.data.attack;
 
-    // Efeito CONTINUOUS delegado aos ACTION_HANDLERS (ex: BOOST_ATK)
-    const isBoostAtkEffect =
+    if (
       cardInstance.data.effectDefinition?.action === 'BOOST_ATK' ||
-      (!cardInstance.data.effectDefinition &&
-        (cardInstance.data.id === '78193831' ||
-          cardInstance.data.name.toLowerCase().includes('buster blader')));
-
-    if (isBoostAtkEffect) {
+      cardInstance.data.effectType === 'CONTINUOUS'
+    ) {
       const res = ACTION_HANDLERS.BOOST_ATK({
         cardInstance,
         player: owner,
@@ -724,30 +835,24 @@ export class DuelMatchSession {
   }
 
   /**
-   * Checks if the specified player has Kuriboh (or PREVENT_DAMAGE hand trigger) in their hand.
+   * Checks if the specified player has a PREVENT_DAMAGE hand trigger in their hand.
    */
   public canActivateKuriboh(playerId: string): boolean {
     const player = this.player1.id === playerId ? this.player1 : this.player2;
     return player.hand.some(
-      (c) =>
-        (c.data.effectType === 'HAND_TRIGGER' && c.data.effectDefinition?.action === 'PREVENT_DAMAGE') ||
-        c.data.id === '40640057' ||
-        c.data.name.toLowerCase().includes('kuriboh')
+      (c) => c.data.effectDefinition?.action === 'PREVENT_DAMAGE'
     );
   }
 
   /**
-   * Discards Kuriboh from the player's hand to the GY and returns true (annulling pending battle damage), with duel log.
+   * Discards a PREVENT_DAMAGE monster from the player's hand to the GY and returns true (annulling pending battle damage), with duel log.
    */
   public activateKuriboh(playerId: string): boolean {
     if (this.matchState.isGameOver) return false;
 
     const player = this.player1.id === playerId ? this.player1 : this.player2;
     const kuribohCard = player.hand.find(
-      (c) =>
-        (c.data.effectType === 'HAND_TRIGGER' && c.data.effectDefinition?.action === 'PREVENT_DAMAGE') ||
-        c.data.id === '40640057' ||
-        c.data.name.toLowerCase().includes('kuriboh')
+      (c) => c.data.effectDefinition?.action === 'PREVENT_DAMAGE'
     );
 
     if (!kuribohCard) {
@@ -770,7 +875,7 @@ export class DuelMatchSession {
   }
 
   /**
-   * Activates Time Wizard ignition effect:
+   * Activates COIN_TOSS_CLEAR ignition effect (e.g. Time Wizard):
    * 50/50 Coin toss with high entropy (crypto.getRandomValues).
    * HEADS: Destroys all opponent monsters, sending them to GY.
    * TAILS: Destroys all user monsters and burns user LP equal to half total destroyed ATK.
@@ -813,13 +918,10 @@ export class DuelMatchSession {
       return failureResult;
     }
 
-    const isTimeWizard =
-      (timeWizardCard.data.effectType === 'IGNITION' &&
-        timeWizardCard.data.effectDefinition?.action === 'COIN_TOSS_CLEAR') ||
-      timeWizardCard.data.id === '71625222' ||
-      timeWizardCard.data.name.toLowerCase().includes('time wizard');
+    const isCoinTossEffect =
+      timeWizardCard.data.effectDefinition?.action === 'COIN_TOSS_CLEAR';
 
-    if (!isTimeWizard) {
+    if (!isCoinTossEffect) {
       this.log('O monstro selecionado não é o Time Wizard.');
       return failureResult;
     }
@@ -988,6 +1090,36 @@ export class DuelMatchSession {
         if (!attackerPlayer.monsterZones.some((m) => m?.uid === attackingCard.uid)) {
           attackerRemovedByFlip = true;
         }
+      } else if (action === 'GAIN_LP') {
+        ACTION_HANDLERS.GAIN_LP({
+          cardInstance: defendingCard,
+          player: defenderPlayer,
+          opponent: attackerPlayer,
+          logFn: (msg) => this.log(msg),
+        });
+      } else if (action === 'INFLICT_DAMAGE') {
+        ACTION_HANDLERS.INFLICT_DAMAGE({
+          cardInstance: defendingCard,
+          player: defenderPlayer,
+          opponent: attackerPlayer,
+          logFn: (msg) => this.log(msg),
+        });
+        if (attackerPlayer.lifePoints <= 0) {
+          this.declareGameOver(
+            defenderPlayer.id,
+            `Os Pontos de Vida de ${attackerPlayer.nickname} chegaram a 0!`
+          );
+          attackingCard.hasAttacked = true;
+          return true;
+        }
+      } else if (action === 'DESTROY_SPELL_TRAP') {
+        ACTION_HANDLERS.DESTROY_SPELL_TRAP({
+          cardInstance: defendingCard,
+          player: defenderPlayer,
+          opponent: attackerPlayer,
+          targetUids: selectedDefenderTargetUids,
+          logFn: (msg) => this.log(msg),
+        });
       }
     }
 

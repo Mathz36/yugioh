@@ -18,6 +18,11 @@ export interface CardEffectDefinition {
   condition?: Record<string, any> | string;
   cost?: string;
   activation_timing?: string;
+  target?: {
+    scope: string;
+    minTargets?: number;
+    maxTargets?: number;
+  };
   target_count?: number;
   target_max_count?: number;
   target_scope?: string;
@@ -40,6 +45,7 @@ export interface CardData {
   descriptionPt?: string;
   imageUrl?: string;
   race?: string;
+  attribute?: string;
   effectType?: CardEffectType;
   effectDefinition?: CardEffectDefinition;
 }

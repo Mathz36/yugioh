@@ -35,12 +35,28 @@ export interface CoinTossClearResult {
   burnDamage: number;
 }
 
+export interface GainLpResult {
+  gainedLp: number;
+}
+
+export interface InflictDamageResult {
+  damageDealt: number;
+}
+
+export interface DestroySpellTrapResult {
+  destroyedCardUids: string[];
+  destroyedNames: string[];
+}
+
 export type ActionHandlerResult =
   | BoostAtkResult
   | DestroyMonsterResult
   | ReturnToHandResult
   | PreventDamageResult
-  | CoinTossClearResult;
+  | CoinTossClearResult
+  | GainLpResult
+  | InflictDamageResult
+  | DestroySpellTrapResult;
 
 /**
  * Checks whether a monster card matches the given race condition (e.g. race === 'Dragon').
@@ -79,8 +95,12 @@ export const ACTION_HANDLERS = {
     const { cardInstance, opponent } = context;
     const effectDef = cardInstance.data.effectDefinition;
 
-    const boostValue = typeof effectDef?.value === 'number' ? effectDef.value : 500;
-    const condition = effectDef?.condition;
+    if (!effectDef || effectDef.action !== 'BOOST_ATK') {
+      return { bonus: 0 };
+    }
+
+    const boostValue = typeof effectDef.value === 'number' ? effectDef.value : 500;
+    const condition = effectDef.condition;
 
     // Check condition target race (e.g., 'Dragon' or condition.target_race)
     let targetRace = 'Dragon';
@@ -90,21 +110,21 @@ export const ACTION_HANDLERS = {
       targetRace = 'Dragon';
     }
 
-    const dragonsOnField = opponent.monsterZones.filter(
+    const matchingOnField = opponent.monsterZones.filter(
       (m): m is CardInstance => m !== null && !m.isFaceDown && matchesRaceOrType(m, targetRace)
     ).length;
 
-    const dragonsInGY = opponent.graveyard.filter((m) => matchesRaceOrType(m, targetRace)).length;
+    const matchingInGY = opponent.graveyard.filter((m) => matchesRaceOrType(m, targetRace)).length;
 
-    const totalDragons = dragonsOnField + dragonsInGY;
+    const totalMatching = matchingOnField + matchingInGY;
     return {
-      bonus: totalDragons * boostValue,
+      bonus: totalMatching * boostValue,
     };
   },
 
   /**
    * DESTROY_MONSTER: Destroys target monster(s) and sends them to the GY.
-   * If targetUids provided, targets them; otherwise picks the opponent's strongest monster.
+   * If targetUids provided, targets them; otherwise picks the opponent's strongest monster(s).
    */
   DESTROY_MONSTER(
     context: ActionExecutionContext,
@@ -112,6 +132,12 @@ export const ACTION_HANDLERS = {
   ): DestroyMonsterResult {
     const { cardInstance, player, opponent, targetUids, logFn } = context;
     const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const effectDef = cardInstance.data.effectDefinition;
+    const maxTargets: number =
+      (typeof effectDef?.target === 'object' && effectDef?.target?.maxTargets) ||
+      effectDef?.target_max_count ||
+      effectDef?.target_count ||
+      1;
 
     const opponentMonsters = opponent.monsterZones
       .map((m, idx) => ({ card: m, index: idx }))
@@ -125,17 +151,17 @@ export const ACTION_HANDLERS = {
     let targetsToDestroy: { card: CardInstance; index: number }[] = [];
 
     if (targetUids && targetUids.length > 0) {
-      const targetSet = new Set(targetUids);
+      const targetSet = new Set(targetUids.slice(0, maxTargets));
       targetsToDestroy = opponentMonsters.filter((item) => targetSet.has(item.card.uid));
     }
 
     if (targetsToDestroy.length === 0) {
-      // Pick the strongest monster by effective attack
+      // Pick the strongest monster(s) by effective attack
       const getAtk = effectiveAtkFn || ((c: CardInstance) => c.data.attack);
-      const strongest = [...opponentMonsters].sort(
+      const sorted = [...opponentMonsters].sort(
         (a, b) => getAtk(b.card, opponent, player) - getAtk(a.card, opponent, player)
-      )[0];
-      targetsToDestroy = [strongest];
+      );
+      targetsToDestroy = sorted.slice(0, maxTargets);
     }
 
     const destroyedCardUids: string[] = [];
@@ -155,8 +181,8 @@ export const ACTION_HANDLERS = {
 
   /**
    * RETURN_TO_HAND: Smart multi-target bounce effect (e.g. Penguin Soldier).
-   * - If eligible opponent monsters <= 2: returns all automatically.
-   * - If eligible opponent monsters > 2: returns targets in targetUids (or top 2 highest ATK if Bot/unspecified).
+   * - If eligible opponent monsters <= maxTargets (default 2): returns all automatically.
+   * - If eligible opponent monsters > maxTargets: returns targets in targetUids (or top maxTargets highest ATK if Bot/unspecified).
    */
   RETURN_TO_HAND(
     context: ActionExecutionContext,
@@ -164,6 +190,12 @@ export const ACTION_HANDLERS = {
   ): ReturnToHandResult {
     const { cardInstance, player, opponent, targetUids, logFn } = context;
     const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const effectDef = cardInstance.data.effectDefinition;
+    const maxTargets: number =
+      (typeof effectDef?.target === 'object' && effectDef?.target?.maxTargets) ||
+      effectDef?.target_max_count ||
+      effectDef?.target_count ||
+      2;
 
     const opponentMonsters = opponent.monsterZones
       .map((m, idx) => ({ card: m, index: idx }))
@@ -176,23 +208,23 @@ export const ACTION_HANDLERS = {
 
     let targetsToReturn: { card: CardInstance; index: number }[] = [];
 
-    if (opponentMonsters.length <= 2) {
-      // <= 2: return all automatically
+    if (opponentMonsters.length <= maxTargets) {
+      // <= maxTargets: return all automatically
       targetsToReturn = [...opponentMonsters];
     } else {
-      // > 2: check targetUids
+      // > maxTargets: check targetUids
       if (targetUids && targetUids.length > 0) {
-        const targetSet = new Set(targetUids.slice(0, 2));
+        const targetSet = new Set(targetUids.slice(0, maxTargets));
         targetsToReturn = opponentMonsters.filter((item) => targetSet.has(item.card.uid));
       }
 
-      // If no valid targetUids or Bot action, automatically pick top 2 by effective ATK
+      // If no valid targetUids or Bot action, automatically pick top maxTargets by effective ATK
       if (targetsToReturn.length === 0) {
         const getAtk = effectiveAtkFn || ((c: CardInstance) => c.data.attack);
         const sortedByAtk = [...opponentMonsters].sort(
           (a, b) => getAtk(b.card, opponent, player) - getAtk(a.card, opponent, player)
         );
-        targetsToReturn = sortedByAtk.slice(0, 2);
+        targetsToReturn = sortedByAtk.slice(0, maxTargets);
       }
     }
 
@@ -321,9 +353,7 @@ export const ACTION_HANDLERS = {
     for (let i = 0; i < player.monsterZones.length; i++) {
       const monster = player.monsterZones[i];
       if (monster) {
-        destroyedCardUids.push(monster.uid);
-        player.monsterZones[i] = null;
-        player.graveyard.push(monster);
+        destroyedUidsPush(destroyedCardUids, monster, player, i);
       }
     }
 
@@ -331,9 +361,7 @@ export const ACTION_HANDLERS = {
     for (let i = 0; i < opponent.monsterZones.length; i++) {
       const monster = opponent.monsterZones[i];
       if (monster) {
-        destroyedCardUids.push(monster.uid);
-        opponent.monsterZones[i] = null;
-        opponent.graveyard.push(monster);
+        destroyedUidsPush(destroyedCardUids, monster, opponent, i);
       }
     }
 
@@ -407,4 +435,92 @@ export const ACTION_HANDLERS = {
   TRAP_TRIGGER_ON_SUMMON(context: ActionExecutionContext): { destroyed: boolean } {
     return this.DESTROY_SUMMONED_MONSTER(context);
   },
+
+  /**
+   * GAIN_LP: Increases the active player's Life Points by `effectDefinition.value`.
+   */
+  GAIN_LP(context: ActionExecutionContext): GainLpResult {
+    const { cardInstance, player, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const amount = Math.max(0, Number(cardInstance.data.effectDefinition?.value ?? 0));
+
+    player.lifePoints += amount;
+    logFn?.(`💚 EFEITO DE CURA! ${player.nickname} ativou ${cardName} e recuperou ${amount} Pontos de Vida!`);
+
+    return { gainedLp: amount };
+  },
+
+  /**
+   * INFLICT_DAMAGE: Decreases the opponent's Life Points by `effectDefinition.value`.
+   */
+  INFLICT_DAMAGE(context: ActionExecutionContext): InflictDamageResult {
+    const { cardInstance, player, opponent, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const amount = Math.max(0, Number(cardInstance.data.effectDefinition?.value ?? 0));
+
+    opponent.lifePoints = Math.max(0, opponent.lifePoints - amount);
+    logFn?.(`🔥 DANO DE EFEITO! ${player.nickname} ativou ${cardName} e causou ${amount} de dano aos Pontos de Vida de ${opponent.nickname}!`);
+
+    return { damageDealt: amount };
+  },
+
+  /**
+   * DESTROY_SPELL_TRAP: Removes target Spell/Trap card(s) from the opponent's Spell/Trap zones and sends them to the GY.
+   */
+  DESTROY_SPELL_TRAP(context: ActionExecutionContext): DestroySpellTrapResult {
+    const { cardInstance, opponent, targetUids, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const effectDef = cardInstance.data.effectDefinition;
+    const maxTargets: number =
+      (typeof effectDef?.target === 'object' && effectDef?.target?.maxTargets) ||
+      effectDef?.target_max_count ||
+      effectDef?.target_count ||
+      1;
+
+    const opponentSpellTraps = opponent.spellTrapZones
+      .map((c, idx) => ({ card: c, index: idx }))
+      .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
+
+    if (opponentSpellTraps.length === 0) {
+      logFn?.(`🌪️ ${cardName} foi ativado, mas o oponente não possui Cartas Mágicas/Armadilhas no campo!`);
+      return { destroyedCardUids: [], destroyedNames: [] };
+    }
+
+    let targetsToDestroy: { card: CardInstance; index: number }[] = [];
+    if (targetUids && targetUids.length > 0) {
+      const targetSet = new Set(targetUids.slice(0, maxTargets));
+      targetsToDestroy = opponentSpellTraps.filter((item) => targetSet.has(item.card.uid));
+    }
+
+    if (targetsToDestroy.length === 0) {
+      targetsToDestroy = opponentSpellTraps.slice(0, maxTargets);
+    }
+
+    const destroyedCardUids: string[] = [];
+    const destroyedNames: string[] = [];
+
+    for (const target of targetsToDestroy) {
+      opponent.spellTrapZones[target.index] = null;
+      target.card.isFaceDown = false;
+      opponent.graveyard.push(target.card);
+      const targetName = target.card.data.namePt || target.card.data.name;
+      destroyedCardUids.push(target.card.uid);
+      destroyedNames.push(targetName);
+      logFn?.(`🌪️ DESTRUIÇÃO DE MAGIA/ARMADILHA! ${cardName} destruiu ${targetName} do oponente!`);
+    }
+
+    return { destroyedCardUids, destroyedNames };
+  },
 };
+
+function destroyedUidsPush(
+  destroyedCardUids: string[],
+  monster: CardInstance,
+  owner: PlayerDuelState,
+  zoneIdx: number
+): void {
+  destroyedCardUids.push(monster.uid);
+  owner.monsterZones[zoneIdx] = null;
+  owner.graveyard.push(monster);
+}
+

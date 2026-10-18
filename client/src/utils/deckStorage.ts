@@ -1,6 +1,7 @@
 import { CardData } from '@duel/duel-types';
 import { DeckCardEntry, DeckModel, DeckService } from '@duel/deck-service';
 import { createYugiDeck, createKaibaDeck, CLASSIC_CARDS } from '@duel/starter-decks';
+import duelistKingdomCatalog from '../data/duelist-kingdom-catalog.json';
 
 const getDeckStorageKey = (nickname?: string): string => {
   const cleanNick = nickname && nickname.trim() ? nickname.trim().toLowerCase() : 'guest';
@@ -47,7 +48,23 @@ export const getPrebuiltDecksList = (): DeckModel[] => {
 };
 
 export const getAllCatalogCards = (): CardData[] => {
+  if (Array.isArray(duelistKingdomCatalog) && duelistKingdomCatalog.length > 0) {
+    return duelistKingdomCatalog as unknown as CardData[];
+  }
   return Object.values(CLASSIC_CARDS);
+};
+
+export type CardFilterType = 'ALL' | 'MONSTER' | 'SPELL' | 'TRAP';
+
+export const isMonsterType = (type?: string): boolean => !!type && type.toLowerCase().includes('monster');
+export const isSpellType = (type?: string): boolean => !!type && type.toLowerCase().includes('spell');
+export const isTrapType = (type?: string): boolean => !!type && type.toLowerCase().includes('trap');
+
+export const filterCatalogByType = (cards: CardData[], filter: CardFilterType): CardData[] => {
+  if (filter === 'MONSTER') return cards.filter((c) => isMonsterType(c.type));
+  if (filter === 'SPELL') return cards.filter((c) => isSpellType(c.type));
+  if (filter === 'TRAP') return cards.filter((c) => isTrapType(c.type));
+  return cards;
 };
 
 const loadStoredData = (nickname?: string): StoredDeckData => {

@@ -68,14 +68,11 @@ export const CLASSIC_CARDS: Record<string, CardData> = {
     imageUrl: 'https://images.ygoprodeck.com/images/cards/78193831.jpg',
     effectType: 'CONTINUOUS',
     effectDefinition: {
-      trigger: 'CONTINUOUS',
       action: 'BOOST_ATK',
       value: 500,
       condition: {
         target_race: 'Dragon',
-        locations: ['OPPONENT_FIELD', 'OPPONENT_GRAVEYARD'],
       },
-      description_pt: 'Ganha 500 de ATK para cada monstro do Tipo Dragão que seu oponente controla ou que está no Cemitério dele.',
     },
   },
   CELTIC_GUARDIAN: {
@@ -193,8 +190,11 @@ export const CLASSIC_CARDS: Record<string, CardData> = {
     effectDefinition: {
       trigger: 'FLIP',
       action: 'DESTROY_MONSTER',
-      target_count: 1,
-      target_scope: 'FIELD',
+      target: {
+        scope: 'OPPONENT_MONSTERS',
+        minTargets: 1,
+        maxTargets: 1,
+      },
       description_pt: 'VIRE: Escolha 1 monstro no campo; destrua aquele alvo.',
     },
   },
@@ -214,8 +214,11 @@ export const CLASSIC_CARDS: Record<string, CardData> = {
     effectDefinition: {
       trigger: 'FLIP',
       action: 'RETURN_TO_HAND',
-      target_max_count: 2,
-      target_scope: 'FIELD',
+      target: {
+        scope: 'OPPONENT_MONSTERS',
+        minTargets: 1,
+        maxTargets: 2,
+      },
       description_pt: 'VIRE: Você pode escolher até 2 monstros no campo; devolva esses alvos para a mão.',
     },
   },

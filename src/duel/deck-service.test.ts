@@ -5,7 +5,10 @@ import {
   STARTER_YUGI_DECK_ID,
   StorageLike,
 } from './deck-service.js';
-import { CLASSIC_CARDS } from './starter-decks.js';
+import { CLASSIC_CARDS, createKaibaDeck } from './starter-decks.js';
+import { DuelMatchSession } from './duel-match-session.js';
+import { CardData, CardInstance } from './duel-types.js';
+import duelistKingdomCatalog from '../../client/src/data/duelist-kingdom-catalog.json';
 
 class MockStorage implements StorageLike {
   private data = new Map<string, string>();
@@ -223,5 +226,230 @@ describe('DeckService CRUD & Supabase/localStorage Fallback Suite', () => {
     expect(saved.name).toBe('Deck Offline Resiliente');
     expect(decks.length).toBe(3);
     expect(decks.find((d) => d.id === saved.id)?.isMain).toBe(true);
+  });
+});
+
+describe('Wave 1 Expanded Catalog Deck Assembly & Duel Simulation Suite', () => {
+  let storage: MockStorage;
+  let service: DeckService;
+
+  beforeEach(() => {
+    storage = new MockStorage();
+    service = new DeckService({ supabaseClient: null, storage });
+  });
+
+  it('should assemble and validate a 40-card custom deck composed exclusively of new Normal Monsters from Wave 1', async () => {
+    // Arrange
+    const userId = 'joey_wheeler_onde1';
+    const catalogNormalMonsters = (duelistKingdomCatalog as CardData[]).filter(
+      (c) => c.type === 'Normal Monster'
+    );
+
+    // Select 14 distinct Normal Monsters, including Red-Eyes and Two-Headed King Rex
+    const redEyes = catalogNormalMonsters.find((c) => c.name === 'Red-Eyes Black Dragon')!;
+    const rex = catalogNormalMonsters.find((c) => c.name === 'Two-Headed King Rex')!;
+    expect(redEyes).toBeDefined();
+    expect(rex).toBeDefined();
+
+    const otherMonsters = catalogNormalMonsters
+      .filter((c) => c.id !== redEyes.id && c.id !== rex.id)
+      .slice(0, 12);
+
+    // 13 cards with 3 copies each = 39 cards, plus 1 card with 1 copy = 40 cards total
+    const cardEntries = [
+      { cardId: redEyes.id, quantity: 3, card: redEyes },
+      { cardId: rex.id, quantity: 3, card: rex },
+      ...otherMonsters.slice(0, 11).map((c) => ({ cardId: c.id, quantity: 3, card: c })),
+      { cardId: otherMonsters[11].id, quantity: 1, card: otherMonsters[11] },
+    ];
+
+    const totalCardsCount = cardEntries.reduce((sum, e) => sum + e.quantity, 0);
+    expect(totalCardsCount).toBe(40);
+
+    // Act
+    const customDeck = await service.saveCustomDeck(userId, {
+      name: 'Deck Beatdown Dragão Negro Onda 1',
+      description: 'Deck competitivo de 40 monstros normais da era Reino dos Duelistas.',
+      cardEntries,
+      isActive: true,
+    });
+
+    // Assert
+    expect(customDeck).toBeDefined();
+    expect(customDeck.name).toBe('Deck Beatdown Dragão Negro Onda 1');
+    expect(customDeck.isCustom).toBe(true);
+    expect(customDeck.isMain).toBe(true);
+    expect(customDeck.isActive).toBe(true);
+    expect(customDeck.expandedCards.length).toBe(40);
+    expect(customDeck.cards.length).toBe(14); // 14 distinct cards
+
+    // Enforce all cards are Normal Monsters
+    expect(customDeck.expandedCards.every((c) => c.type === 'Normal Monster')).toBe(true);
+
+    // Enforce max 3 copies rule
+    for (const entry of customDeck.cards) {
+      expect(entry.quantity).toBeLessThanOrEqual(3);
+      expect(entry.quantity).toBeGreaterThanOrEqual(1);
+    }
+
+    // Verify key monster stats
+    const resolvedRedEyes = customDeck.expandedCards.find((c) => c.name === 'Red-Eyes Black Dragon');
+    expect(resolvedRedEyes).toBeDefined();
+    expect(resolvedRedEyes?.attack).toBe(2400);
+    expect(resolvedRedEyes?.defense).toBe(2000);
+    expect(resolvedRedEyes?.level).toBe(7);
+
+    const resolvedRex = customDeck.expandedCards.find((c) => c.name === 'Two-Headed King Rex');
+    expect(resolvedRex).toBeDefined();
+    expect(resolvedRex?.attack).toBe(1600);
+    expect(resolvedRex?.defense).toBe(1200);
+    expect(resolvedRex?.level).toBe(4);
+  });
+
+  it('should instantiate DuelMatchSession with the 40-card Wave 1 deck and execute tribute summon, normal summon, combat, and damage without errors', async () => {
+    // Arrange
+    const userId = 'joey_duel_test';
+    const catalogNormalMonsters = (duelistKingdomCatalog as CardData[]).filter(
+      (c) => c.type === 'Normal Monster'
+    );
+    const redEyes = catalogNormalMonsters.find((c) => c.name === 'Red-Eyes Black Dragon')!;
+    const rex = catalogNormalMonsters.find((c) => c.name === 'Two-Headed King Rex')!;
+    const otherMonsters = catalogNormalMonsters
+      .filter((c) => c.id !== redEyes.id && c.id !== rex.id)
+      .slice(0, 12);
+
+    const cardEntries = [
+      { cardId: redEyes.id, quantity: 3, card: redEyes },
+      { cardId: rex.id, quantity: 3, card: rex },
+      ...otherMonsters.slice(0, 11).map((c) => ({ cardId: c.id, quantity: 3, card: c })),
+      { cardId: otherMonsters[11].id, quantity: 1, card: otherMonsters[11] },
+    ];
+
+    const customDeck = await service.saveCustomDeck(userId, {
+      name: 'Joey Red-Eyes 40 Cards',
+      cardEntries,
+    });
+
+    // Act 1: Initialize match session with the 40-card custom deck vs Kaiba starter deck
+    const session = new DuelMatchSession(
+      'Joey',
+      customDeck.expandedCards,
+      'Kaiba',
+      createKaibaDeck()
+    );
+
+    // Assert 1: Match starts cleanly with official rules (8000 LP, 5 in hand, 35 in deck)
+    expect(session.player1.lifePoints).toBe(8000);
+    expect(session.player2.lifePoints).toBe(8000);
+    expect(session.player1.hand.length).toBe(5);
+    expect(session.player1.deck.length).toBe(35);
+    expect(session.player2.hand.length).toBe(5);
+    expect(session.player2.deck.length).toBe(35);
+    expect(session.matchState.phase).toBe('MAIN1');
+
+    // Act 2: Normal Summon Level 4 monster (Two-Headed King Rex) with 0 tributes
+    const rexCardInstance: CardInstance = {
+      uid: 'rex_norm_1',
+      data: rex,
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+    session.player1.hand.push(rexCardInstance);
+    session.player1.hasNormalSummonedThisTurn = false;
+
+    const normalSummonSuccess = session.normalSummon(rexCardInstance.uid, 0, 'ATTACK', []);
+
+    // Assert 2: Level 4 normal summon successfully enters zone 0 without tribute
+    expect(normalSummonSuccess).toBe(true);
+    expect(session.player1.monsterZones[0]?.data.name).toBe('Two-Headed King Rex');
+    expect(session.player1.monsterZones[0]?.data.level).toBe(4);
+    expect(session.player1.monsterZones[0]?.position).toBe('ATTACK');
+
+    // Act 3: Tribute Summon Level 7 monster (Red-Eyes Black Dragon) requiring exactly 2 tributes
+    // Place 2 tribute monsters in zone 1 and zone 2
+    session.player1.monsterZones[1] = {
+      uid: 'tribute_fodder_1',
+      data: rex,
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+    session.player1.monsterZones[2] = {
+      uid: 'tribute_fodder_2',
+      data: rex,
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+
+    const redEyesInstance: CardInstance = {
+      uid: 'red_eyes_tribute_1',
+      data: redEyes,
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+    session.player1.hand.push(redEyesInstance);
+
+    // Fail case: Level 7 summon with only 1 tribute must be rejected
+    session.player1.hasNormalSummonedThisTurn = false;
+    const failWithOneTribute = session.normalSummon(redEyesInstance.uid, 1, 'ATTACK', [1]);
+    expect(failWithOneTribute).toBe(false);
+
+    // Success case: Level 7 summon with 2 tributes in zone 1 and 2
+    session.player1.hasNormalSummonedThisTurn = false;
+    const tributeSummonSuccess = session.normalSummon(redEyesInstance.uid, 1, 'ATTACK', [1, 2]);
+
+    // Assert 3: Red-Eyes enters zone 1, and the 2 tributes are sent to the graveyard
+    expect(tributeSummonSuccess).toBe(true);
+    expect(session.player1.monsterZones[1]?.data.name).toBe('Red-Eyes Black Dragon');
+    expect(session.player1.monsterZones[1]?.data.attack).toBe(2400);
+    expect(session.player1.monsterZones[2]).toBeNull();
+    expect(session.player1.graveyard.some((c) => c.uid === 'tribute_fodder_1')).toBe(true);
+    expect(session.player1.graveyard.some((c) => c.uid === 'tribute_fodder_2')).toBe(true);
+
+    // Act 4: Combat and Battle Damage Resolution with Red-Eyes
+    // Place an opponent monster with 1700 ATK (Battle Ox) in Kaiba's zone 0
+    session.player2.monsterZones[0] = {
+      uid: 'kaiba_battle_ox',
+      data: CLASSIC_CARDS.BATTLE_OX,
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+
+    session.matchState.phase = 'BATTLE';
+    session.matchState.currentTurn = 3; // Eligible to attack
+    session.player1.monsterZones[1]!.turnSummoned = 1;
+
+    // Red-Eyes (2400 ATK, zone 1) attacks Battle Ox (1700 ATK, zone 0)
+    const attackSuccess = session.declareAttack(1, 0);
+
+    // Assert 4: Combat successfully executes without error
+    expect(attackSuccess).toBe(true);
+    // Opponent monster destroyed and sent to graveyard
+    expect(session.player2.monsterZones[0]).toBeNull();
+    expect(session.player2.graveyard.some((c) => c.uid === 'kaiba_battle_ox')).toBe(true);
+    // Kaiba receives 700 battle damage (2400 - 1700 = 700)
+    expect(session.player2.lifePoints).toBe(8000 - 700);
+    // Red-Eyes stays on field and marked as hasAttacked
+    expect(session.player1.monsterZones[1]?.data.name).toBe('Red-Eyes Black Dragon');
+    expect(session.player1.monsterZones[1]?.hasAttacked).toBe(true);
   });
 });

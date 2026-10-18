@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { CardData } from '@duel/duel-types';
 import { DeckCardEntry, DeckModel, DeckService } from '@duel/deck-service';
 import {
@@ -8,6 +8,10 @@ import {
   updateCustomDeck,
   deleteCustomDeck,
   getAllCatalogCards,
+  CardFilterType,
+  isMonsterType,
+  isSpellType,
+  isTrapType,
 } from '../utils/deckStorage';
 import { getUserSettings } from '../utils/settings';
 import { soundFX } from '../utils/soundFX';
@@ -17,16 +21,11 @@ export interface DeckBuilderProps {
   onBackToMenu: () => void;
 }
 
-type CardFilterType = 'ALL' | 'MONSTER' | 'SPELL' | 'TRAP';
-
-const isMonsterType = (type: string): boolean => type.toLowerCase().includes('monster');
-const isSpellType = (type: string): boolean => type.toLowerCase().includes('spell');
-const isTrapType = (type: string): boolean => type.toLowerCase().includes('trap');
-
 export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackToMenu }) => {
   const settings = getUserSettings(userNickname);
   const isPt = settings.language === 'pt';
 
+  // Complete Onda 1 Catalog (493 cards with classic fallback)
   const catalogCards = useMemo(() => getAllCatalogCards(), []);
   const [decks, setDecks] = useState<DeckModel[]>(() => getAllUserDecks(userNickname));
 
@@ -49,12 +48,12 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
   const [inspectedCard, setInspectedCard] = useState<CardData | null>(() => catalogCards[0] || null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 3200);
-  };
+  }, []);
 
   const selectedDeck = useMemo(
     () => decks.find((d) => d.id === selectedDeckId) || decks[0],
@@ -65,6 +64,24 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
     () => decks.filter((d) => !d.isPrebuilt).length,
     [decks]
   );
+
+  // Catalog Category Statistics for Quick Filters
+  const catalogStats = useMemo(() => {
+    let monsters = 0;
+    let spells = 0;
+    let traps = 0;
+    for (const card of catalogCards) {
+      if (isMonsterType(card.type)) monsters += 1;
+      else if (isSpellType(card.type)) spells += 1;
+      else if (isTrapType(card.type)) traps += 1;
+    }
+    return {
+      total: catalogCards.length,
+      monsters,
+      spells,
+      traps,
+    };
+  }, [catalogCards]);
 
   // Select a deck from the left sidebar
   const handleSelectDeck = (deck: DeckModel) => {
@@ -164,86 +181,102 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
     return { total, monsters, spells, traps };
   }, [editingCards]);
 
-  // Helper to get current quantity of a card in editingCards
-  const getCardQuantityInDeck = (cardId: string): number => {
-    const found = editingCards.find((e) => e.card.id === cardId);
-    return found ? found.quantity : 0;
-  };
+  // Fast Map lookup for current quantity of a card in editingCards
+  const cardQuantityMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const entry of editingCards) {
+      map.set(entry.card.id, entry.quantity);
+    }
+    return map;
+  }, [editingCards]);
+
+  const getCardQuantityInDeck = useCallback(
+    (cardId: string): number => {
+      return cardQuantityMap.get(cardId) || 0;
+    },
+    [cardQuantityMap]
+  );
 
   // Add 1 copy of a card to the editing deck
-  const handleAddCardToDeck = (card: CardData) => {
-    setInspectedCard(card);
+  const handleAddCardToDeck = useCallback(
+    (card: CardData) => {
+      setInspectedCard(card);
 
-    if (selectedDeck.isPrebuilt) {
-      showToast(
-        isPt
-          ? 'ℹ️ Decks Clássicos são fixos. Clique em "+ Novo Deck" para montar ou clonar seu próprio deck!'
-          : 'ℹ️ Classic Decks are locked. Click "+ New Deck" to build or clone your own custom deck!'
-      );
-      return;
-    }
-
-    if (deckStats.total >= 60) {
-      showToast(
-        isPt
-          ? '⚠️ O deck já atingiu o limite máximo de 60 cartas!'
-          : '⚠️ Deck has reached the maximum limit of 60 cards!'
-      );
-      return;
-    }
-
-    const currentQty = getCardQuantityInDeck(card.id);
-    if (currentQty >= DeckService.MAX_COPIES_PER_CARD) {
-      showToast(
-        isPt
-          ? `⚠️ Limite de ${DeckService.MAX_COPIES_PER_CARD} cópias por carta atingido para "${card.namePt || card.name}"!`
-          : `⚠️ Maximum of ${DeckService.MAX_COPIES_PER_CARD} copies reached for "${card.name}"!`
-      );
-      return;
-    }
-
-    soundFX.playPlaceCard();
-    setEditingCards((prev) => {
-      const exists = prev.find((e) => e.card.id === card.id);
-      if (exists) {
-        return prev.map((e) =>
-          e.card.id === card.id ? { ...e, quantity: e.quantity + 1 } : e
+      if (selectedDeck.isPrebuilt) {
+        showToast(
+          isPt
+            ? 'ℹ️ Decks Clássicos são fixos. Clique em "+ Novo Deck" para montar ou clonar seu próprio deck!'
+            : 'ℹ️ Classic Decks are locked. Click "+ New Deck" to build or clone your own custom deck!'
         );
+        return;
       }
-      return [...prev, { card, quantity: 1 }];
-    });
-    setHasUnsavedChanges(true);
-  };
+
+      if (deckStats.total >= 60) {
+        showToast(
+          isPt
+            ? '⚠️ O deck já atingiu o limite máximo de 60 cartas!'
+            : '⚠️ Deck has reached the maximum limit of 60 cards!'
+        );
+        return;
+      }
+
+      const currentQty = getCardQuantityInDeck(card.id);
+      if (currentQty >= DeckService.MAX_COPIES_PER_CARD) {
+        showToast(
+          isPt
+            ? `⚠️ Limite de ${DeckService.MAX_COPIES_PER_CARD} cópias por carta atingido para "${card.namePt || card.name}"!`
+            : `⚠️ Maximum of ${DeckService.MAX_COPIES_PER_CARD} copies reached for "${card.name}"!`
+        );
+        return;
+      }
+
+      soundFX.playPlaceCard();
+      setEditingCards((prev) => {
+        const exists = prev.find((e) => e.card.id === card.id);
+        if (exists) {
+          return prev.map((e) =>
+            e.card.id === card.id ? { ...e, quantity: e.quantity + 1 } : e
+          );
+        }
+        return [...prev, { card, quantity: 1 }];
+      });
+      setHasUnsavedChanges(true);
+    },
+    [selectedDeck.isPrebuilt, deckStats.total, getCardQuantityInDeck, isPt, showToast]
+  );
 
   // Remove 1 copy of a card from the editing deck
-  const handleRemoveCardFromDeck = (card: CardData, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setInspectedCard(card);
+  const handleRemoveCardFromDeck = useCallback(
+    (card: CardData, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      setInspectedCard(card);
 
-    if (selectedDeck.isPrebuilt) {
-      showToast(
-        isPt
-          ? 'ℹ️ Decks Clássicos são fixos. Crie um Novo Deck personalizado para editar cartas!'
-          : 'ℹ️ Classic Decks are locked. Create a New Custom Deck to edit cards!'
+      if (selectedDeck.isPrebuilt) {
+        showToast(
+          isPt
+            ? 'ℹ️ Decks Clássicos são fixos. Crie um Novo Deck personalizado para editar cartas!'
+            : 'ℹ️ Classic Decks are locked. Create a New Custom Deck to edit cards!'
+        );
+        return;
+      }
+
+      const currentQty = getCardQuantityInDeck(card.id);
+      if (currentQty <= 0) return;
+
+      soundFX.playPlaceCard();
+      setEditingCards((prev) =>
+        prev
+          .map((entry) =>
+            entry.card.id === card.id
+              ? { ...entry, quantity: entry.quantity - 1 }
+              : entry
+          )
+          .filter((entry) => entry.quantity > 0)
       );
-      return;
-    }
-
-    const currentQty = getCardQuantityInDeck(card.id);
-    if (currentQty <= 0) return;
-
-    soundFX.playPlaceCard();
-    setEditingCards((prev) =>
-      prev
-        .map((entry) =>
-          entry.card.id === card.id
-            ? { ...entry, quantity: entry.quantity - 1 }
-            : entry
-        )
-        .filter((entry) => entry.quantity > 0)
-    );
-    setHasUnsavedChanges(true);
-  };
+      setHasUnsavedChanges(true);
+    },
+    [selectedDeck.isPrebuilt, getCardQuantityInDeck, isPt, showToast]
+  );
 
   // Save current deck
   const handleSaveDeck = () => {
@@ -273,7 +306,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
     }
   };
 
-  // Filtered catalog cards
+  // Instant Filtered catalog cards with memoization
   const filteredCatalog = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return catalogCards.filter((card) => {
@@ -286,11 +319,15 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
       const namePt = (card.namePt || '').toLowerCase();
       const descEn = (card.description || '').toLowerCase();
       const descPt = (card.descriptionPt || '').toLowerCase();
+      const race = (card.race || '').toLowerCase();
+      const attr = (card.attribute || '').toLowerCase();
       return (
         nameEn.includes(q) ||
         namePt.includes(q) ||
         descEn.includes(q) ||
-        descPt.includes(q)
+        descPt.includes(q) ||
+        race.includes(q) ||
+        attr.includes(q)
       );
     });
   }, [catalogCards, searchQuery, filterType]);
@@ -308,10 +345,10 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
       )}
 
       {/* =====================================================================
-          LADO ESQUERDO: LISTA DE DECKS + BOTÃO PRINCIPAL ★ + NOVO DECK + VOLTAR
+          LADO ESQUERDO: LISTA DE DECKS + INSPETOR LATERAL AMPLIADO (GRIMOIRE)
          ===================================================================== */}
-      <aside className="w-72 sm:w-80 bg-[#0d0918]/95 border-r-2 border-[#382654] flex flex-col justify-between p-4 shadow-[5px_0_30px_rgba(0,0,0,0.85)] z-20 shrink-0 overflow-y-auto">
-        <div className="space-y-4">
+      <aside className="w-80 lg:w-96 bg-[#0d0918]/95 border-r-2 border-[#382654] flex flex-col justify-between p-4 shadow-[5px_0_30px_rgba(0,0,0,0.85)] z-20 shrink-0 overflow-y-auto">
+        <div className="space-y-3.5">
           {/* Header e Botão Voltar ao Menu */}
           <div className="flex items-center justify-between pb-3 border-b border-purple-900/50">
             <div className="flex items-center gap-2">
@@ -330,7 +367,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
 
             <button
               onClick={onBackToMenu}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/40 hover:border-amber-400 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+              className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/40 hover:border-amber-400 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
               title={isPt ? 'Voltar ao Menu Principal' : 'Back to Main Menu'}
             >
               <span>⬅</span>
@@ -383,8 +420,8 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
             </div>
           </div>
 
-          {/* Lista de Decks (Pré-montados e Personalizados) */}
-          <div className="space-y-2.5 max-h-[42vh] overflow-y-auto pr-1">
+          {/* Lista Compacta de Decks (Pré-montados e Personalizados) */}
+          <div className="space-y-2 max-h-[22vh] overflow-y-auto pr-1">
             {decks.map((deck) => {
               const isSelected = deck.id === selectedDeckId;
               const cardCount = deck.cards.reduce((acc, c) => acc + c.quantity, 0);
@@ -393,17 +430,17 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                 <div
                   key={deck.id}
                   onClick={() => handleSelectDeck(deck)}
-                  className={`p-3 rounded-xl border-2 transition-all cursor-pointer relative ${
+                  className={`p-2.5 rounded-xl border-2 transition-all cursor-pointer relative ${
                     isSelected
                       ? 'bg-gradient-to-r from-amber-950/60 via-purple-950/60 to-slate-900 border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.3)]'
                       : 'bg-slate-950/80 border-slate-800/90 hover:border-purple-600/60'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-1.5">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span
-                          className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
+                          className={`text-[8.5px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
                             deck.isPrebuilt
                               ? 'bg-purple-900/80 text-purple-200 border border-purple-600/40'
                               : 'bg-emerald-900/80 text-emerald-200 border border-emerald-600/40'
@@ -417,12 +454,12 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                             ? 'Personalizado'
                             : 'Custom'}
                         </span>
-                        <span className="text-[10px] font-mono text-slate-400">
+                        <span className="text-[9.5px] font-mono text-slate-400">
                           {cardCount}/60 {isPt ? 'cartas' : 'cards'}
                         </span>
                       </div>
 
-                      <h3 className="text-xs sm:text-sm font-black font-serif text-amber-200 truncate mt-1">
+                      <h3 className="text-xs font-black font-serif text-amber-200 truncate mt-1">
                         {deck.name}
                       </h3>
                     </div>
@@ -440,10 +477,10 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                   </div>
 
                   {/* Ação Inferior do Card de Deck: Definir como Principal ★ */}
-                  <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                  <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex items-center justify-between">
                     <button
                       onClick={(e) => handleSetMainDeck(deck.id, e)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
                         deck.isActive
                           ? 'bg-amber-400 text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.7)] font-black'
                           : 'bg-slate-900 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40'
@@ -453,17 +490,17 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                       <span>
                         {deck.isActive
                           ? isPt
-                            ? 'Principal ★ (Ativo)'
-                            : 'Main ★ (Active)'
+                            ? 'Principal ★'
+                            : 'Main ★'
                           : isPt
                           ? 'Definir Principal ★'
-                          : 'Set as Main ★'}
+                          : 'Set Main ★'}
                       </span>
                     </button>
 
                     {isSelected && (
-                      <span className="text-[10px] font-mono text-amber-300 font-bold">
-                        {isPt ? 'Em exibição ➔' : 'Viewing ➔'}
+                      <span className="text-[9px] font-mono text-amber-300 font-bold">
+                        {isPt ? 'Em edição ➔' : 'Editing ➔'}
                       </span>
                     )}
                   </div>
@@ -473,34 +510,108 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
           </div>
         </div>
 
-        {/* Painel de Inspecionar Carta Selecionada (Grimoire Preview) */}
+        {/* =====================================================================
+            INSPETOR LATERAL AMPLIADO: ARTE EM DESTAQUE E ATRIBUTOS COMPLETOS
+           ===================================================================== */}
         {inspectedCard && (
-          <div className="mt-4 pt-3 border-t border-purple-900/50 bg-black/50 rounded-xl p-3 border border-purple-900/40">
-            <div className="flex items-start gap-3">
+          <div className="mt-3 pt-3 border-t border-purple-900/60 bg-gradient-to-b from-[#150d28]/95 to-black/90 rounded-2xl p-3.5 border border-purple-700/50 shadow-2xl flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-bold flex items-center gap-1">
+                <span>👁️</span> {isPt ? 'Inspeção de Carta' : 'Card Inspector'}
+              </span>
+              {inspectedCard.attribute && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-400 text-amber-300 font-mono font-bold text-[9px]">
+                  {inspectedCard.attribute}
+                </span>
+              )}
+            </div>
+
+            {/* Arte Ampliada com Moldura Dourada */}
+            <div className="relative group mx-auto">
               <img
                 src={inspectedCard.imageUrl}
                 alt={inspectedCard.name}
-                className="w-16 h-24 object-cover rounded border border-amber-400/60 shrink-0 shadow-md"
+                loading="lazy"
+                decoding="async"
+                className="w-32 sm:w-40 aspect-[2/2.8] object-cover rounded-xl border-2 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.35)] transition-transform group-hover:scale-[1.02]"
               />
-              <div className="min-w-0 flex-1">
-                <h4 className="text-xs font-black font-serif text-amber-300 truncate">
-                  {isPt ? inspectedCard.namePt || inspectedCard.name : inspectedCard.name}
-                </h4>
-                <p className="text-[10px] font-mono text-purple-300">
-                  {inspectedCard.type} • {inspectedCard.race}
-                </p>
-                {inspectedCard.attack !== undefined && (
-                  <p className="text-[11px] font-mono font-bold text-amber-200 mt-0.5">
-                    ATK {inspectedCard.attack} / DEF {inspectedCard.defense ?? 0}
-                  </p>
-                )}
-                <p className="text-[10px] text-slate-300 mt-1 line-clamp-3 leading-snug">
-                  {isPt
-                    ? inspectedCard.descriptionPt || inspectedCard.description
-                    : inspectedCard.description}
-                </p>
+              {/* Badge com quantidade no deck em edição */}
+              <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-black/90 border border-amber-400 text-amber-300 font-mono font-black text-[9px]">
+                {getCardQuantityInDeck(inspectedCard.id)}/3
               </div>
             </div>
+
+            {/* Nome da Carta & Tipo / Raça */}
+            <div className="text-center">
+              <h4 className="text-xs sm:text-sm font-black font-serif text-amber-200 leading-snug">
+                {isPt ? inspectedCard.namePt || inspectedCard.name : inspectedCard.name}
+              </h4>
+              {inspectedCard.namePt && inspectedCard.namePt !== inspectedCard.name && (
+                <p className="text-[10px] text-purple-300/70 font-serif italic">
+                  {inspectedCard.name}
+                </p>
+              )}
+              <div className="flex items-center justify-center gap-1.5 mt-1 text-[10px] font-mono text-purple-300">
+                <span>{inspectedCard.type}</span>
+                {inspectedCard.race && <span>• {inspectedCard.race}</span>}
+              </div>
+              {/* Estrelas de Nível para Monstros */}
+              {inspectedCard.level !== undefined && inspectedCard.level > 0 && (
+                <div className="flex items-center justify-center gap-0.5 mt-1 text-amber-400 text-[11px]" title={`Nível ${inspectedCard.level}`}>
+                  {'★'.repeat(inspectedCard.level)}
+                  <span className="text-[10px] font-mono text-slate-400 ml-1">
+                    (Nv. {inspectedCard.level})
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Caixa de ATK / DEF em Destaque */}
+            {inspectedCard.attack !== undefined && (
+              <div className="bg-black/60 rounded-xl p-1.5 border border-amber-400/40 grid grid-cols-2 gap-2 text-center">
+                <div className="border-r border-purple-800/60">
+                  <span className="text-[9px] font-mono text-slate-400 uppercase block">ATK</span>
+                  <span className="text-xs sm:text-sm font-black font-mono text-amber-300">
+                    {inspectedCard.attack}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] font-mono text-slate-400 uppercase block">DEF</span>
+                  <span className="text-xs sm:text-sm font-black font-mono text-sky-300">
+                    {inspectedCard.defense ?? 0}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Descrição / Efeito da Carta com Rolagem Suave */}
+            <div className="bg-black/40 rounded-xl p-2 border border-purple-900/40 max-h-24 overflow-y-auto">
+              <p className="text-[10px] sm:text-[10.5px] text-slate-300 leading-relaxed font-sans">
+                {isPt
+                  ? inspectedCard.descriptionPt || inspectedCard.description
+                  : inspectedCard.description}
+              </p>
+            </div>
+
+            {/* Ação Rápida no Inspetor: Adicionar ao Deck */}
+            {!selectedDeck.isPrebuilt && (
+              <button
+                onClick={() => handleAddCardToDeck(inspectedCard)}
+                disabled={getCardQuantityInDeck(inspectedCard.id) >= DeckService.MAX_COPIES_PER_CARD || deckStats.total >= 60}
+                className={`py-1.5 rounded-xl font-serif font-black text-xs uppercase tracking-wider border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  getCardQuantityInDeck(inspectedCard.id) >= DeckService.MAX_COPIES_PER_CARD || deckStats.total >= 60
+                    ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-slate-950 border-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+                }`}
+              >
+                <span>➕</span>
+                <span>
+                  {getCardQuantityInDeck(inspectedCard.id) >= DeckService.MAX_COPIES_PER_CARD
+                    ? isPt ? 'Limite 3/3 Atingido' : 'Max 3/3 Reached'
+                    : isPt ? 'Adicionar ao Deck (+1)' : 'Add to Deck (+1)'}
+                </span>
+              </button>
+            )}
           </div>
         )}
       </aside>
@@ -508,16 +619,16 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
       {/* =====================================================================
           ÁREA CENTRAL / DIREITA: TOPO (DECK EM EDIÇÃO) + INFERIOR (CATÁLOGO)
          ===================================================================== */}
-      <section className="flex-1 flex flex-col h-full overflow-hidden p-4 sm:p-6 gap-4">
+      <section className="flex-1 flex flex-col h-full overflow-hidden p-3 sm:p-5 gap-3.5">
         {/* -------------------------------------------------------------------
             CENTRO SUPERIOR: DECK EM EDIÇÃO (INPUT DE NOME, CONTAGEM E SALVAR)
            ------------------------------------------------------------------- */}
-        <div className="bg-[#110b22]/90 border-2 border-[#3c285c] rounded-2xl p-4 shadow-xl flex flex-col gap-3 shrink-0 max-h-[44vh]">
+        <div className="bg-[#110b22]/90 border-2 border-[#3c285c] rounded-2xl p-3.5 shadow-xl flex flex-col gap-2.5 shrink-0 max-h-[38vh]">
           {/* Barra Superior do Deck em Edição */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-2.5 border-b border-purple-900/50">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-purple-900/50">
             <div className="flex items-center gap-3 flex-1 min-w-[240px]">
               <div className="flex flex-col flex-1 max-w-md">
-                <label className="text-[10px] font-mono uppercase tracking-wider text-purple-300/80 mb-0.5">
+                <label className="text-[9.5px] font-mono uppercase tracking-wider text-purple-300/80 mb-0.5">
                   {selectedDeck.isPrebuilt
                     ? isPt
                       ? 'Deck Clássico (Somente Leitura - Clique em Clonar para Editar)'
@@ -535,7 +646,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                     setHasUnsavedChanges(true);
                   }}
                   placeholder={isPt ? 'Digite o apelido do seu deck...' : 'Enter deck name...'}
-                  className={`px-3 py-1.5 rounded-lg font-serif font-bold text-sm border focus:outline-none transition-all ${
+                  className={`px-3 py-1.5 rounded-lg font-serif font-bold text-xs sm:text-sm border focus:outline-none transition-all ${
                     selectedDeck.isPrebuilt
                       ? 'bg-slate-900/60 border-slate-700 text-slate-400 cursor-not-allowed'
                       : 'bg-slate-950 border-amber-500/60 focus:border-amber-300 text-amber-200 shadow-inner'
@@ -546,11 +657,11 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
               {/* Contagem de Cartas (ex: 40/60) e Subtotais */}
               <div className="flex items-center gap-2 bg-black/50 px-3 py-1.5 rounded-xl border border-purple-800/50">
                 <div className="text-center pr-2 border-r border-purple-800/50">
-                  <div className="text-[9px] font-mono uppercase text-purple-300">
+                  <div className="text-[8.5px] font-mono uppercase text-purple-300">
                     {isPt ? 'Cartas' : 'Cards'}
                   </div>
                   <div
-                    className={`text-base font-black font-mono ${
+                    className={`text-sm sm:text-base font-black font-mono ${
                       deckStats.total >= 40 && deckStats.total <= 60
                         ? 'text-emerald-400'
                         : 'text-amber-400'
@@ -559,7 +670,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                     {deckStats.total}/60
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-[11px] font-mono">
+                <div className="flex items-center gap-2 text-[10px] sm:text-[11px] font-mono">
                   <span className="text-amber-300" title="Monstros">
                     👾 {deckStats.monsters}
                   </span>
@@ -578,7 +689,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
               {!selectedDeck.isActive && (
                 <button
                   onClick={() => handleSetMainDeck(selectedDeck.id)}
-                  className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-amber-500/20 text-amber-300 border border-amber-400/50 text-xs font-serif font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-amber-500/20 text-amber-300 border border-amber-400/50 text-xs font-serif font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <span>★</span>
                   <span>{isPt ? 'Tornar Principal' : 'Set Main'}</span>
@@ -610,9 +721,9 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
           </div>
 
           {/* Grade de Cartas dentro do Deck em Edição */}
-          <div className="flex-1 overflow-y-auto pr-1">
+          <div className="flex-1 overflow-y-auto pr-1 scroll-smooth">
             {editingCards.length === 0 ? (
-              <div className="h-28 flex flex-col items-center justify-center text-slate-400 border border-dashed border-purple-800/50 rounded-xl bg-black/30">
+              <div className="h-24 flex flex-col items-center justify-center text-slate-400 border border-dashed border-purple-800/50 rounded-xl bg-black/30">
                 <p className="text-xs font-serif">
                   {isPt
                     ? 'Este deck está vazio. Clique nas cartas do Catálogo abaixo para adicioná-las!'
@@ -636,10 +747,12 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                     <img
                       src={card.imageUrl}
                       alt={card.name}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full aspect-[2/2.8] object-cover"
                     />
                     {/* Badge de Quantidade (x1, x2, x3) */}
-                    <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded bg-black/85 border border-amber-400 text-amber-300 font-mono font-black text-[10px]">
+                    <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded bg-black/85 border border-amber-400 text-amber-300 font-mono font-black text-[9px]">
                       x{quantity}
                     </div>
                     {/* Overlay de Remover no Hover */}
@@ -658,34 +771,44 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
         </div>
 
         {/* -------------------------------------------------------------------
-            CENTRO / INFERIOR: CATÁLOGO DE CARTAS (PESQUISA + FILTRO + ADIÇÃO)
+            CENTRO / INFERIOR: CATÁLOGO DE CARTAS (PESQUISA + FILTROS + GRID)
            ------------------------------------------------------------------- */}
-        <div className="flex-1 bg-[#110b22]/90 border-2 border-[#3c285c] rounded-2xl p-4 shadow-xl flex flex-col gap-3 overflow-hidden">
-          {/* Barra de Pesquisa e Filtros por Tipo */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-2.5 border-b border-purple-900/50">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">📚</span>
-              <h2 className="text-sm sm:text-base font-black font-serif text-amber-300 uppercase tracking-wider">
-                {isPt ? 'Catálogo de Cartas' : 'Card Catalog'}
-              </h2>
-              <span className="text-xs font-mono text-purple-300/70">
-                ({filteredCatalog.length})
-              </span>
+        <div className="flex-1 bg-[#110b22]/90 border-2 border-[#3c285c] rounded-2xl p-3.5 shadow-xl flex flex-col gap-3 overflow-hidden">
+          {/* Barra Superior: Título, Quantidade de Cartas Disponíveis, Busca e Filtros */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-purple-900/50">
+            {/* Lado Esquerdo: Título e Badge de Cartas Disponíveis no Catálogo */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📚</span>
+                <h2 className="text-sm sm:text-base font-black font-serif text-amber-300 uppercase tracking-wider">
+                  {isPt ? 'Catálogo de Cartas' : 'Card Catalog'}
+                </h2>
+              </div>
+
+              {/* Badge de Destaque da Onda 1 (200+ cartas disponíveis) */}
+              <div className="px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-950 to-indigo-950 border border-amber-400/60 shadow-[0_0_12px_rgba(245,158,11,0.25)] flex items-center gap-1.5">
+                <span className="text-[10px] text-amber-300 animate-pulse">✨</span>
+                <span className="text-[11px] font-mono font-black text-amber-200">
+                  {isPt
+                    ? `Catálogo: ${catalogCards.length > 200 ? '200+ cartas disponíveis' : `${catalogCards.length} cartas disponíveis`} (${filteredCatalog.length} exibidas)`
+                    : `Catalog: ${catalogCards.length > 200 ? '200+ cards available' : `${catalogCards.length} cards available`} (${filteredCatalog.length} shown)`}
+                </span>
+              </div>
             </div>
 
-            {/* Input de Pesquisa por Nome */}
-            <div className="flex items-center gap-2 flex-1 max-w-md">
-              <div className="relative flex-1">
+            {/* Centro / Direita: Input de Pesquisa Instantânea */}
+            <div className="flex items-center gap-2 flex-1 max-w-sm min-w-[200px]">
+              <div className="relative w-full">
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={
                     isPt
-                      ? '🔍 Pesquisar carta por nome ou efeito...'
-                      : '🔍 Search card by name or effect...'
+                      ? '🔍 Pesquisar por nome, tipo, atributo ou efeito...'
+                      : '🔍 Search by name, type, attribute or effect...'
                   }
-                  className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-purple-700/60 focus:border-amber-400 text-xs text-slate-100 focus:outline-none"
+                  className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-purple-700/60 focus:border-amber-400 text-xs text-slate-100 focus:outline-none shadow-inner"
                 />
                 {searchQuery && (
                   <button
@@ -698,127 +821,168 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
               </div>
             </div>
 
-            {/* Botões de Filtro por Tipo (Todas / Monstro / Mágica / Armadilha) */}
-            <div className="flex items-center gap-1.5">
+            {/* Botões de Filtro Rápido com Contadores Dinâmicos */}
+            <div className="flex items-center gap-1.5 flex-wrap">
               {(
                 [
-                  { id: 'ALL', labelPt: 'Todas', labelEn: 'All', icon: '🃏' },
-                  { id: 'MONSTER', labelPt: 'Monstros', labelEn: 'Monsters', icon: '👾' },
-                  { id: 'SPELL', labelPt: 'Mágicas', labelEn: 'Spells', icon: '✨' },
-                  { id: 'TRAP', labelPt: 'Armadilhas', labelEn: 'Traps', icon: '🪤' },
+                  { id: 'ALL', labelPt: 'Todas', labelEn: 'All', icon: '🃏', count: catalogStats.total },
+                  { id: 'MONSTER', labelPt: 'Monstros', labelEn: 'Monsters', icon: '👾', count: catalogStats.monsters },
+                  { id: 'SPELL', labelPt: 'Mágicas', labelEn: 'Spells', icon: '✨', count: catalogStats.spells },
+                  { id: 'TRAP', labelPt: 'Armadilhas', labelEn: 'Traps', icon: '🪤', count: catalogStats.traps },
                 ] as const
               ).map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setFilterType(tab.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-serif font-bold flex items-center gap-1 transition-all cursor-pointer border ${
+                  className={`px-2.5 py-1 rounded-xl text-xs font-serif font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
                     filterType === tab.id
-                      ? 'bg-amber-400 text-slate-950 border-yellow-200 shadow-[0_0_12px_rgba(245,158,11,0.5)] font-black'
+                      ? 'bg-amber-400 text-slate-950 border-yellow-200 shadow-[0_0_12px_rgba(245,158,11,0.5)] font-black scale-[1.02]'
                       : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-700'
                   }`}
                 >
                   <span>{tab.icon}</span>
                   <span>{isPt ? tab.labelPt : tab.labelEn}</span>
+                  <span
+                    className={`text-[9.5px] font-mono px-1 rounded ${
+                      filterType === tab.id
+                        ? 'bg-black/30 text-slate-950 font-bold'
+                        : 'bg-purple-950/80 text-purple-300'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Grade Responsiva do Catálogo de Cartas */}
-          <div className="flex-1 overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3">
-              {filteredCatalog.map((card) => {
-                const qtyInDeck = getCardQuantityInDeck(card.id);
-                const isMaxed = qtyInDeck >= DeckService.MAX_COPIES_PER_CARD;
-                const displayName = isPt ? card.namePt || card.name : card.name;
+          {/* Grade Responsiva de Cartas Otimizada para Alta Performance (Lazy Loading + Content Visibility) */}
+          <div className="flex-1 overflow-y-auto pr-1 scroll-smooth">
+            {filteredCatalog.length === 0 ? (
+              <div className="h-44 flex flex-col items-center justify-center text-slate-400 border border-dashed border-purple-800/50 rounded-xl bg-black/20 gap-2">
+                <span className="text-3xl">🔍</span>
+                <p className="text-xs font-serif">
+                  {isPt
+                    ? 'Nenhuma carta encontrada com o filtro e busca atuais.'
+                    : 'No cards found matching your search and filter criteria.'}
+                </p>
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setFilterType('ALL');
+                  }}
+                  className="px-3 py-1 bg-purple-900/70 hover:bg-purple-800 text-amber-300 rounded-lg text-xs font-serif border border-purple-600/50 cursor-pointer"
+                >
+                  {isPt ? 'Limpar Filtros' : 'Clear Filters'}
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3">
+                {filteredCatalog.map((card) => {
+                  const qtyInDeck = getCardQuantityInDeck(card.id);
+                  const isMaxed = qtyInDeck >= DeckService.MAX_COPIES_PER_CARD;
+                  const displayName = isPt ? card.namePt || card.name : card.name;
+                  const isInspected = inspectedCard?.id === card.id;
 
-                return (
-                  <div
-                    key={card.id}
-                    onMouseEnter={() => setInspectedCard(card)}
-                    onClick={() => handleAddCardToDeck(card)}
-                    className={`group rounded-xl overflow-hidden bg-slate-950/90 border-2 flex flex-col justify-between transition-all cursor-pointer hover:-translate-y-0.5 ${
-                      qtyInDeck > 0
-                        ? 'border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.25)]'
-                        : 'border-slate-800 hover:border-purple-500/70'
-                    }`}
-                  >
-                    <div className="relative">
-                      <img
-                        src={card.imageUrl}
-                        alt={displayName}
-                        className="w-full aspect-[2/2.8] object-cover"
-                      />
+                  return (
+                    <div
+                      key={card.id}
+                      style={{ contentVisibility: 'auto', containIntrinsicSize: '140px 220px' }}
+                      onMouseEnter={() => setInspectedCard(card)}
+                      onClick={() => handleAddCardToDeck(card)}
+                      className={`group rounded-xl overflow-hidden bg-slate-950/90 border-2 flex flex-col justify-between transition-all cursor-pointer hover:-translate-y-0.5 shadow-md ${
+                        isInspected
+                          ? 'border-amber-400 shadow-[0_0_18px_rgba(245,158,11,0.5)] ring-1 ring-amber-300'
+                          : qtyInDeck > 0
+                          ? 'border-amber-500/70 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                          : 'border-slate-800 hover:border-purple-500/70'
+                      }`}
+                    >
+                      <div className="relative">
+                        <img
+                          src={card.imageUrl}
+                          alt={displayName}
+                          loading="lazy"
+                          decoding="async"
+                          className="w-full aspect-[2/2.8] object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                        />
 
-                      {/* Badge de Cópias no Deck (0/3 a 3/3) */}
-                      <div
-                        className={`absolute top-1.5 right-1.5 px-2 py-0.5 rounded-full font-mono font-black text-[10px] border ${
-                          isMaxed
-                            ? 'bg-amber-400 text-slate-950 border-yellow-200'
-                            : qtyInDeck > 0
-                            ? 'bg-emerald-950/90 text-emerald-300 border-emerald-400'
-                            : 'bg-black/80 text-slate-300 border-slate-600'
-                        }`}
-                      >
-                        {qtyInDeck}/{DeckService.MAX_COPIES_PER_CARD}
+                        {/* Badge de Cópias no Deck (0/3 a 3/3) */}
+                        <div
+                          className={`absolute top-1.5 right-1.5 px-2 py-0.5 rounded-full font-mono font-black text-[10px] border shadow-md ${
+                            isMaxed
+                              ? 'bg-amber-400 text-slate-950 border-yellow-200'
+                              : qtyInDeck > 0
+                              ? 'bg-emerald-950/90 text-emerald-300 border-emerald-400'
+                              : 'bg-black/80 text-slate-300 border-slate-600'
+                          }`}
+                        >
+                          {qtyInDeck}/{DeckService.MAX_COPIES_PER_CARD}
+                        </div>
+
+                        {/* Tag de Atributo ou Tipo sutil no canto superior esquerdo */}
+                        {card.attribute && (
+                          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/85 border border-purple-800/80 text-amber-300 font-mono text-[8px] font-bold">
+                            {card.attribute}
+                          </div>
+                        )}
                       </div>
-                    </div>
 
-                    {/* Rodapé da Carta no Catálogo com Botões Rápidos (- / +) */}
-                    <div className="p-2 flex flex-col gap-1 bg-gradient-to-b from-slate-900 to-slate-950">
-                      <div className="text-[11px] font-serif font-bold text-amber-100 truncate">
-                        {displayName}
-                      </div>
+                      {/* Rodapé da Carta no Catálogo com Informações e Botões Rápidos (- / +) */}
+                      <div className="p-2 flex flex-col gap-1 bg-gradient-to-b from-slate-900 to-slate-950 border-t border-purple-950">
+                        <div className="text-[11px] font-serif font-bold text-amber-100 truncate" title={displayName}>
+                          {displayName}
+                        </div>
 
-                      <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                        <span>
-                          {card.attack !== undefined
-                            ? `${card.attack}/${card.defense ?? 0}`
-                            : isSpellType(card.type)
-                            ? isPt
-                              ? 'Mágica'
-                              : 'Spell'
-                            : isPt
-                            ? 'Armadilha'
-                            : 'Trap'}
-                        </span>
+                        <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                          <span className="truncate pr-1">
+                            {card.attack !== undefined
+                              ? `${card.attack}/${card.defense ?? 0}`
+                              : isSpellType(card.type)
+                              ? isPt
+                                ? 'Mágica'
+                                : 'Spell'
+                              : isPt
+                              ? 'Armadilha'
+                              : 'Trap'}
+                          </span>
 
-                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={(e) => handleRemoveCardFromDeck(card, e)}
-                            disabled={qtyInDeck === 0 || selectedDeck.isPrebuilt}
-                            className={`w-5 h-5 rounded flex items-center justify-center font-bold text-xs border transition-colors ${
-                              qtyInDeck === 0 || selectedDeck.isPrebuilt
-                                ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
-                                : 'bg-rose-950/80 hover:bg-rose-600 text-rose-200 hover:text-white border-rose-500/50 cursor-pointer'
-                            }`}
-                            title={isPt ? 'Remover 1 cópia' : 'Remove 1 copy'}
-                          >
-                            -
-                          </button>
-                          <button
-                            onClick={() => handleAddCardToDeck(card)}
-                            disabled={isMaxed || selectedDeck.isPrebuilt}
-                            className={`w-5 h-5 rounded flex items-center justify-center font-bold text-xs border transition-colors ${
-                              isMaxed || selectedDeck.isPrebuilt
-                                ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
-                                : 'bg-emerald-950/80 hover:bg-emerald-500 text-emerald-200 hover:text-slate-950 border-emerald-500/50 cursor-pointer'
-                            }`}
-                            title={isPt ? 'Adicionar 1 cópia' : 'Add 1 copy'}
-                          >
-                            +
-                          </button>
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={(e) => handleRemoveCardFromDeck(card, e)}
+                              disabled={qtyInDeck === 0 || selectedDeck.isPrebuilt}
+                              className={`w-5 h-5 rounded flex items-center justify-center font-bold text-xs border transition-colors ${
+                                qtyInDeck === 0 || selectedDeck.isPrebuilt
+                                  ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
+                                  : 'bg-rose-950/80 hover:bg-rose-600 text-rose-200 hover:text-white border-rose-500/50 cursor-pointer'
+                              }`}
+                              title={isPt ? 'Remover 1 cópia' : 'Remove 1 copy'}
+                            >
+                              -
+                            </button>
+                            <button
+                              onClick={() => handleAddCardToDeck(card)}
+                              disabled={isMaxed || selectedDeck.isPrebuilt}
+                              className={`w-5 h-5 rounded flex items-center justify-center font-bold text-xs border transition-colors ${
+                                isMaxed || selectedDeck.isPrebuilt
+                                  ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
+                                  : 'bg-emerald-950/80 hover:bg-emerald-500 text-emerald-200 hover:text-slate-950 border-emerald-500/50 cursor-pointer'
+                              }`}
+                              title={isPt ? 'Adicionar 1 cópia' : 'Add 1 copy'}
+                            >
+                              +
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </section>
     </div>
   );
 };
-
