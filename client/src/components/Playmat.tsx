@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DuelMatchSession } from '@duel/duel-match-session';
 import { createKaibaDeck, createYugiDeck } from '@duel/starter-decks';
 import { CardInstance, BattlePosition } from '@duel/duel-types';
@@ -15,6 +15,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     return new DuelMatchSession(playerNickname, createYugiDeck(), 'Seto Kaiba (Bot)', createKaibaDeck());
   });
 
+  // Referências DOM para cálculo do vetor direcional de ataque (Lunge)
+  const playerZoneRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const opponentZoneRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const playerLpRef = useRef<HTMLDivElement | null>(null);
+  const opponentLpRef = useRef<HTMLDivElement | null>(null);
+
   // Modais e Estados Visuais
   const [countdown, setCountdown] = useState<number | null>(5); // Contagem regressiva inicial de 5s
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -29,7 +35,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
   // Estados de Animação e VFX Dinâmicos
   const [slamZone, setSlamZone] = useState<{ isPlayer: boolean; zoneIndex: number } | null>(null);
-  const [lungingZone, setLungingZone] = useState<{ isPlayer: boolean; zoneIndex: number } | null>(null);
+  const [lungingZone, setLungingZone] = useState<{
+    isPlayer: boolean;
+    zoneIndex: number;
+    deltaX: number;
+    deltaY: number;
+  } | null>(null);
   const [targetHitZone, setTargetHitZone] = useState<{ isPlayer: boolean; zoneIndex: number | null } | null>(null);
   const [destroyedCardUids, setDestroyedCardUids] = useState<string[]>([]);
   const [floatingDamage, setFloatingDamage] = useState<{ amount: number; isPlayer: boolean; zoneIndex: number | null } | null>(null);
@@ -51,6 +62,36 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       return 'flame-light'; // 3 a 4 monstros: fogo leve
     }
     return '';
+  };
+
+  // Calcula com precisão o deslocamento (deltaX, deltaY) entre a carta atacante e a carta alvo (ou barra de LP)
+  const calculateLungeDelta = (isPlayerAttacker: boolean, attackerIndex: number, targetIndex: number | null) => {
+    try {
+      const fromEl = isPlayerAttacker ? playerZoneRefs.current[attackerIndex] : opponentZoneRefs.current[attackerIndex];
+      let toEl: HTMLElement | null = null;
+
+      if (targetIndex !== null) {
+        toEl = isPlayerAttacker ? opponentZoneRefs.current[targetIndex] : playerZoneRefs.current[targetIndex];
+      } else {
+        // Ataque direto aos LPs
+        toEl = isPlayerAttacker ? opponentLpRef.current : playerLpRef.current;
+      }
+
+      if (fromEl && toEl) {
+        const fromRect = fromEl.getBoundingClientRect();
+        const toRect = toEl.getBoundingClientRect();
+        const deltaX = (toRect.left + toRect.width / 2) - (fromRect.left + fromRect.width / 2);
+        const deltaY = (toRect.top + toRect.height / 2) - (fromRect.top + fromRect.height / 2);
+        return { deltaX, deltaY };
+      }
+    } catch {
+      // Fallback para aproximação de grid
+    }
+
+    // Fallback matemático caso o rect do elemento ainda não esteja disponível
+    const fallbackY = isPlayerAttacker ? -240 : 240;
+    const fallbackX = targetIndex !== null ? (targetIndex - attackerIndex) * 110 : 0;
+    return { deltaX: fallbackX, deltaY: fallbackY };
   };
 
   const showNotification = (msg: string) => {
@@ -149,8 +190,21 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             .map((m, idx) => ({ card: m, index: idx }))
             .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
 
-          // Animação de investida do Bot (Lunge)
-          setLungingZone({ isPlayer: false, zoneIndex: attacker.index });
+          // Determina alvo para calcular vetor direcional (deltaX, deltaY)
+          const target =
+            opponentMonsters.length === 0
+              ? null
+              : opponentMonsters.find(
+                  (t) =>
+                    (t.card.position === 'ATTACK' && attacker.card.data.attack > t.card.data.attack) ||
+                    (t.card.position === 'DEFENSE' && attacker.card.data.attack > t.card.data.defense)
+                ) || opponentMonsters[0];
+
+          const targetZoneIdx = target ? target.index : null;
+          const { deltaX, deltaY } = calculateLungeDelta(false, attacker.index, targetZoneIdx);
+
+          // Animação de investida do Bot (Lunge) com vetor direcional exato
+          setLungingZone({ isPlayer: false, zoneIndex: attacker.index, deltaX, deltaY });
 
           setTimeout(() => {
             soundFX.playAttackStrike();
@@ -367,8 +421,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
     if (!attackingCard) return;
 
-    // 3. Efeitos de Ataque: Animação de Investida (Lunge)
-    setLungingZone({ isPlayer: true, zoneIndex: attackerZone });
+    // 3. Efeitos de Ataque: Animação de Investida (Lunge) com vetor direcional exato
+    const { deltaX, deltaY } = calculateLungeDelta(true, attackerZone, targetZoneIndex);
+    setLungingZone({ isPlayer: true, zoneIndex: attackerZone, deltaX, deltaY });
     setSelectedAttackerZone(null);
 
     // Timing do Impacto: Dispara exatamente no clímax do Lunge (280ms)
@@ -617,7 +672,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             </div>
           </div>
 
-          <div className="flex items-center space-x-4">
+          <div ref={opponentLpRef} className="flex items-center space-x-4">
             <span className="text-xs uppercase font-serif tracking-widest text-slate-400 font-black">PONTOS DE VIDA</span>
             <div className="bg-black/95 border-2 border-red-600 rounded-lg px-5 py-1 text-3xl font-mono font-black text-red-500 shadow-[0_0_22px_rgba(239,68,68,0.7)] tracking-wider">
               {p2.lifePoints} <span className="text-sm font-sans text-red-400 font-normal">LP</span>
@@ -659,8 +714,17 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               return (
                 <div
                   key={`p2-m-${i}`}
+                  ref={(el) => (opponentZoneRefs.current[i] = el)}
                   onClick={() => handleOpponentZoneClick(i)}
                   onMouseEnter={() => slot && setInspectedCard(slot)}
+                  style={
+                    isLunging
+                      ? ({
+                          '--lunge-x': `${lungingZone.deltaX}px`,
+                          '--lunge-y': `${lungingZone.deltaY}px`,
+                        } as React.CSSProperties)
+                      : undefined
+                  }
                   className={`h-48 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
                     slot
                       ? `${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass}`
@@ -791,8 +855,17 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               return (
                 <div
                   key={`p1-m-${i}`}
+                  ref={(el) => (playerZoneRefs.current[i] = el)}
                   onClick={() => handlePlayerMonsterZoneClick(i)}
                   onMouseEnter={() => slot && setInspectedCard(slot)}
+                  style={
+                    isLunging
+                      ? ({
+                          '--lunge-x': `${lungingZone.deltaX}px`,
+                          '--lunge-y': `${lungingZone.deltaY}px`,
+                        } as React.CSSProperties)
+                      : undefined
+                  }
                   className={`h-48 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
                     slot
                       ? `${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass}`
@@ -900,7 +973,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             </div>
             <div>
               <h2 className="font-extrabold text-amber-300 text-base font-serif tracking-wide truncate max-w-[150px]">{p1.nickname}</h2>
-              <div className="bg-black/95 border-2 border-red-600 rounded-lg px-3.5 py-0.5 text-2xl font-mono font-black text-red-400 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider mt-0.5">
+              <div ref={playerLpRef} className="bg-black/95 border-2 border-red-600 rounded-lg px-3.5 py-0.5 text-2xl font-mono font-black text-red-400 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider mt-0.5">
                 {p1.lifePoints} <span className="text-xs font-sans text-red-400 font-normal">LP</span>
               </div>
             </div>

@@ -101,21 +101,21 @@
         animation: drawBezierFlow 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
       }
 
-      /* 3. Ataque: Investida Rápida e Marcante (Attack Lunge) */
+      /* 3. Ataque: Investida Rápida e Direcionada ao Alvo (Dynamic Attack Lunge) */
       @keyframes attackLungePlayer {
         0% {
-          transform: translateY(0) scale(1);
+          transform: translate3d(0, 0, 0) scale(1);
         }
         35% {
-          transform: translateY(-220px) scale(1.28) rotateX(10deg);
-          box-shadow: 0 0 45px 10px rgba(239, 68, 68, 0.95), 0 20px 40px rgba(0, 0, 0, 0.9);
-          filter: brightness(1.2);
+          transform: translate3d(var(--lunge-x, 0px), var(--lunge-y, -240px), 0) scale(1.3) rotateX(12deg);
+          box-shadow: 0 0 50px 14px rgba(239, 68, 68, 0.95), 0 25px 45px rgba(0, 0, 0, 0.9);
+          filter: brightness(1.25);
         }
         70% {
-          transform: translateY(-200px) scale(1.22);
+          transform: translate3d(calc(var(--lunge-x, 0px) * 0.85), calc(var(--lunge-y, -240px) * 0.85), 0) scale(1.22);
         }
         100% {
-          transform: translateY(0) scale(1);
+          transform: translate3d(0, 0, 0) scale(1);
         }
       }
       .anim-attack-lunge-player {
@@ -126,18 +126,18 @@
 
       @keyframes attackLungeOpponent {
         0% {
-          transform: translateY(0) scale(1);
+          transform: translate3d(0, 0, 0) scale(1);
         }
         35% {
-          transform: translateY(220px) scale(1.28) rotateX(-10deg);
-          box-shadow: 0 0 45px 10px rgba(239, 68, 68, 0.95), 0 20px 40px rgba(0, 0, 0, 0.9);
-          filter: brightness(1.2);
+          transform: translate3d(var(--lunge-x, 0px), var(--lunge-y, 240px), 0) scale(1.3) rotateX(-12deg);
+          box-shadow: 0 0 50px 14px rgba(239, 68, 68, 0.95), 0 25px 45px rgba(0, 0, 0, 0.9);
+          filter: brightness(1.25);
         }
         70% {
-          transform: translateY(200px) scale(1.22);
+          transform: translate3d(calc(var(--lunge-x, 0px) * 0.85), calc(var(--lunge-y, 240px) * 0.85), 0) scale(1.22);
         }
         100% {
-          transform: translateY(0) scale(1);
+          transform: translate3d(0, 0, 0) scale(1);
         }
       }
       .anim-attack-lunge-opponent {
