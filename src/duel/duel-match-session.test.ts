@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { DuelMatchSession } from './duel-match-session.js';
 import { createKaibaDeck, createYugiDeck, CLASSIC_CARDS } from './starter-decks.js';
 import { DuelBot } from './duel-bot.js';

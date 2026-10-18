@@ -48,6 +48,15 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const [recentDrawnUids, setRecentDrawnUids] = useState<string[]>([]);
   const [flippedZones, setFlippedZones] = useState<{ isPlayer: boolean; zoneIndex: number }[]>([]);
   const [flipEffectBanner, setFlipEffectBanner] = useState<{ cardName: string; action: string } | null>(null);
+  const [kuribohPrompt, setKuribohPrompt] = useState<{
+    pendingDamage: number;
+    onAccept: () => void;
+    onDecline: () => void;
+  } | null>(null);
+  const [timeWizardRoulette, setTimeWizardRoulette] = useState<{
+    isSpinning: boolean;
+    outcome?: 'HEADS' | 'TAILS';
+  } | null>(null);
 
   // Retorna a classe de chama da carta baseado em destruições e ataque direto
   const getCardFlameClass = (card: CardInstance | null): string => {
@@ -212,15 +221,66 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             setIsCameraShaking(true);
             setTimeout(() => setIsCameraShaking(false), 280);
 
+            const finishBotTurn = () => {
+              setTimeout(() => {
+                setLungingZone(null);
+                forceUpdate();
+
+                // 3. Fim do turno do Bot, retornando ao jogador
+                setTimeout(() => {
+                  session.nextPhase(); // MAIN2
+                  session.nextPhase(); // END -> Turno do Jogador
+                  showNotification(`⚔️ É a vez de ${p1.nickname} duelar!`);
+                  forceUpdate();
+
+                  const lastCard = session.player1.hand[session.player1.hand.length - 1];
+                  if (lastCard) {
+                    soundFX.playDrawCard();
+                    setRecentDrawnUids([lastCard.uid]);
+                    setTimeout(() => setRecentDrawnUids([]), 900);
+                  }
+                }, 600);
+              }, 540);
+            };
+
+            const executePlayerDamageOrKuriboh = (
+              dmgAmount: number,
+              onDamageConfirmed: () => void
+            ) => {
+              if (dmgAmount > 0 && session.canActivateKuriboh(p1.id)) {
+                setKuribohPrompt({
+                  pendingDamage: dmgAmount,
+                  onAccept: () => {
+                    session.activateKuriboh(p1.id);
+                    soundFX.playMagicShield();
+                    showNotification('🛡️ Kuriboh absorveu todo o dano do ataque!');
+                    setKuribohPrompt(null);
+                    // Dano zerado: não deduz LP do jogador
+                    finishBotTurn();
+                  },
+                  onDecline: () => {
+                    setKuribohPrompt(null);
+                    onDamageConfirmed();
+                    finishBotTurn();
+                  },
+                });
+              } else {
+                onDamageConfirmed();
+                finishBotTurn();
+              }
+            };
+
             if (opponentMonsters.length === 0) {
               // Ataque Direto nos LPs do Jogador!
               setTargetHitZone({ isPlayer: true, zoneIndex: null });
               setTimeout(() => setTargetHitZone(null), 500);
               const dmg = session.getEffectiveAttack(attacker.card, bot, opponent);
-              setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: null });
-              setTimeout(() => setFloatingDamage(null), 1200);
 
-              session.declareAttack(attacker.index, null);
+              executePlayerDamageOrKuriboh(dmg, () => {
+                setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: null });
+                setTimeout(() => setFloatingDamage(null), 1200);
+                session.declareAttack(attacker.index, null);
+              });
             } else {
               // Encontra melhor alvo vulnerável considerando ATK efetivo
               const target =
@@ -259,18 +319,26 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   const dmg = attackerEffAtk - defenderEffAtk;
                   setDestroyedCardUids((prev) => [...prev, target.card.uid]);
                   soundFX.playDestruction();
-                  setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: target.index });
-                  setTimeout(() => setFloatingDamage(null), 1200);
+
+                  executePlayerDamageOrKuriboh(dmg, () => {
+                    setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: target.index });
+                    setTimeout(() => setFloatingDamage(null), 1200);
+                    session.declareAttack(attacker.index, target.index);
+                  });
                 } else if (attackerEffAtk < defenderEffAtk) {
                   const dmg = defenderEffAtk - attackerEffAtk;
                   setDestroyedCardUids((prev) => [...prev, attacker.card.uid]);
                   soundFX.playDestruction();
                   setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: attacker.index });
                   setTimeout(() => setFloatingDamage(null), 1200);
+                  session.declareAttack(attacker.index, target.index);
+                  finishBotTurn();
                 } else {
                   // Empate
                   setDestroyedCardUids((prev) => [...prev, attacker.card.uid, target.card.uid]);
                   soundFX.playDestruction();
+                  session.declareAttack(attacker.index, target.index);
+                  finishBotTurn();
                 }
               } else if (target.card.position === 'DEFENSE') {
                 if (attackerEffAtk > target.card.data.defense) {
@@ -281,34 +349,13 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: attacker.index });
                   setTimeout(() => setFloatingDamage(null), 1200);
                 }
+                session.declareAttack(attacker.index, target.index);
+                finishBotTurn();
               }
-
-              session.declareAttack(attacker.index, target.index);
             }
 
             forceUpdate();
           }, 280);
-
-          // Finaliza o Lunge do Bot após completar o arco (540ms)
-          setTimeout(() => {
-            setLungingZone(null);
-            forceUpdate();
-
-            // 3. Fim do turno do Bot, retornando ao jogador
-            setTimeout(() => {
-              session.nextPhase(); // MAIN2
-              session.nextPhase(); // END -> Turno do Jogador
-              showNotification(`⚔️ É a vez de ${p1.nickname} duelar!`);
-              forceUpdate();
-
-              const lastCard = session.player1.hand[session.player1.hand.length - 1];
-              if (lastCard) {
-                soundFX.playDrawCard();
-                setRecentDrawnUids([lastCard.uid]);
-                setTimeout(() => setRecentDrawnUids([]), 900);
-              }
-            }, 600);
-          }, 540);
         } else {
           // Sem ataques, passa o turno de volta
           setTimeout(() => {
@@ -547,6 +594,57 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     }, 540);
   };
 
+  // Ativação da Roleta do Tempo de Time Wizard
+  const handleActivateTimeWizard = (zoneIndex: number) => {
+    if (!isPlayerTurn || (match.phase !== 'MAIN1' && match.phase !== 'MAIN2')) {
+      showNotification('⏳ O efeito só pode ser ativado na Fase Principal!');
+      return;
+    }
+
+    const card = p1.monsterZones[zoneIndex];
+    if (!card || card.hasUsedEffectThisTurn) {
+      showNotification('⚠️ Time Wizard já usou o efeito neste turno!');
+      return;
+    }
+
+    // 1. Som de roleta girando e modal animado
+    soundFX.playRouletteSpin();
+    setTimeWizardRoulette({ isSpinning: true });
+
+    setTimeout(() => {
+      // 2. Executa a lógica de 50/50 do Time Wizard
+      const result = session.activateTimeWizard(zoneIndex);
+      setTimeWizardRoulette({ isSpinning: false, outcome: result.outcome });
+
+      if (result.outcome === 'HEADS') {
+        soundFX.playDestruction();
+        setIsCameraShaking(true);
+        setTimeout(() => setIsCameraShaking(false), 350);
+
+        setDestroyedCardUids((prev) => [...prev, ...result.destroyedUids]);
+        showNotification('⚡ TEMPO ACELERADO! O oponente teve seu campo destruído!');
+      } else {
+        soundFX.playDestruction();
+        setIsCameraShaking(true);
+        setTimeout(() => setIsCameraShaking(false), 350);
+
+        setDestroyedCardUids((prev) => [...prev, ...result.destroyedUids]);
+        if (result.burnDamage > 0) {
+          setFloatingDamage({ amount: result.burnDamage, isPlayer: true, zoneIndex: null });
+          setTimeout(() => setFloatingDamage(null), 1400);
+        }
+        showNotification('💥 FALHA TEMPORAL! Seus monstros foram destruídos!');
+      }
+
+      forceUpdate();
+
+      // Fecha o modal da roleta após 1.4s
+      setTimeout(() => {
+        setTimeWizardRoulette(null);
+      }, 1400);
+    }, 850);
+  };
+
   // Desistir / Sair da Partida
   const handleConfirmSurrender = () => {
     session.surrender(p1.id);
@@ -595,6 +693,81 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             <span className="text-2xl">
               {flipEffectBanner.action === 'DESTROY_MONSTER' ? '🪲' : '🐧'}
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* 🛡️ PROMPT DE REAÇÃO: EFEITO DO KURIBOH */}
+      {kuribohPrompt && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-gradient-to-b from-[#2e1a47] to-[#120a1f] border-2 border-amber-400 p-6 rounded-2xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(245,158,11,0.9)] animate-bounce">
+            <div className="w-20 h-20 mx-auto mb-3 rounded-full border-2 border-amber-300 bg-amber-950/80 flex items-center justify-center text-4xl shadow-[0_0_20px_rgba(245,158,11,0.6)]">
+              🤎
+            </div>
+            <h3 className="font-serif font-black text-amber-300 text-lg tracking-wider mb-1">
+              PROTEGER-SE COM KURIBOH?
+            </h3>
+            <p className="text-xs text-slate-300 mb-4 leading-relaxed font-sans">
+              Você está prestes a receber <strong className="text-red-400 font-mono font-black">{kuribohPrompt.pendingDamage}</strong> de dano de batalha! Deseja descartar o <strong className="text-amber-300">Kuriboh</strong> da sua mão para absorver todo o dano?
+            </p>
+            <div className="flex space-x-3">
+              <button
+                onClick={kuribohPrompt.onDecline}
+                className="flex-1 py-2 rounded-lg font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-600 font-serif"
+              >
+                Receber Dano
+              </button>
+              <button
+                onClick={kuribohPrompt.onAccept}
+                className="flex-1 py-2 rounded-lg font-black text-xs bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 transition-all shadow-[0_0_20px_rgba(245,158,11,0.8)] border border-yellow-200 font-serif animate-pulse flex items-center justify-center gap-1.5"
+              >
+                <span>🛡️</span> Ativar Kuriboh!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⏳ MODAL / ROLETA DO TEMPO DE TIME WIZARD */}
+      {timeWizardRoulette && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-gradient-to-b from-[#1a102a] to-[#0a0512] border-2 border-yellow-400 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_0_60px_rgba(234,179,8,0.9)] flex flex-col items-center">
+            <h3 className="font-serif font-black text-yellow-300 text-xl tracking-widest uppercase mb-4 drop-shadow">
+              Roleta do Tempo
+            </h3>
+
+            {/* Moeda 3D Girando */}
+            <div className="w-28 h-28 my-4 rounded-full border-4 border-yellow-300 bg-gradient-to-tr from-yellow-600 via-amber-300 to-yellow-500 flex items-center justify-center shadow-[0_0_35px_rgba(250,204,21,1)] relative overflow-hidden">
+              <div className={`text-5xl ${timeWizardRoulette.isSpinning ? 'anim-coin-spin' : ''}`}>
+                {timeWizardRoulette.isSpinning ? '🪙' : timeWizardRoulette.outcome === 'HEADS' ? '👑' : '💀'}
+              </div>
+            </div>
+
+            <div className="mt-3">
+              {timeWizardRoulette.isSpinning ? (
+                <p className="text-sm font-mono text-amber-200 tracking-wider animate-pulse">
+                  GIRANDO O FLUXO TEMPORAL...
+                </p>
+              ) : timeWizardRoulette.outcome === 'HEADS' ? (
+                <div className="animate-bounce">
+                  <span className="text-lg font-black text-emerald-400 font-serif tracking-wide block">
+                    ⚡ CARA (HEADS)!
+                  </span>
+                  <span className="text-xs text-emerald-200/90 font-sans mt-1 block">
+                    O campo do adversário desintegrou-se!
+                  </span>
+                </div>
+              ) : (
+                <div className="animate-bounce">
+                  <span className="text-lg font-black text-red-500 font-serif tracking-wide block">
+                    💥 COROA (TAILS)!
+                  </span>
+                  <span className="text-xs text-red-300/90 font-sans mt-1 block">
+                    A magia temporal explodiu contra você!
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -687,21 +860,56 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     : session.getEffectiveAttack(inspectedCard, p2, p1);
                   const isBuffed = effectiveAtk > inspectedCard.data.attack;
 
+                  // Verifica se é o Time Wizard no campo do jogador pronto para usar efeito
+                  const playerZoneIdx = p1.monsterZones.findIndex((m) => m?.uid === inspectedCard.uid);
+                  const isPlayerTimeWizardOnField =
+                    playerZoneIdx !== -1 &&
+                    (inspectedCard.data.id === '71625222' || inspectedCard.data.name.toLowerCase().includes('time wizard'));
+                  const canUseTimeWizard =
+                    isPlayerTimeWizardOnField &&
+                    isPlayerTurn &&
+                    (match.phase === 'MAIN1' || match.phase === 'MAIN2') &&
+                    !inspectedCard.hasUsedEffectThisTurn;
+
                   return (
-                    <div className="flex justify-between font-mono font-black text-xs pt-1.5 mt-1 text-slate-200">
-                      <div
-                        className={`px-2 py-0.5 rounded border flex items-center gap-1 transition-all ${
-                          isBuffed
-                            ? 'bg-emerald-950/90 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.7)] animate-pulse'
-                            : 'bg-amber-950/80 border-amber-600/60 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]'
-                        }`}
-                      >
-                        ATK ⚔️ {effectiveAtk} {isBuffed && <span className="text-[10px] font-sans text-yellow-300">▲</span>}
+                    <>
+                      <div className="flex justify-between font-mono font-black text-xs pt-1.5 mt-1 text-slate-200">
+                        <div
+                          className={`px-2 py-0.5 rounded border flex items-center gap-1 transition-all ${
+                            isBuffed
+                              ? 'bg-emerald-950/90 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.7)] animate-pulse'
+                              : 'bg-amber-950/80 border-amber-600/60 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]'
+                          }`}
+                        >
+                          ATK ⚔️ {effectiveAtk} {isBuffed && <span className="text-[10px] font-sans text-yellow-300">▲</span>}
+                        </div>
+                        <div className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-600/60 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]">
+                          DEF 🛡️ {inspectedCard.data.defense}
+                        </div>
                       </div>
-                      <div className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-600/60 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]">
-                        DEF 🛡️ {inspectedCard.data.defense}
-                      </div>
-                    </div>
+
+                      {/* Botão de Ativação do Efeito de Time Wizard */}
+                      {isPlayerTimeWizardOnField && (
+                        <div className="mt-2.5 pt-2 border-t border-purple-900/60">
+                          <button
+                            onClick={() => handleActivateTimeWizard(playerZoneIdx)}
+                            disabled={!canUseTimeWizard}
+                            className={`w-full py-1.5 px-3 rounded-lg font-serif font-black text-xs tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 ${
+                              canUseTimeWizard
+                                ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.8)] border border-yellow-200 animate-pulse'
+                                : 'bg-slate-800/80 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
+                            }`}
+                          >
+                            <span>⏳</span>
+                            <span>
+                              {inspectedCard.hasUsedEffectThisTurn
+                                ? 'Roleta Já Utilizada'
+                                : 'Girar Roleta do Tempo'}
+                            </span>
+                          </button>
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
               </div>

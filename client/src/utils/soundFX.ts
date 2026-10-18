@@ -175,6 +175,62 @@ class SoundFXEngine {
       // AudioContext fallback safe
     }
   }
+
+  // 6. Magic shield / Kuriboh barrier sound
+  public playMagicShield() {
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+      osc.frequency.exponentialRampToValueAtTime(440, now + 0.35);
+
+      gain.gain.setValueAtTime(0.6, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.38);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.4);
+    } catch {
+      // AudioContext fallback safe
+    }
+  }
+
+  // 7. Time Wizard roulette spin / rapid ticking sound
+  public playRouletteSpin() {
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      for (let i = 0; i < 8; i++) {
+        const tickTime = now + i * 0.09;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(700 + i * 70, tickTime);
+        gain.gain.setValueAtTime(0.25, tickTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, tickTime + 0.04);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(tickTime);
+        osc.stop(tickTime + 0.05);
+      }
+    } catch {
+      // AudioContext fallback safe
+    }
+  }
 }
 
 export const soundFX = new SoundFXEngine();
