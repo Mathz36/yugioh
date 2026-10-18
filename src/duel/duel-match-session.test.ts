@@ -1422,5 +1422,149 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       expect(yugi.monsterZones[2]).toBeNull();
       expect(yugi.monsterZones[1]?.uid).toBe('yugi_beaver');
     });
+
+    it('Teste A (Auto-resolução com <= 2 monstros): Oponente ataca com Blue-Eyes e retorna automaticamente para a mão', () => {
+      // Arrange: Oponente (Kaiba) tem 1 monstro atacante (Blue-Eyes). O jogador (Yugi) defende com Soldado Pinguim virado para baixo.
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Oponente tem 1 monstro atacante (Blue-Eyes, 3000 ATK) em ATTACK
+      kaiba.monsterZones[0] = {
+        uid: 'kaiba_blue_eyes_single_atk',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Jogador (Yugi) defende com Soldado Pinguim virado para baixo em DEFENSE
+      yugi.monsterZones[0] = {
+        uid: 'yugi_penguin_soldier_auto',
+        data: CLASSIC_CARDS.PENGUIN_SOLDIER,
+        position: 'DEFENSE',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        isFaceDown: true,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act: Oponente ataca
+      const attackSuccess = session.declareAttack(0, 0);
+
+      // Assert:
+      // O ataque foi declarado e o efeito FLIP executado
+      expect(attackSuccess).toBe(true);
+      // O Blue-Eyes retorna automaticamente para a mão sem requerer interação pendente
+      expect(kaiba.monsterZones[0]).toBeNull();
+      expect(kaiba.hand.some((c) => c.uid === 'kaiba_blue_eyes_single_atk')).toBe(true);
+      expect(kaiba.graveyard.some((c) => c.uid === 'kaiba_blue_eyes_single_atk')).toBe(false);
+      // Soldado Pinguim permanece em campo
+      expect(yugi.monsterZones[0]).not.toBeNull();
+      expect(yugi.monsterZones[0]?.uid).toBe('yugi_penguin_soldier_auto');
+      expect(yugi.monsterZones[0]?.isFaceDown).toBe(false);
+      expect(yugi.graveyard.some((c) => c.uid === 'yugi_penguin_soldier_auto')).toBe(false);
+      // Sem dano aos LPs
+      expect(yugi.lifePoints).toBe(8000);
+      expect(kaiba.lifePoints).toBe(8000);
+    });
+
+    it('Teste B (Seleção quando > 2 monstros): Efeito do Soldado Pinguim é acionado com seleção de alvos [Blue-Eyes, Vorse Raider]', () => {
+      // Arrange: Oponente (Kaiba) tem 3 monstros em campo (Blue-Eyes, Vorse Raider e Battle Ox)
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Kaiba possui 3 monstros no campo
+      kaiba.monsterZones[0] = {
+        uid: 'kaiba_blue_eyes_target_1',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[1] = {
+        uid: 'kaiba_vorse_raider_target_2',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[2] = {
+        uid: 'kaiba_battle_ox_remain',
+        data: CLASSIC_CARDS.BATTLE_OX,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Yugi possui Soldado Pinguim baixado no Turno 1 virado para baixo
+      yugi.monsterZones[0] = {
+        uid: 'yugi_penguin_manual_selection',
+        data: CLASSIC_CARDS.PENGUIN_SOLDIER,
+        position: 'DEFENSE',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        isFaceDown: true,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = yugi.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Act: Efeito do Soldado Pinguim é acionado com seleção de alvos [Blue-Eyes, Vorse Raider]
+      const changeResult = session.changeMonsterPosition(0, [
+        'kaiba_blue_eyes_target_1',
+        'kaiba_vorse_raider_target_2',
+      ]);
+
+      // Assert:
+      expect(changeResult.success).toBe(true);
+      expect(changeResult.flipped).toBe(true);
+      expect(changeResult.flipEffect?.action).toBe('RETURN_TO_HAND');
+      expect(changeResult.flipEffect?.targetCardUids).toEqual([
+        'kaiba_blue_eyes_target_1',
+        'kaiba_vorse_raider_target_2',
+      ]);
+
+      // Exatamente os 2 alvos selecionados retornam para a mão do oponente
+      expect(kaiba.monsterZones[0]).toBeNull();
+      expect(kaiba.monsterZones[1]).toBeNull();
+      expect(kaiba.hand.some((c) => c.uid === 'kaiba_blue_eyes_target_1')).toBe(true);
+      expect(kaiba.hand.some((c) => c.uid === 'kaiba_vorse_raider_target_2')).toBe(true);
+
+      // O terceiro (Battle Ox) permanece em campo!
+      expect(kaiba.monsterZones[2]).not.toBeNull();
+      expect(kaiba.monsterZones[2]?.uid).toBe('kaiba_battle_ox_remain');
+      expect(kaiba.hand.some((c) => c.uid === 'kaiba_battle_ox_remain')).toBe(false);
+
+      // Soldado Pinguim permanece no campo em posição de ATTACK revelado
+      expect(yugi.monsterZones[0]?.uid).toBe('yugi_penguin_manual_selection');
+      expect(yugi.monsterZones[0]?.position).toBe('ATTACK');
+      expect(yugi.monsterZones[0]?.isFaceDown).toBe(false);
+    });
   });
 });
