@@ -241,7 +241,10 @@ export class DuelMatchSession {
     return true;
   }
 
-  public changeMonsterPosition(zoneIndex: number): PositionChangeResult {
+  public changeMonsterPosition(
+    zoneIndex: number,
+    selectedTargetUids?: string[]
+  ): PositionChangeResult {
     if (this.matchState.isGameOver) {
       return { success: false, flipped: false };
     }
@@ -314,28 +317,56 @@ export class DuelMatchSession {
             };
           }
         } else if (action === 'RETURN_TO_HAND') {
-          // Penguin Soldier: Devolve 1 monstro do oponente para a mão
+          // Penguin Soldier: Devolve até 2 monstros do oponente para a mão
           const opponentMonsters = opponent.monsterZones
             .map((m, idx) => ({ card: m, index: idx }))
             .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
 
           if (opponentMonsters.length > 0) {
-            const strongest = [...opponentMonsters].sort(
-              (a, b) =>
-                this.getEffectiveAttack(b.card, opponent, player) -
-                this.getEffectiveAttack(a.card, opponent, player)
-            )[0];
+            let targetsToReturn: { card: CardInstance; index: number }[] = [];
 
-            opponent.monsterZones[strongest.index] = null;
-            opponent.hand.push(strongest.card);
-            const targetName = strongest.card.data.namePt || strongest.card.data.name;
-            this.log(`🐧 EFEITO FLIP ATIVADO! ${cardName} devolveu ${targetName} para a mão de ${opponent.nickname}!`);
+            if (opponentMonsters.length <= 2) {
+              // Se o oponente tiver <= 2 monstros no campo: retorne todos automaticamente
+              targetsToReturn = [...opponentMonsters];
+            } else {
+              // Se o oponente tiver > 2 monstros:
+              if (selectedTargetUids && selectedTargetUids.length > 0) {
+                // Retorne exatamente os alvos escolhidos (até 2)
+                const targetUidSet = new Set(selectedTargetUids.slice(0, 2));
+                targetsToReturn = opponentMonsters.filter((item) => targetUidSet.has(item.card.uid));
+              }
+
+              // Se não foram passados alvos válidos ou se for o Bot agindo:
+              // selecione automaticamente os 2 monstros com maior ATK efetivo
+              if (targetsToReturn.length === 0) {
+                const sortedByAtk = [...opponentMonsters].sort(
+                  (a, b) =>
+                    this.getEffectiveAttack(b.card, opponent, player) -
+                    this.getEffectiveAttack(a.card, opponent, player)
+                );
+                targetsToReturn = sortedByAtk.slice(0, 2);
+              }
+            }
+
+            const returnedUids: string[] = [];
+            const returnedNames: string[] = [];
+
+            for (const target of targetsToReturn) {
+              opponent.monsterZones[target.index] = null;
+              opponent.hand.push(target.card);
+              const tName = target.card.data.namePt || target.card.data.name;
+              returnedUids.push(target.card.uid);
+              returnedNames.push(tName);
+              this.log(`🐧 EFEITO FLIP ATIVADO! ${cardName} devolveu ${tName} para a mão de ${opponent.nickname}!`);
+            }
 
             flipEffect = {
               cardName,
               action: 'RETURN_TO_HAND',
-              targetCardUid: strongest.card.uid,
-              targetName,
+              targetCardUid: returnedUids[0],
+              targetName: returnedNames.join(', '),
+              targetCardUids: returnedUids,
+              targetNames: returnedNames,
             };
           } else {
             flipEffect = {

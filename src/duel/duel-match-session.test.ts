@@ -123,9 +123,29 @@ describe('DuelMatchSession & DuelBot Integration', () => {
     p1.monsterZones[0] = { ...lvl4Cards[0], uid: 'tribute_1' };
     p1.monsterZones[1] = { ...lvl4Cards[1], uid: 'tribute_2' };
 
-    // Cartas de teste
-    const lvl6Card = { ...p1.deck.find((c) => c.data.level === 6)!, uid: 'summon_lvl6' };
-    const lvl7Card = { ...p1.deck.find((c) => c.data.level >= 7)!, uid: 'summon_lvl7' };
+    // Cartas de teste garantidas
+    const lvl6Data = CLASSIC_CARDS.SUMMONED_SKULL;
+    const lvl7Data = CLASSIC_CARDS.DARK_MAGICIAN;
+    const lvl6Card: CardInstance = {
+      uid: 'summon_lvl6',
+      data: lvl6Data,
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+    const lvl7Card: CardInstance = {
+      uid: 'summon_lvl7',
+      data: lvl7Data,
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
     p1.hand.push(lvl6Card, lvl7Card);
 
     // Act 1: Tentar invocar monstro nível 6 sem tributos -> deve falhar
@@ -1199,6 +1219,208 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       // 3. O Vorse Raider do Kaiba é removido do campo e enviado ao cemitério
       expect(kaiba.monsterZones[0]).toBeNull();
       expect(kaiba.graveyard.some((c) => c.uid === 'kaiba_vorse_raider_target')).toBe(true);
+    });
+
+    it('Teste 3: Soldado Pinguim devolve automaticamente todos os monstros se oponente tiver <= 2 monstros', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi tem Penguin Soldier virado para baixo no Turno 1
+      yugi.monsterZones[0] = {
+        uid: 'penguin_yugi',
+        data: CLASSIC_CARDS.PENGUIN_SOLDIER,
+        position: 'DEFENSE',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        isFaceDown: true,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Kaiba tem exatamente 2 monstros no campo (Blue-Eyes e Vorse Raider)
+      kaiba.monsterZones[0] = {
+        uid: 'kaiba_blue_eyes',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[1] = {
+        uid: 'kaiba_vorse',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = yugi.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Act: Flip manual do Penguin Soldier (sem passar alvos específicos)
+      const res = session.changeMonsterPosition(0);
+
+      // Assert: Ambos os 2 monstros devem ser devolvidos para a mão de Kaiba
+      expect(res.success).toBe(true);
+      expect(res.flipped).toBe(true);
+      expect(res.flipEffect?.action).toBe('RETURN_TO_HAND');
+      expect(res.flipEffect?.targetCardUids).toEqual(['kaiba_blue_eyes', 'kaiba_vorse']);
+
+      expect(kaiba.monsterZones[0]).toBeNull();
+      expect(kaiba.monsterZones[1]).toBeNull();
+      expect(kaiba.hand.some((c) => c.uid === 'kaiba_blue_eyes')).toBe(true);
+      expect(kaiba.hand.some((c) => c.uid === 'kaiba_vorse')).toBe(true);
+    });
+
+    it('Teste 4: Soldado Pinguim devolve exatamente os alvos especificados quando oponente tiver > 2 monstros', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      yugi.monsterZones[0] = {
+        uid: 'penguin_yugi',
+        data: CLASSIC_CARDS.PENGUIN_SOLDIER,
+        position: 'DEFENSE',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        isFaceDown: true,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Kaiba tem 3 monstros no campo: Blue-Eyes (3000), Vorse Raider (1900), Battle Ox (1700)
+      kaiba.monsterZones[0] = {
+        uid: 'kaiba_blue_eyes',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[1] = {
+        uid: 'kaiba_vorse',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[2] = {
+        uid: 'kaiba_ox',
+        data: CLASSIC_CARDS.BATTLE_OX,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = yugi.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Act: Usuário seleciona especificamente Vorse Raider e Battle Ox para devolver
+      const res = session.changeMonsterPosition(0, ['kaiba_vorse', 'kaiba_ox']);
+
+      // Assert
+      expect(res.success).toBe(true);
+      expect(res.flipped).toBe(true);
+      expect(res.flipEffect?.targetCardUids).toEqual(['kaiba_vorse', 'kaiba_ox']);
+
+      expect(kaiba.monsterZones[0]?.uid).toBe('kaiba_blue_eyes'); // Permaneceu no campo!
+      expect(kaiba.monsterZones[1]).toBeNull(); // Devolvido!
+      expect(kaiba.monsterZones[2]).toBeNull(); // Devolvido!
+      expect(kaiba.hand.some((c) => c.uid === 'kaiba_vorse')).toBe(true);
+      expect(kaiba.hand.some((c) => c.uid === 'kaiba_ox')).toBe(true);
+    });
+
+    it('Teste 5: Soldado Pinguim seleciona automaticamente os 2 monstros de maior ATK se oponente tiver > 2 monstros e nenhum alvo for fornecido (Bot)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const kaiba = session.player2;
+      const yugi = session.player1;
+
+      // Bot (Kaiba) tem Penguin Soldier
+      kaiba.monsterZones[0] = {
+        uid: 'penguin_kaiba',
+        data: CLASSIC_CARDS.PENGUIN_SOLDIER,
+        position: 'DEFENSE',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        isFaceDown: true,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Yugi tem 3 monstros: Dark Magician (2500), Summoned Skull (2500), Beaver Warrior (1200)
+      yugi.monsterZones[0] = {
+        uid: 'yugi_dark_magician',
+        data: CLASSIC_CARDS.DARK_MAGICIAN,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.monsterZones[1] = {
+        uid: 'yugi_beaver',
+        data: CLASSIC_CARDS.BEAVER_WARRIOR,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.monsterZones[2] = {
+        uid: 'yugi_skull',
+        data: CLASSIC_CARDS.SUMMONED_SKULL,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 4;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Act: Flip pelo Bot sem selectedTargetUids
+      const res = session.changeMonsterPosition(0);
+
+      // Assert: Deve devolver os 2 maiores (Dark Magician e Summoned Skull, ambos 2500), deixando o Beaver Warrior (1200)
+      expect(res.success).toBe(true);
+      expect(res.flipped).toBe(true);
+      expect(res.flipEffect?.targetCardUids).toContain('yugi_dark_magician');
+      expect(res.flipEffect?.targetCardUids).toContain('yugi_skull');
+      expect(res.flipEffect?.targetCardUids).not.toContain('yugi_beaver');
+
+      expect(yugi.monsterZones[0]).toBeNull();
+      expect(yugi.monsterZones[2]).toBeNull();
+      expect(yugi.monsterZones[1]?.uid).toBe('yugi_beaver');
     });
   });
 });

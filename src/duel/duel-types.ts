@@ -86,6 +86,8 @@ export interface FlipEffectResult {
   action: string;
   targetCardUid?: string;
   targetName?: string;
+  targetCardUids?: string[];
+  targetNames?: string[];
 }
 
 export interface PositionChangeResult {
