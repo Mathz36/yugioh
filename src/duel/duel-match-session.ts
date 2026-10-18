@@ -11,6 +11,7 @@ import {
   PlayerDuelState,
   PositionChangeResult,
 } from './duel-types.js';
+import { ACTION_HANDLERS } from './effects/action-handlers.js';
 
 export class DuelMatchSession {
   public matchState: MatchTurnState;
@@ -287,93 +288,45 @@ export class DuelMatchSession {
         const action = monster.data.effectDefinition?.action;
 
         if (action === 'DESTROY_MONSTER') {
-          // Man-Eater Bug: Destrói 1 monstro do oponente
-          const opponentMonsters = opponent.monsterZones
-            .map((m, idx) => ({ card: m, index: idx }))
-            .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
+          const res = ACTION_HANDLERS.DESTROY_MONSTER(
+            {
+              cardInstance: monster,
+              player,
+              opponent,
+              targetUids: selectedTargetUids,
+              logFn: (msg) => this.log(msg),
+            },
+            (c, own, opp) => this.getEffectiveAttack(c, own, opp)
+          );
 
-          if (opponentMonsters.length > 0) {
-            const strongest = [...opponentMonsters].sort(
-              (a, b) =>
-                this.getEffectiveAttack(b.card, opponent, player) -
-                this.getEffectiveAttack(a.card, opponent, player)
-            )[0];
-
-            opponent.monsterZones[strongest.index] = null;
-            opponent.graveyard.push(strongest.card);
-            const targetName = strongest.card.data.namePt || strongest.card.data.name;
-            this.log(`🪲 EFEITO FLIP ATIVADO! ${cardName} destruiu o monstro ${targetName} do oponente!`);
-
-            flipEffect = {
-              cardName,
-              action: 'DESTROY_MONSTER',
-              targetCardUid: strongest.card.uid,
-              targetName,
-            };
-          } else {
-            flipEffect = {
-              cardName,
-              action: 'DESTROY_MONSTER',
-            };
-          }
+          flipEffect = {
+            cardName,
+            action: 'DESTROY_MONSTER',
+            targetCardUid: res.destroyedCardUids[0],
+            targetName: res.destroyedNames[0],
+            targetCardUids: res.destroyedCardUids,
+            targetNames: res.destroyedNames,
+          };
         } else if (action === 'RETURN_TO_HAND') {
-          // Penguin Soldier: Devolve até 2 monstros do oponente para a mão
-          const opponentMonsters = opponent.monsterZones
-            .map((m, idx) => ({ card: m, index: idx }))
-            .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
+          const res = ACTION_HANDLERS.RETURN_TO_HAND(
+            {
+              cardInstance: monster,
+              player,
+              opponent,
+              targetUids: selectedTargetUids,
+              logFn: (msg) => this.log(msg),
+            },
+            (c, own, opp) => this.getEffectiveAttack(c, own, opp)
+          );
 
-          if (opponentMonsters.length > 0) {
-            let targetsToReturn: { card: CardInstance; index: number }[] = [];
-
-            if (opponentMonsters.length <= 2) {
-              // Se o oponente tiver <= 2 monstros no campo: retorne todos automaticamente
-              targetsToReturn = [...opponentMonsters];
-            } else {
-              // Se o oponente tiver > 2 monstros:
-              if (selectedTargetUids && selectedTargetUids.length > 0) {
-                // Retorne exatamente os alvos escolhidos (até 2)
-                const targetUidSet = new Set(selectedTargetUids.slice(0, 2));
-                targetsToReturn = opponentMonsters.filter((item) => targetUidSet.has(item.card.uid));
-              }
-
-              // Se não foram passados alvos válidos ou se for o Bot agindo:
-              // selecione automaticamente os 2 monstros com maior ATK efetivo
-              if (targetsToReturn.length === 0) {
-                const sortedByAtk = [...opponentMonsters].sort(
-                  (a, b) =>
-                    this.getEffectiveAttack(b.card, opponent, player) -
-                    this.getEffectiveAttack(a.card, opponent, player)
-                );
-                targetsToReturn = sortedByAtk.slice(0, 2);
-              }
-            }
-
-            const returnedUids: string[] = [];
-            const returnedNames: string[] = [];
-
-            for (const target of targetsToReturn) {
-              opponent.monsterZones[target.index] = null;
-              opponent.hand.push(target.card);
-              const tName = target.card.data.namePt || target.card.data.name;
-              returnedUids.push(target.card.uid);
-              returnedNames.push(tName);
-              this.log(`🐧 EFEITO FLIP ATIVADO! ${cardName} devolveu ${tName} para a mão de ${opponent.nickname}!`);
-            }
-
-            flipEffect = {
-              cardName,
-              action: 'RETURN_TO_HAND',
-              targetCardUid: returnedUids[0],
-              targetName: returnedNames.join(', '),
-              targetCardUids: returnedUids,
-              targetNames: returnedNames,
-            };
-          } else {
-            flipEffect = {
-              cardName,
-              action: 'RETURN_TO_HAND',
-            };
-          }
+          flipEffect = {
+            cardName,
+            action: 'RETURN_TO_HAND',
+            targetCardUid: res.returnedCardUids[0],
+            targetName: res.returnedNames.join(', '),
+            targetCardUids: res.returnedCardUids,
+            targetNames: res.returnedNames,
+          };
         }
       }
       return { success: true, flipped: true, flipEffect };
@@ -399,48 +352,34 @@ export class DuelMatchSession {
   ): number {
     let effectiveAtk = cardInstance.data.attack;
 
-    // Efeito CONTINUOUS do Buster Blader (ID 78193831): +500 ATK por monstro Dragão
-    const isBusterBlader =
+    // Efeito CONTINUOUS delegado aos ACTION_HANDLERS (ex: BOOST_ATK)
+    if (
+      cardInstance.data.effectType === 'CONTINUOUS' ||
+      cardInstance.data.effectDefinition?.action === 'BOOST_ATK' ||
       cardInstance.data.id === '78193831' ||
-      cardInstance.data.name.toLowerCase().includes('buster blader') ||
-      (cardInstance.data.effectType === 'CONTINUOUS' &&
-        cardInstance.data.effectDefinition?.action === 'BOOST_ATK');
-
-    if (isBusterBlader) {
-      const isDragon = (c: CardInstance) => {
-        const race = (c.data as any).race?.toLowerCase() || '';
-        const name = c.data.name.toLowerCase();
-        const type = c.data.type.toLowerCase();
-        return race === 'dragon' || name.includes('dragon') || type.includes('dragon');
-      };
-
-      const opponentDragonsOnField = opponent.monsterZones.filter(
-        (m): m is CardInstance => m !== null && isDragon(m)
-      ).length;
-
-      const opponentDragonsInGY = opponent.graveyard.filter((m) => isDragon(m)).length;
-
-      const totalOpponentDragons = opponentDragonsOnField + opponentDragonsInGY;
-      if (totalOpponentDragons > 0) {
-        const boostValue = cardInstance.data.effectDefinition?.value || 500;
-        const totalBoost = totalOpponentDragons * boostValue;
-        effectiveAtk += totalBoost;
-      }
+      cardInstance.data.name.toLowerCase().includes('buster blader')
+    ) {
+      const res = ACTION_HANDLERS.BOOST_ATK({
+        cardInstance,
+        player: owner,
+        opponent,
+      });
+      effectiveAtk += res.bonus;
     }
 
     return effectiveAtk;
   }
 
   /**
-   * Checks if the specified player has Kuriboh in their hand.
+   * Checks if the specified player has Kuriboh (or PREVENT_DAMAGE hand trigger) in their hand.
    */
   public canActivateKuriboh(playerId: string): boolean {
     const player = this.player1.id === playerId ? this.player1 : this.player2;
     return player.hand.some(
       (c) =>
+        (c.data.effectType === 'HAND_TRIGGER' && c.data.effectDefinition?.action === 'PREVENT_DAMAGE') ||
         c.data.id === '40640057' ||
-        c.data.name.toLowerCase().includes('kuriboh') ||
-        (c.data.effectType === 'HAND_TRIGGER' && c.data.effectDefinition?.action === 'PREVENT_DAMAGE')
+        c.data.name.toLowerCase().includes('kuriboh')
     );
   }
 
@@ -451,23 +390,26 @@ export class DuelMatchSession {
     if (this.matchState.isGameOver) return false;
 
     const player = this.player1.id === playerId ? this.player1 : this.player2;
-    const kuribohIndex = player.hand.findIndex(
+    const kuribohCard = player.hand.find(
       (c) =>
+        (c.data.effectType === 'HAND_TRIGGER' && c.data.effectDefinition?.action === 'PREVENT_DAMAGE') ||
         c.data.id === '40640057' ||
-        c.data.name.toLowerCase().includes('kuriboh') ||
-        (c.data.effectType === 'HAND_TRIGGER' && c.data.effectDefinition?.action === 'PREVENT_DAMAGE')
+        c.data.name.toLowerCase().includes('kuriboh')
     );
 
-    if (kuribohIndex === -1) {
+    if (!kuribohCard) {
       this.log(`${player.nickname} não possui Kuriboh na mão para ativar.`);
       return false;
     }
 
-    const [kuribohCard] = player.hand.splice(kuribohIndex, 1);
-    player.graveyard.push(kuribohCard);
+    const res = ACTION_HANDLERS.PREVENT_DAMAGE({
+      cardInstance: kuribohCard,
+      player,
+      opponent: this.getOpponentPlayer(),
+      logFn: (msg) => this.log(msg),
+    });
 
-    this.log(`🤎 EFEITO ATIVADO DA MÃO! ${player.nickname} descartou Kuriboh para o Cemitério! O dano de batalha foi anulado!`);
-    return true;
+    return res.prevented;
   }
 
   /**
@@ -515,10 +457,10 @@ export class DuelMatchSession {
     }
 
     const isTimeWizard =
-      timeWizardCard.data.id === '71625222' ||
-      timeWizardCard.data.name.toLowerCase().includes('time wizard') ||
       (timeWizardCard.data.effectType === 'IGNITION' &&
-        timeWizardCard.data.effectDefinition?.action === 'COIN_TOSS_CLEAR');
+        timeWizardCard.data.effectDefinition?.action === 'COIN_TOSS_CLEAR') ||
+      timeWizardCard.data.id === '71625222' ||
+      timeWizardCard.data.name.toLowerCase().includes('time wizard');
 
     if (!isTimeWizard) {
       this.log('O monstro selecionado não é o Time Wizard.');
@@ -533,58 +475,23 @@ export class DuelMatchSession {
     // Mark effect as used for this turn
     timeWizardCard.hasUsedEffectThisTurn = true;
 
-    // Simulate high entropy 50/50 coin toss
-    const coinRoll = this.getRandomInt(2); // 0 or 1
-    const outcome: 'HEADS' | 'TAILS' = coinRoll === 0 ? 'HEADS' : 'TAILS';
-    const destroyedUids: string[] = [];
-    let burnDamage = 0;
+    const res = ACTION_HANDLERS.COIN_TOSS_CLEAR({
+      cardInstance: timeWizardCard,
+      player,
+      opponent,
+      randomIntFn: (max) => this.getRandomInt(max),
+      logFn: (msg) => this.log(msg),
+    });
 
-    const wizardName = timeWizardCard.data.namePt || timeWizardCard.data.name;
-    this.log(`⏰ EFEITO DE IGNIÇÃO! ${player.nickname} ativou a Roleta do Tempo de ${wizardName}! Girando a moeda...`);
-
-    if (outcome === 'HEADS') {
-      this.log(`🪙 RESULTADO: CARA (HEADS)! A magia do tempo teve sucesso absoluto!`);
-      // Destrói todos os monstros do oponente
-      for (let i = 0; i < opponent.monsterZones.length; i++) {
-        const monster = opponent.monsterZones[i];
-        if (monster) {
-          destroyedUids.push(monster.uid);
-          opponent.monsterZones[i] = null;
-          opponent.graveyard.push(monster);
-          const monName = monster.data.namePt || monster.data.name;
-          this.log(`💥 Monstro do oponente ${monName} foi destruído pelo efeito do tempo!`);
-        }
-      }
-    } else {
-      this.log(`🪙 RESULTADO: COROA (TAILS)! O feitiço do tempo voltou-se contra você!`);
-      // Destrói todos os monstros do próprio jogador e soma metade do ATK total
-      let totalDestroyedAtk = 0;
-      for (let i = 0; i < player.monsterZones.length; i++) {
-        const monster = player.monsterZones[i];
-        if (monster) {
-          destroyedUids.push(monster.uid);
-          totalDestroyedAtk += monster.data.attack;
-          player.monsterZones[i] = null;
-          player.graveyard.push(monster);
-          const monName = monster.data.namePt || monster.data.name;
-          this.log(`💥 Seu monstro ${monName} foi destruído pela explosão temporal!`);
-        }
-      }
-
-      burnDamage = Math.floor(totalDestroyedAtk / 2);
-      player.lifePoints = Math.max(0, player.lifePoints - burnDamage);
-      this.log(`🩸 ${player.nickname} sofreu ${burnDamage} de dano de efeito (metade do ATK total destruído)!`);
-
-      if (player.lifePoints <= 0) {
-        this.declareGameOver(opponent.id, `Os Pontos de Vida de ${player.nickname} chegaram a 0 pela explosão de Time Wizard!`);
-      }
+    if (player.lifePoints <= 0) {
+      this.declareGameOver(opponent.id, `Os Pontos de Vida de ${player.nickname} chegaram a 0 pela explosão de Time Wizard!`);
     }
 
     return {
-      success: true,
-      outcome,
-      destroyedUids,
-      burnDamage,
+      success: res.success,
+      outcome: res.outcome,
+      destroyedUids: res.destroyedUids,
+      burnDamage: res.burnDamage,
     };
   }
 
