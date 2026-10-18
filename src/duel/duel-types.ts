@@ -3,6 +3,31 @@ export { BattlePosition };
 
 export type DuelPhase = 'DRAW' | 'STANDBY' | 'MAIN1' | 'BATTLE' | 'MAIN2' | 'END';
 
+export type CardEffectType =
+  | 'CONTINUOUS'
+  | 'FLIP'
+  | 'HAND_TRIGGER'
+  | 'IGNITION'
+  | 'TRIGGER'
+  | 'QUICK';
+
+export interface CardEffectDefinition {
+  trigger: CardEffectType;
+  action: string;
+  value?: number;
+  condition?: Record<string, any>;
+  cost?: string;
+  activation_timing?: string;
+  target_count?: number;
+  target_max_count?: number;
+  target_scope?: string;
+  usage_per_turn?: number;
+  success_outcome?: Record<string, any>;
+  failure_outcome?: Record<string, any>;
+  description_pt?: string;
+  [key: string]: any;
+}
+
 export interface CardData {
   id: string;
   name: string;
@@ -14,6 +39,8 @@ export interface CardData {
   namePt?: string;
   descriptionPt?: string;
   imageUrl?: string;
+  effectType?: CardEffectType;
+  effectDefinition?: CardEffectDefinition;
 }
 
 export interface CardInstance {

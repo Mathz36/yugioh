@@ -30,6 +30,8 @@ export interface SupabaseCardRow {
   storage_image_path: string | null;
   is_duelist_kingdom?: boolean;
   era?: string;
+  effect_type?: string | null;
+  effect_definition?: any | null;
 }
 
 export class CardCatalogService {
@@ -89,6 +91,9 @@ export class CardCatalogService {
       description: row.description,
       descriptionPt: row.descriptionPt,
       imageUrl: row.image_url,
+      effectType: (row.effect_type as any) || undefined,
+      effectDefinition: row.effect_definition || undefined,
     }));
   }
 }
+

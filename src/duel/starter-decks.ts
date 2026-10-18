@@ -51,6 +51,17 @@ export const CLASSIC_CARDS: Record<string, CardData> = {
     defense: 2300,
     description: 'Gains 500 ATK for each Dragon monster your opponent controls or is in their GY.',
     imageUrl: 'https://images.ygoprodeck.com/images/cards/78193831.jpg',
+    effectType: 'CONTINUOUS',
+    effectDefinition: {
+      trigger: 'CONTINUOUS',
+      action: 'BOOST_ATK',
+      value: 500,
+      condition: {
+        target_race: 'Dragon',
+        locations: ['OPPONENT_FIELD', 'OPPONENT_GRAVEYARD'],
+      },
+      description_pt: 'Ganha 500 de ATK para cada monstro do Tipo Dragão que seu oponente controla ou que está no Cemitério dele.',
+    },
   },
   CELTIC_GUARDIAN: {
     id: '91152256',
@@ -121,6 +132,14 @@ export const CLASSIC_CARDS: Record<string, CardData> = {
     defense: 200,
     description: 'A small monster capable of absorbing lethal damage.',
     imageUrl: 'https://images.ygoprodeck.com/images/cards/40640057.jpg',
+    effectType: 'HAND_TRIGGER',
+    effectDefinition: {
+      trigger: 'HAND_TRIGGER',
+      action: 'PREVENT_DAMAGE',
+      activation_timing: 'DAMAGE_CALCULATION',
+      cost: 'DISCARD_SELF',
+      description_pt: 'Durante o cálculo de dano: você pode descartar este card da sua mão; você não sofre dano de batalha desta batalha.',
+    },
   },
   MAN_EATER_BUG: {
     id: '54652250',
@@ -131,6 +150,14 @@ export const CLASSIC_CARDS: Record<string, CardData> = {
     defense: 600,
     description: 'FLIP: Target 1 monster on the field; destroy it.',
     imageUrl: 'https://images.ygoprodeck.com/images/cards/54652250.jpg',
+    effectType: 'FLIP',
+    effectDefinition: {
+      trigger: 'FLIP',
+      action: 'DESTROY_MONSTER',
+      target_count: 1,
+      target_scope: 'FIELD',
+      description_pt: 'VIRE: Escolha 1 monstro no campo; destrua aquele alvo.',
+    },
   },
   PENGUIN_SOLDIER: {
     id: '93920745',
@@ -141,6 +168,14 @@ export const CLASSIC_CARDS: Record<string, CardData> = {
     defense: 500,
     description: 'FLIP: You can target up to 2 monsters on the field; return those targets to the hand.',
     imageUrl: 'https://images.ygoprodeck.com/images/cards/93920745.jpg',
+    effectType: 'FLIP',
+    effectDefinition: {
+      trigger: 'FLIP',
+      action: 'RETURN_TO_HAND',
+      target_max_count: 2,
+      target_scope: 'FIELD',
+      description_pt: 'VIRE: Você pode escolher até 2 monstros no campo; devolva esses alvos para a mão.',
+    },
   },
   TIME_WIZARD: {
     id: '71625222',
@@ -151,6 +186,15 @@ export const CLASSIC_CARDS: Record<string, CardData> = {
     defense: 400,
     description: 'A small wizard capable of bending time with his roulette.',
     imageUrl: 'https://images.ygoprodeck.com/images/cards/71625222.jpg',
+    effectType: 'IGNITION',
+    effectDefinition: {
+      trigger: 'IGNITION',
+      action: 'COIN_TOSS_CLEAR',
+      usage_per_turn: 1,
+      success_outcome: { action: 'DESTROY_ALL_OPPONENT_MONSTERS' },
+      failure_outcome: { action: 'DESTROY_ALL_USER_MONSTERS_AND_BURN_HALF_ATK' },
+      description_pt: 'Uma vez por turno: você pode lançar uma moeda e escolher cara ou coroa. Se acertar, destrua todos os monstros que seu oponente controla. Se errar, destrua o máximo de monstros que você controla possível e, se isso acontecer, sofra dano igual à metade do ATK total que esses monstros destruídos tinham no campo.',
+    },
   },
   BABY_DRAGON: {
     id: '88819587',

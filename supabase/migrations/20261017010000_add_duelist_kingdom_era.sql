@@ -11,3 +11,4 @@ CREATE INDEX IF NOT EXISTS idx_cards_is_duelist_kingdom ON public.cards (is_duel
 CREATE INDEX IF NOT EXISTS idx_cards_era ON public.cards (era);
 CREATE INDEX IF NOT EXISTS idx_cards_duelist_kingdom_type ON public.cards (is_duelist_kingdom, type);
 CREATE INDEX IF NOT EXISTS idx_cards_duelist_kingdom_level ON public.cards (is_duelist_kingdom, level);
+
