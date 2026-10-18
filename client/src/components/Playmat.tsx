@@ -1262,7 +1262,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       )}
 
       {/* PAINEL LATERAL ESQUERDO: GRIMOIRE & TRADUÇÃO (ESTILO MTG / ANIME) */}
-      <aside className="w-80 bg-[#0d0918]/95 border-r-2 border-[#382654] flex flex-col p-3 shadow-[5px_0_30px_rgba(0,0,0,0.85)] z-20 justify-between">
+      <aside className="w-80 bg-[#0d0918]/95 border-r-2 border-[#382654] flex flex-col p-3 shadow-[5px_0_30px_rgba(0,0,0,0.85)] z-20 justify-between overflow-y-auto">
         <div className="flex flex-col items-center">
           
           {/* Topo do Grimoire com Tradução e Botão de Sair */}
@@ -1386,16 +1386,20 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                       <span className="font-extrabold text-amber-300 text-sm tracking-wide">
                         {languagePt && inspectedCard.data.namePt ? inspectedCard.data.namePt : inspectedCard.data.name}
                       </span>
-                      <span className="text-[11px] font-serif text-amber-400">
-                        {'★'.repeat(inspectedCard.data.level)}
-                      </span>
+                      {inspectedCard.data.level > 0 && (
+                        <span className="text-[11px] font-serif text-amber-400">
+                          {'★'.repeat(Math.max(0, inspectedCard.data.level))}
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-[10px] uppercase font-serif tracking-wider text-purple-300 border-b border-purple-900/60 pb-1 mb-1.5 flex justify-between">
                       <span>{formatCardType(inspectedCard.data.type)}</span>
-                      <span className="text-slate-400">
-                        {languagePt ? 'Nível' : 'Level'} {inspectedCard.data.level}
-                      </span>
+                      {inspectedCard.data.level > 0 && (
+                        <span className="text-slate-400">
+                          {languagePt ? 'Nível' : 'Level'} {inspectedCard.data.level}
+                        </span>
+                      )}
                     </div>
 
                     <p className="text-[11px] text-amber-100/90 leading-relaxed italic bg-black/40 p-1.5 rounded border border-purple-950/80 min-h-[50px]">
@@ -1403,6 +1407,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     </p>
 
                     {(() => {
+                      const cardTypeLower = inspectedCard.data.type.toLowerCase();
+                      const isSpellOrTrap = cardTypeLower.includes('spell') || cardTypeLower.includes('mágica') || cardTypeLower.includes('trap') || cardTypeLower.includes('armadilha');
+                      if (isSpellOrTrap) return null;
+
                       const effectiveAtk = isPlayerOwned
                         ? session.getEffectiveAttack(inspectedCard, p1, p2)
                         : session.getEffectiveAttack(inspectedCard, p2, p1);
@@ -1432,7 +1440,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                               ATK ⚔️ {effectiveAtk} {isBuffed && <span className="text-[10px] font-sans text-yellow-300">▲</span>}
                             </div>
                             <div className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-600/60 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]">
-                              DEF 🛡️ {inspectedCard.data.defense}
+                              DEF 🛡️ {inspectedCard.data.defense ?? 0}
                             </div>
                           </div>
 
@@ -1493,31 +1501,31 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       </aside>
 
       {/* ÁREA DA MESA / PLAYMAT INTERATIVO COM CAMERA SHAKE */}
-      <main className={`flex-1 flex flex-col justify-between p-2.5 relative overflow-hidden transition-transform ${isCameraShaking ? 'anim-camera-shake' : ''}`}>
+      <main className={`flex-1 flex flex-col justify-between p-1.5 relative overflow-hidden transition-transform ${isCameraShaking ? 'anim-camera-shake' : ''}`}>
         
-        {/* TOPO: OPONENTE KAIBA (HUD AMPLIADO) */}
-        <div className="flex justify-between items-center bg-[#0e0a17]/95 border-2 border-[#412760] rounded-xl px-7 py-2.5 shadow-[0_6px_25px_rgba(0,0,0,0.85)] relative">
+        {/* TOPO: OPONENTE KAIBA (HUD AMPLIADO E COMPACTO) */}
+        <div className="flex justify-between items-center bg-[#0e0a17]/95 border-2 border-[#412760] rounded-xl px-4 sm:px-6 py-1.5 sm:py-2 shadow-[0_6px_25px_rgba(0,0,0,0.85)] relative">
           {/* Floating Damage em Ataque Direto */}
           {floatingDamage && !floatingDamage.isPlayer && floatingDamage.zoneIndex === null && (
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none anim-damage-float">
-              <span className="text-4xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-t from-red-600 via-rose-500 to-amber-300 drop-shadow-[0_0_15px_rgba(239,68,68,1)]">
+              <span className="text-3xl sm:text-4xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-t from-red-600 via-rose-500 to-amber-300 drop-shadow-[0_0_15px_rgba(239,68,68,1)]">
                 -{floatingDamage.amount}
               </span>
             </div>
           )}
 
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-950 border-2 border-blue-400 flex items-center justify-center font-black text-blue-200 text-xl shadow-[0_0_15px_rgba(59,130,246,0.6)]">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-blue-600 to-indigo-950 border-2 border-blue-400 flex items-center justify-center font-black text-blue-200 text-lg sm:text-xl shadow-[0_0_15px_rgba(59,130,246,0.6)]">
               K
             </div>
             <div>
-              <h2 className="font-extrabold text-blue-300 tracking-wider text-base flex items-center gap-2 font-serif">
+              <h2 className="font-extrabold text-blue-300 tracking-wider text-sm sm:text-base flex items-center gap-2 font-serif">
                 {p2.nickname}
-                <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-950/90 border border-blue-500/50 text-blue-300 rounded font-sans uppercase">
+                <span className="text-[9px] font-bold px-1.5 py-0.5 bg-blue-950/90 border border-blue-500/50 text-blue-300 rounded font-sans uppercase">
                   IA Bot
                 </span>
               </h2>
-              <div className="text-xs text-slate-300 flex items-center gap-2 mt-0.5">
+              <div className="text-[11px] text-slate-300 flex items-center gap-2 mt-0.5">
                 <span>Deck: <strong className="text-amber-400 font-mono">{p2.deck.length}</strong></span>
                 <span>•</span>
                 <span>{languagePt ? 'Cemitério:' : 'Graveyard:'} <strong className="text-purple-400 font-mono">{p2.graveyard.length}</strong></span>
@@ -1525,24 +1533,24 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             </div>
           </div>
 
-          <div ref={opponentLpRef} className="flex items-center space-x-4">
-            <span className="text-xs uppercase font-serif tracking-widest text-slate-400 font-black">
+          <div ref={opponentLpRef} className="flex items-center space-x-3">
+            <span className="text-[11px] uppercase font-serif tracking-widest text-slate-400 font-black">
               {languagePt ? 'PONTOS DE VIDA' : 'LIFE POINTS'}
             </span>
-            <div className="bg-black/95 border-2 border-red-600 rounded-lg px-5 py-1 text-3xl font-mono font-black text-red-500 shadow-[0_0_22px_rgba(239,68,68,0.7)] tracking-wider">
-              {p2.lifePoints} <span className="text-sm font-sans text-red-400 font-normal">LP</span>
+            <div className="bg-black/95 border-2 border-red-600 rounded-lg px-4 py-0.5 sm:py-1 text-2xl sm:text-3xl font-mono font-black text-red-500 shadow-[0_0_22px_rgba(239,68,68,0.7)] tracking-wider">
+              {p2.lifePoints} <span className="text-xs sm:text-sm font-sans text-red-400 font-normal">LP</span>
             </div>
           </div>
         </div>
 
         {/* CAMPO DO OPONENTE */}
-        <div className="flex flex-col space-y-1.5">
+        <div className="flex flex-col space-y-1">
           {/* Mão do Oponente (Verso Oficial Yu-Gi-Oh) */}
-          <div className="flex justify-center -space-x-5 h-16">
+          <div className="flex justify-center -space-x-4 h-11 sm:h-12">
             {p2.hand.map((card, i) => (
               <div
                 key={card.uid || i}
-                className="w-12 h-16 rounded shadow-2xl transition-all duration-200 hover:-translate-y-2 hover:scale-110 hover:z-20 cursor-default"
+                className="w-8 sm:w-9 h-11 sm:h-12 rounded shadow-2xl transition-all duration-200 hover:-translate-y-2 hover:scale-110 hover:z-20 cursor-default"
               >
                 <img
                   src="/card-back.jpg"
@@ -1554,21 +1562,23 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           </div>
 
           {/* 5 Zonas de Magias e Armadilhas do Oponente */}
-          <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
+          <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
             {p2.spellTrapZones.map((slot, i) => (
               <div
                 key={`p2-st-${i}`}
                 onMouseEnter={() => slot && setInspectedCard(slot)}
-                className={`h-28 rounded-lg border-2 border-dashed border-emerald-950/60 bg-emerald-950/10 flex items-center justify-center relative p-0.5 transition-all ${
-                  slot ? 'border-emerald-600/60 shadow-[0_0_12px_rgba(16,185,129,0.2)]' : 'hover:border-emerald-700/40'
+                className={`h-16 sm:h-18 lg:h-20 rounded-lg border-2 border-dashed flex items-center justify-center relative p-0.5 transition-all ${
+                  slot
+                    ? 'border-emerald-600/70 bg-emerald-950/25 shadow-[0_0_12px_rgba(16,185,129,0.25)]'
+                    : 'border-emerald-950/70 bg-emerald-950/15 hover:border-emerald-700/40'
                 }`}
               >
                 {slot ? (
-                  <div className="w-full h-full relative rounded-lg flex items-center justify-center group">
+                  <div className="w-full h-full relative rounded-lg flex items-center justify-center group overflow-hidden">
                     <img
                       src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
                       alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
-                      className="w-full h-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
+                      className="max-h-full max-w-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
                     />
                     {!slot.isFaceDown && (
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-1.5 pointer-events-none rounded-lg">
@@ -1579,7 +1589,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     )}
                   </div>
                 ) : (
-                  <span className="text-[10px] text-emerald-900/50 font-serif tracking-widest uppercase select-none">
+                  <span className="text-[10px] text-emerald-900/60 font-serif tracking-widest uppercase select-none">
                     M / A
                   </span>
                 )}
@@ -1587,13 +1597,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             ))}
           </div>
 
-          {/* Fileira de Monstros do Oponente (h-34) */}
-          <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
+          {/* Fileira de Monstros do Oponente - Prioridade e Destaque para Monstros */}
+          <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
             {p2.monsterZones.map((slot, i) => {
               const isTargetable = selectedAttackingMonster !== null && slot !== null;
               const isTacticalTargeting = Boolean(tacticalTargetSelection && slot !== null);
               const isTacticalSelected = Boolean(tacticalTargetSelection && slot && tacticalTargetSelection.selectedUids.includes(slot.uid));
               const isDefense = slot?.position === 'DEFENSE';
+              const isSlamming = slamZone && !slamZone.isPlayer && slamZone.zoneIndex === i;
               const isHitTarget = targetHitZone && !targetHitZone.isPlayer && targetHitZone.zoneIndex === i;
               const isLunging = lungingZone && !lungingZone.isPlayer && lungingZone.zoneIndex === i;
               const isDestroyed = slot && destroyedCardUids.includes(slot.uid);
@@ -1616,10 +1627,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                         } as React.CSSProperties)
                       : undefined
                   }
-                  className={`h-34 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
+                  className={`h-24 sm:h-26 lg:h-28 rounded-lg border-2 border-dashed flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
                     slot
-                      ? `${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass}`
-                      : 'border-2 border-dashed border-[#2d1c47] zone-empty hover:border-purple-500/60'
+                      ? 'border-purple-600/60 bg-purple-950/25 shadow-[0_0_15px_rgba(147,51,234,0.25)]'
+                      : 'border-purple-950/70 bg-purple-950/15 hover:border-purple-600/50'
                   } ${
                     isTacticalSelected
                       ? 'ring-4 ring-cyan-400 bg-cyan-950/40 scale-105 shadow-[0_0_30px_rgba(34,211,238,0.9)] animate-pulse'
@@ -1641,6 +1652,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     </div>
                   )}
 
+                  {/* Anel de Poeira / Impacto na Invocação do Bot */}
+                  {isSlamming && (
+                    <div className="absolute inset-0 rounded-full border-4 border-amber-400 pointer-events-none anim-impact-ring z-40"></div>
+                  )}
+
                   {/* VFX de Anel de Impacto no Alvo */}
                   {isHitTarget && (
                     <div className="absolute inset-0 rounded-full border-4 border-red-500 pointer-events-none anim-impact-ring z-40"></div>
@@ -1654,7 +1670,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   )}
 
                   {/* Indicador de Seleção Tática do Efeito FLIP */}
-                  {isTacticalTargeting && (
+                  {isTacticalTargeting && tacticalTargetSelection && (
                     <div
                       className={`absolute -top-3.5 z-40 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border animate-bounce flex items-center gap-1 uppercase tracking-wider ${
                         isTacticalSelected
@@ -1674,14 +1690,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   )}
 
                   {slot ? (
-                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
+                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDefense ? 'card-defense-wrapper' : 'overflow-hidden'} ${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass} ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
                       {/* Imagem da Carta: Se virada para baixo, exibe verso */}
                       <img
                         src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
                         alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
-                        className={`w-full h-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.85)] transition-transform duration-300 ${
-                          isDefense ? 'rotate-90 scale-90' : 'group-hover:scale-105'
-                        }`}
+                        className={isDefense ? 'card-defense-img' : 'card-attack-img'}
                       />
 
                       {/* Informações reveladas suavemente apenas se não for oculta */}
@@ -1712,8 +1726,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                       )}
                     </div>
                   ) : (
-                    <span className="text-[11px] text-purple-900/60 font-serif tracking-widest uppercase">
-                      {languagePt ? 'Vazio' : 'Empty'}
+                    <span className="text-[10px] text-purple-900/60 font-serif tracking-widest uppercase select-none">
+                      {languagePt ? 'MONSTRO' : 'MONSTER'}
                     </span>
                   )}
                 </div>
@@ -1722,16 +1736,16 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           </div>
         </div>
 
-        {/* FAIXA CENTRAL DO DUELO: CONTROLES & AURA DE FASE (HUD CENTRAL AMPLIADO) */}
-        <div className="flex items-center justify-between px-7 py-2 bg-[#100a1c]/95 border-y-2 border-[#412760] shadow-[0_0_25px_rgba(65,39,96,0.8)] my-1">
-          <div className="flex items-center space-x-3.5">
-            <span className="text-xs uppercase font-serif tracking-widest text-amber-400 font-black">
+        {/* FAIXA CENTRAL DO DUELO: CONTROLES & AURA DE FASE (HUD CENTRAL AMPLIADO E COMPACTO) */}
+        <div className="flex items-center justify-between px-4 sm:px-6 py-1 bg-[#100a1c]/95 border-y-2 border-[#412760] shadow-[0_0_25px_rgba(65,39,96,0.8)] my-0.5">
+          <div className="flex items-center space-x-3">
+            <span className="text-[11px] sm:text-xs uppercase font-serif tracking-widest text-amber-400 font-black">
               {languagePt ? 'FASE:' : 'PHASE:'}
             </span>
-            <span className="px-3.5 py-1 rounded text-xs font-black tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.5)]">
+            <span className="px-2.5 sm:px-3 py-0.5 rounded text-[11px] sm:text-xs font-black tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.5)]">
               {formatPhaseName(match.phase)}
             </span>
-            <span className="text-xs text-slate-300 font-mono font-bold">
+            <span className="text-[11px] sm:text-xs text-slate-300 font-mono font-bold">
               {languagePt ? 'Turno' : 'Turn'} {match.currentTurn} • {isPlayerTurn ? `🌟 ${languagePt ? 'TURNO DE' : "TURN OF"} ${p1.nickname.toUpperCase()}` : `⏳ ${languagePt ? 'TURNO DE' : "TURN OF"} ${p2.nickname.toUpperCase()}`}
             </span>
           </div>
@@ -1746,7 +1760,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     tacticalTargetSelection.selectedUids
                   )
                 }
-                className={`px-5 py-1.5 text-xs font-black uppercase tracking-wider rounded-full shadow-lg transition-all flex items-center gap-1.5 border ${
+                className={`px-4 sm:px-5 py-1 text-xs font-black uppercase tracking-wider rounded-full shadow-lg transition-all flex items-center gap-1.5 border ${
                   tacticalTargetSelection.selectedUids.length > 0
                     ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-600 hover:from-cyan-400 hover:to-blue-400 text-slate-950 border-cyan-200 shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-pulse'
                     : 'bg-cyan-950/90 text-cyan-200 border-cyan-500/50 hover:bg-cyan-900'
@@ -1766,7 +1780,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
               <button
                 onClick={() => setTacticalTargetSelection(null)}
-                className="px-3 py-1 text-[11px] font-bold text-slate-400 hover:text-slate-200 bg-slate-900/80 rounded-full border border-slate-700 uppercase transition-colors"
+                className="px-2.5 py-0.5 text-[10px] sm:text-[11px] font-bold text-slate-400 hover:text-slate-200 bg-slate-900/80 rounded-full border border-slate-700 uppercase transition-colors"
               >
                 {languagePt ? 'Cancelar' : 'Cancel'}
               </button>
@@ -1779,25 +1793,25 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             p2.monsterZones.every((m) => m === null) && (
               <button
                 onClick={() => handleOpponentZoneClick(null)}
-                className="px-6 py-1.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs uppercase tracking-widest rounded-full shadow-[0_0_25px_rgba(239,68,68,0.9)] border-2 border-yellow-300 animate-bounce flex items-center gap-1.5"
+                className="px-5 py-1 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs uppercase tracking-widest rounded-full shadow-[0_0_25px_rgba(239,68,68,0.9)] border-2 border-yellow-300 animate-bounce flex items-center gap-1.5"
               >
                 <span>⚡</span> {languagePt ? 'ATACAR DIRETAMENTE OS LPs!' : 'DIRECT ATTACK LIFE POINTS!'}
               </button>
             )}
 
           {/* Botões de Ação */}
-          <div className="flex space-x-2.5">
+          <div className="flex space-x-2">
             <button
               onClick={handleNextPhase}
               disabled={!isPlayerTurn || match.isGameOver || match.phase === 'BATTLE'}
-              className="px-5 py-1.5 bg-gradient-to-r from-indigo-700 to-purple-800 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-30 text-xs font-bold rounded-lg border border-indigo-400/50 shadow-md transition-all font-serif"
+              className="px-3.5 sm:px-4 py-1 bg-gradient-to-r from-indigo-700 to-purple-800 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-30 text-xs font-bold rounded-lg border border-indigo-400/50 shadow-md transition-all font-serif"
             >
               {languagePt ? 'Fase de Batalha ⚔️' : 'Battle Phase ⚔️'}
             </button>
             <button
               onClick={handleEndTurn}
               disabled={!isPlayerTurn || match.isGameOver}
-              className="px-5 py-1.5 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 disabled:opacity-30 text-xs font-black rounded-lg border border-amber-400 shadow-md transition-all text-slate-950 font-serif"
+              className="px-3.5 sm:px-4 py-1 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 disabled:opacity-30 text-xs font-black rounded-lg border border-amber-400 shadow-md transition-all text-slate-950 font-serif"
             >
               {languagePt ? 'Encerrar Turno 🛡️' : 'End Turn 🛡️'}
             </button>
@@ -1805,9 +1819,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         </div>
 
         {/* CAMPO DO JOGADOR (ZONA DE MONSTROS 3D E ZONAS DE MAGIAS/ARMADILHAS) */}
-        <div className="flex flex-col space-y-1.5">
-          {/* Fileira de Monstros do Jogador (h-34) */}
-          <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
+        <div className="flex flex-col space-y-1">
+          {/* Fileira de Monstros do Jogador - Prioridade e Destaque para Monstros */}
+          <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
             {p1.monsterZones.map((slot, i) => {
               const selectedHandCard = selectedHandCardUid ? p1.hand.find((c) => c.uid === selectedHandCardUid) : null;
               const requiredTributes = selectedHandCard ? (selectedHandCard.data.level <= 4 ? 0 : selectedHandCard.data.level <= 6 ? 1 : 2) : 0;
@@ -1838,12 +1852,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                         } as React.CSSProperties)
                       : undefined
                   }
-                  className={`h-34 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
-                    slot
-                      ? `${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass}`
-                      : (isValidSummonZone || isTributeTargetZone)
-                      ? 'border-2 border-emerald-400 bg-emerald-950/40 ring-4 ring-emerald-400/80 shadow-[0_0_25px_rgba(16,185,129,0.8)] scale-105 animate-pulse'
-                      : 'border-2 border-dashed border-[#2d1c47] zone-empty hover:border-amber-500/50'
+                  className={`h-24 sm:h-26 lg:h-28 rounded-lg border-2 border-dashed flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
+                    (isValidSummonZone || isTributeTargetZone)
+                      ? 'border-emerald-400 bg-emerald-950/40 ring-4 ring-emerald-400/80 shadow-[0_0_25px_rgba(16,185,129,0.8)] scale-102 animate-pulse'
+                      : slot
+                      ? 'border-purple-600/60 bg-purple-950/25 shadow-[0_0_15px_rgba(147,51,234,0.25)]'
+                      : 'border-purple-950/70 bg-purple-950/15 hover:border-amber-500/50'
                   } ${
                     isSelectedAttacker
                       ? 'ring-4 ring-amber-400 scale-105 shadow-[0_0_30px_rgba(245,158,11,0.9)]'
@@ -1897,14 +1911,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   )}
 
                   {slot ? (
-                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
+                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDefense ? 'card-defense-wrapper' : 'overflow-hidden'} ${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass} ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
                       {/* Imagem da Carta Original ou Verso se estiver Virada para Baixo */}
                       <img
                         src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
                         alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
-                        className={`w-full h-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.85)] transition-transform duration-300 ${
-                          isDefense ? 'rotate-90 scale-90' : 'group-hover:scale-105'
-                        }`}
+                        className={isDefense ? 'card-defense-img' : 'card-attack-img'}
                       />
 
                       {/* Indicador de Carta Oculta do Jogador (visível permanentemente em tamanho sutil) */}
@@ -1940,6 +1952,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                             <span className="text-red-400 font-sans text-[9px]">{languagePt ? 'Atacou' : 'Attacked'}</span>
                           ) : slot.turnSummoned === match.currentTurn ? (
                             <span className="text-yellow-400 font-sans text-[9px]">{languagePt ? 'Invocado ⏳' : 'Summoned ⏳'}</span>
+                          ) : isDefense ? (
+                            <span className="text-blue-400 font-sans text-[9px]">{languagePt ? 'Defesa 🛡️' : 'Defense 🛡️'}</span>
                           ) : match.phase === 'BATTLE' && !isDefense ? (
                             <span className="text-emerald-400 font-sans text-[9px] animate-pulse">{languagePt ? 'Pronto ⚔️' : 'Ready ⚔️'}</span>
                           ) : null}
@@ -1947,8 +1961,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                       </div>
                     </div>
                   ) : (
-                    <span className="text-[11px] text-purple-900/60 font-serif tracking-widest uppercase">
-                      {isValidSummonZone ? (languagePt ? 'Clique p/ Inserir' : 'Click to Place') : (languagePt ? 'Zona Monstro' : 'Monster Zone')}
+                    <span className="text-[10px] text-purple-900/60 font-serif tracking-widest uppercase select-none">
+                      {isValidSummonZone ? (languagePt ? 'INVOCAR' : 'SUMMON') : (languagePt ? 'MONSTRO' : 'MONSTER')}
                     </span>
                   )}
                 </div>
@@ -1957,7 +1971,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           </div>
 
           {/* 5 Zonas de Magias e Armadilhas do Jogador */}
-          <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
+          <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
             {p1.spellTrapZones.map((slot, i) => {
               const selectedHandCard = selectedHandCardUid ? p1.hand.find((c) => c.uid === selectedHandCardUid) : null;
               const cardTypeLower = selectedHandCard?.data.type.toLowerCase() || '';
@@ -1971,22 +1985,22 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   key={`p1-st-${i}`}
                   onClick={() => handlePlayerSpellTrapZoneClick(i)}
                   onMouseEnter={() => slot && setInspectedCard(slot)}
-                  className={`h-28 rounded-lg border-2 border-dashed flex items-center justify-center relative cursor-pointer p-0.5 transition-all ${
+                  className={`h-16 sm:h-18 lg:h-20 rounded-lg border-2 border-dashed flex items-center justify-center relative cursor-pointer p-0.5 transition-all ${
                     isTargetableSpellZone
                       ? 'border-emerald-400 bg-emerald-950/40 ring-4 ring-emerald-400/90 shadow-[0_0_25px_rgba(52,211,153,0.8)] scale-102 animate-pulse'
                       : isTargetableTrapZone
                       ? 'border-fuchsia-400 bg-fuchsia-950/40 ring-4 ring-fuchsia-500/90 shadow-[0_0_25px_rgba(217,70,239,0.8)] scale-102 animate-pulse'
                       : slot
-                      ? 'border-emerald-600/70 bg-emerald-950/20 shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:border-emerald-400'
-                      : 'border-emerald-950/60 bg-emerald-950/10 hover:border-emerald-500/50'
+                      ? 'border-emerald-600/70 bg-emerald-950/25 shadow-[0_0_12px_rgba(16,185,129,0.25)] hover:border-emerald-400'
+                      : 'border-emerald-950/70 bg-emerald-950/15 hover:border-emerald-500/50'
                   }`}
                 >
                   {slot ? (
-                    <div className="w-full h-full relative rounded-lg flex items-center justify-center group">
+                    <div className="w-full h-full relative rounded-lg flex items-center justify-center group overflow-hidden">
                       <img
                         src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
                         alt={slot.data.name}
-                        className="w-full h-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
+                        className="max-h-full max-w-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
                       />
                       {slot.isFaceDown && (
                         <div className="absolute top-1 right-1 bg-purple-950/80 border border-purple-400 text-purple-200 text-[8px] px-1 rounded pointer-events-none">
@@ -2001,7 +2015,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     </div>
                   ) : (
                     <span className={`text-[10px] font-serif tracking-widest uppercase select-none ${
-                      isTargetableSpellZone ? 'text-emerald-300 font-bold' : isTargetableTrapZone ? 'text-fuchsia-300 font-bold' : 'text-emerald-900/50'
+                      isTargetableSpellZone ? 'text-emerald-300 font-bold' : isTargetableTrapZone ? 'text-fuchsia-300 font-bold' : 'text-emerald-900/60'
                     }`}>
                       {isTargetableSpellZone ? (languagePt ? 'Colocar Magia' : 'Place Spell') : isTargetableTrapZone ? (languagePt ? 'Baixar Armadilha' : 'Set Trap') : 'M / A'}
                     </span>
@@ -2012,23 +2026,23 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           </div>
         </div>
 
-        {/* RODAPÉ DO JOGADOR: MÃO AMPLIADA & STATUS (HUD AMPLIADO) */}
-        <div className="bg-[#0b0814]/95 border-2 border-[#412760] rounded-xl px-4 py-2 shadow-[0_-6px_30px_rgba(0,0,0,0.85)] flex items-center justify-between">
+        {/* RODAPÉ DO JOGADOR: MÃO AMPLIADA & STATUS (HUD COMPACTO E 100% RESPONSIVO) */}
+        <div className="bg-[#0b0814]/95 border-2 border-[#412760] rounded-xl px-3 sm:px-4 py-1 sm:py-1.5 shadow-[0_-6px_30px_rgba(0,0,0,0.85)] flex items-center justify-between">
           
-          <div className="flex items-center space-x-3.5 w-56">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-500 via-amber-700 to-purple-950 border-2 border-amber-400 flex items-center justify-center font-black text-amber-200 text-xl shadow-[0_0_15px_rgba(245,158,11,0.6)] uppercase">
+          <div className="flex items-center space-x-3 w-44 sm:w-52">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-amber-500 via-amber-700 to-purple-950 border-2 border-amber-400 flex items-center justify-center font-black text-amber-200 text-lg sm:text-xl shadow-[0_0_15px_rgba(245,158,11,0.6)] uppercase">
               {p1.nickname.charAt(0) || 'D'}
             </div>
             <div>
-              <h2 className="font-extrabold text-amber-300 text-sm font-serif tracking-wide truncate max-w-[140px]">{p1.nickname}</h2>
-              <div ref={playerLpRef} className="bg-black/95 border-2 border-red-600 rounded-lg px-3 py-0.5 text-xl font-mono font-black text-red-400 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider mt-0.5">
+              <h2 className="font-extrabold text-amber-300 text-xs sm:text-sm font-serif tracking-wide truncate max-w-[120px] sm:max-w-[140px]">{p1.nickname}</h2>
+              <div ref={playerLpRef} className="bg-black/95 border-2 border-red-600 rounded-lg px-2.5 py-0.5 text-lg sm:text-xl font-mono font-black text-red-400 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider mt-0.5">
                 {p1.lifePoints} <span className="text-xs font-sans text-red-400 font-normal">LP</span>
               </div>
             </div>
           </div>
 
-          {/* Mão do Jogador (Cartas 3D Ampliadas, Layout Dinâmico e Animação de Compra) */}
-          <div className="flex-1 flex justify-center -space-x-4 overflow-visible py-0.5">
+          {/* Mão do Jogador (Cartas 3D, Layout Dinâmico e Animação de Compra) */}
+          <div className="flex-1 flex justify-center -space-x-3 sm:-space-x-4 overflow-visible py-0.5">
             {p1.hand.map((card, idx) => {
               const isSelected = selectedHandCardUid === card.uid;
               const isNewlyDrawn = recentDrawnUids.includes(card.uid);
@@ -2038,12 +2052,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   onClick={() => handleSelectHandCard(card)}
                   onMouseEnter={() => setInspectedCard(card)}
                   style={{ animationDelay: isNewlyDrawn ? `${idx * 140}ms` : '0ms' }}
-                  className={`card-3d group w-24 h-34 rounded-md cursor-pointer transition-all duration-200 relative flex items-center justify-center ${
+                  className={`card-3d group w-16 sm:w-18 md:w-20 h-22 sm:h-24 md:h-26 rounded-md cursor-pointer transition-all duration-200 relative flex items-center justify-center ${
                     isNewlyDrawn ? 'anim-draw-card' : ''
                   } ${
                     isSelected
-                      ? '-translate-y-5 ring-4 ring-amber-400/90 shadow-[0_0_35px_rgba(245,158,11,1)] scale-110 z-30'
-                      : 'hover:-translate-y-4 hover:scale-105 hover:z-20 hover:drop-shadow-[0_15px_25px_rgba(245,158,11,0.5)]'
+                      ? '-translate-y-4 ring-4 ring-amber-400/90 shadow-[0_0_35px_rgba(245,158,11,1)] scale-110 z-30'
+                      : 'hover:-translate-y-3 hover:scale-105 hover:z-20 hover:drop-shadow-[0_15px_25px_rgba(245,158,11,0.5)]'
                   }`}
                 >
                   {isSelected && (
@@ -2060,12 +2074,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   />
 
                   {/* Informações da Carta Apenas no Hover */}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-md flex flex-col justify-between p-1.5 pointer-events-none backdrop-blur-[1px]">
-                    <div className="text-[10px] font-bold text-amber-200 text-center truncate bg-black/80 rounded px-1 shadow">
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-md flex flex-col justify-between p-1 pointer-events-none backdrop-blur-[1px]">
+                    <div className="text-[9px] sm:text-[10px] font-bold text-amber-200 text-center truncate bg-black/80 rounded px-1 shadow">
                       {languagePt && card.data.namePt ? card.data.namePt : card.data.name}
                     </div>
 
-                    <div className="flex justify-between text-[9px] font-mono font-black text-amber-300 bg-black/90 px-1.5 py-0.5 rounded shadow">
+                    <div className="flex justify-between text-[8px] sm:text-[9px] font-mono font-black text-amber-300 bg-black/90 px-1 py-0.5 rounded shadow">
                       <span>⚔️ {card.data.attack}</span>
                       <span>🛡️ {card.data.defense}</span>
                     </div>
@@ -2076,26 +2090,26 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           </div>
 
           {/* Cemitério e Deck do Jogador */}
-          <div className="flex items-center space-x-3 pl-4 border-l-2 border-[#2b1c42]">
+          <div className="flex items-center space-x-2 sm:space-x-3 pl-3 sm:pl-4 border-l-2 border-[#2b1c42]">
             <div className="text-center">
-              <div className="w-14 h-20 rounded border-2 border-purple-800 bg-purple-950/40 flex items-center justify-center text-xs font-mono font-bold text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.3)]">
+              <div className="w-11 sm:w-12 md:w-13 h-15 sm:h-16 md:h-17 rounded border-2 border-purple-800 bg-purple-950/40 flex items-center justify-center text-xs font-mono font-bold text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.3)]">
                 {p1.graveyard.length}
               </div>
-              <span className="text-[9px] text-slate-400 uppercase font-serif tracking-wider">
+              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-serif tracking-wider">
                 {languagePt ? 'Cemitério' : 'Graveyard'}
               </span>
             </div>
 
             <div className="text-center">
-              <div className="w-14 h-20 rounded border border-amber-600/50 relative shadow-[0_0_15px_rgba(245,158,11,0.4)] overflow-hidden flex items-center justify-center group">
+              <div className="w-11 sm:w-12 md:w-13 h-15 sm:h-16 md:h-17 rounded border border-amber-600/50 relative shadow-[0_0_15px_rgba(245,158,11,0.4)] overflow-hidden flex items-center justify-center group">
                 <img src="/card-back.jpg" alt="Deck" className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                  <span className="text-sm font-mono font-black text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
+                  <span className="text-xs sm:text-sm font-mono font-black text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
                     {p1.deck.length}
                   </span>
                 </div>
               </div>
-              <span className="text-[9px] text-slate-400 uppercase font-serif tracking-wider">Deck</span>
+              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-serif tracking-wider">Deck</span>
             </div>
           </div>
         </div>

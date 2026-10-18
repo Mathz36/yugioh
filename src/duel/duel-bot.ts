@@ -52,7 +52,7 @@ export class DuelBot {
 
     // Prioritize highest level/attack we can legally afford
     for (const card of summonableCards) {
-      if (card.data.level <= 4 && emptyZoneIndex !== -1) {
+      if (card.data.level >= 1 && card.data.level <= 4 && emptyZoneIndex !== -1) {
         // Direct summon, 0 tributes needed
         const isFlipMonster = card.data.effectType === 'FLIP';
         const position = isFlipMonster ? 'DEFENSE' : 'ATTACK';

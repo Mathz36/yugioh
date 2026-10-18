@@ -35,7 +35,7 @@ describe('DuelMatchSession & DuelBot Integration', () => {
   it('should allow normal summon in DEFENSE position', () => {
     // Arrange
     const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
-    const lvl4Card = session.player1.hand.find((c) => c.data.level <= 4);
+    const lvl4Card = session.player1.hand.find((c) => c.data.level >= 1 && c.data.level <= 4);
     expect(lvl4Card).toBeDefined();
 
     // Act
@@ -980,7 +980,7 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       const p1 = session.player1;
 
       // Localiza uma carta na mão para baixar virada para baixo
-      const card = p1.hand.find((c) => c.data.level <= 4)!;
+      const card = p1.hand.find((c) => c.data.level >= 1 && c.data.level <= 4)!;
       const summonSuccess = session.normalSummon(card.uid, 0, 'DEFENSE', [], true);
 
       expect(summonSuccess).toBe(true);
