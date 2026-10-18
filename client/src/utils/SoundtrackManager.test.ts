@@ -39,7 +39,7 @@ vi.mock('howler', () => {
   };
 });
 
-describe('SoundtrackManager - Authentic Yu-Gi-Oh Forbidden Memories OST', () => {
+describe('SoundtrackManager - Authentic Yu-Gi-Oh Forbidden Memories OST with Queued Match Playlist', () => {
   let manager: SoundtrackManager;
 
   beforeEach(() => {
@@ -57,27 +57,36 @@ describe('SoundtrackManager - Authentic Yu-Gi-Oh Forbidden Memories OST', () => 
     expect(manager.getCurrentTrack()).toBe('MENU');
   });
 
-  it('Arrange: playing menu music, Act: playMatchMusic("EGYPT"), Assert: transitions track to MATCH_EGYPT', () => {
+  it('Arrange: playing menu music, Act: playMatchMusic("EGYPT"), Assert: stops menu and plays MATCH_EGYPT', () => {
     manager.playMenuMusic();
     manager.playMatchMusic('EGYPT');
     expect(manager.getCurrentTrack()).toBe('MATCH_EGYPT');
   });
 
-  it('Arrange: playing match music, Act: playMatchMusic("PASSWORD"), Assert: switches track to MATCH_PASSWORD', () => {
+  it('Arrange: playing match music, Act: subsequent call to playMatchMusic() without arg, Assert: does not overlap and keeps current track', () => {
+    manager.playMatchMusic('EGYPT');
+    expect(manager.getCurrentTrack()).toBe('MATCH_EGYPT');
+    
+    // Attempting to start match music while already playing match music should not interrupt or overlap
+    manager.playMatchMusic();
+    expect(manager.getCurrentTrack()).toBe('MATCH_EGYPT');
+  });
+
+  it('Arrange: playing match music, Act: playMatchMusic("PASSWORD"), Assert: cleanly switches track to MATCH_PASSWORD', () => {
     manager.playMatchMusic('PASSWORD');
     expect(manager.getCurrentTrack()).toBe('MATCH_PASSWORD');
   });
 
-  it('Arrange: match concludes with win, Act: playVictory, Assert: stops music and plays victory sfx', () => {
+  it('Arrange: match concludes with win, Act: playVictory, Assert: stops match music and plays victory track exclusively', () => {
     manager.playMatchMusic('EGYPT');
     manager.playVictory();
-    expect(manager.getCurrentTrack()).toBe('NONE');
+    expect(manager.getCurrentTrack()).toBe('VICTORY');
   });
 
-  it('Arrange: match concludes with loss, Act: playDefeat, Assert: stops music and plays defeat sfx', () => {
+  it('Arrange: match concludes with loss, Act: playDefeat, Assert: stops match music and plays defeat track exclusively', () => {
     manager.playMatchMusic('PASSWORD');
     manager.playDefeat();
-    expect(manager.getCurrentTrack()).toBe('NONE');
+    expect(manager.getCurrentTrack()).toBe('DEFEAT');
   });
 
   it('Arrange: manager initialized, Act: setMuted(true), Assert: invokes Howler.mute', () => {
@@ -86,4 +95,3 @@ describe('SoundtrackManager - Authentic Yu-Gi-Oh Forbidden Memories OST', () => 
     expect(Howler.mute).toHaveBeenCalledWith(true);
   });
 });
-

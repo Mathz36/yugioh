@@ -14,7 +14,6 @@ export const GameMenu: React.FC<GameMenuProps> = ({ userNickname, onPlayVsBot, o
 
   const handleStartDuel = () => {
     soundtrackManager.unlockAudioContext();
-    soundtrackManager.playMatchMusic();
     onPlayVsBot();
   };
   return (

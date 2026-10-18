@@ -36,6 +36,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const [spellChoiceModal, setSpellChoiceModal] = useState<{
     zoneIndex: number;
     card: CardInstance;
+    isFromField?: boolean;
   } | null>(null);
   const [selectedAttackerZone, setSelectedAttackerZone] = useState<number | null>(null);
   const [inspectedCard, setInspectedCard] = useState<CardInstance | null>(null);
@@ -122,6 +123,41 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       return 'Monstro de Ritual';
     }
     return type;
+  };
+
+  // Funções Auxiliares de Tipagem Estrita de Cartas
+  const isSpellCard = (card: CardInstance | null | undefined): boolean => {
+    if (!card) return false;
+    const typeLower = (card.data.type || '').toLowerCase();
+    return (
+      typeLower.includes('spell') ||
+      typeLower.includes('mágica') ||
+      typeLower.includes('magic')
+    );
+  };
+
+  const isTrapCard = (card: CardInstance | null | undefined): boolean => {
+    if (!card) return false;
+    const typeLower = (card.data.type || '').toLowerCase();
+    return (
+      typeLower.includes('trap') ||
+      typeLower.includes('armadilha')
+    );
+  };
+
+  const isSpellOrTrapCard = (card: CardInstance | null | undefined): boolean => {
+    return isSpellCard(card) || isTrapCard(card);
+  };
+
+  const isMonsterCard = (card: CardInstance | null | undefined): boolean => {
+    if (!card) return false;
+    if (isSpellOrTrapCard(card)) return false;
+    const typeLower = (card.data.type || '').toLowerCase();
+    return (
+      typeLower.includes('monster') ||
+      typeLower.includes('monstro') ||
+      card.data.level >= 1
+    );
   };
 
   // Retorna a classe de chama da carta baseado em destruições e ataque direto
@@ -391,7 +427,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               const defenderEffAtk = session.getEffectiveAttack(target.card, opponent, bot);
 
               // Se a carta do jogador estava virada para baixo, revela e aciona animação 3D de flip
-              if (target.card.isFaceDown) {
+              const wasFaceDown = Boolean(target.card.isFaceDown);
+              if (wasFaceDown) {
                 target.card.isFaceDown = false;
                 setFlippedZones((prev) => [...prev, { isPlayer: true, zoneIndex: target.index }]);
                 setTimeout(() => {
@@ -399,9 +436,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                 }, 450);
               }
 
-              const isTargetFlipDefense = target.card.position === 'DEFENSE' && target.card.data.effectType === 'FLIP';
+              const isTargetFlipDefense = wasFaceDown && target.card.position === 'DEFENSE' && target.card.data.effectType === 'FLIP';
 
-              // Checa se o alvo em DEFENSE possui Efeito FLIP
+              // Checa se o alvo em DEFENSE possui Efeito FLIP (apenas se estava virado para baixo)
               if (isTargetFlipDefense) {
                 const flipName = (languagePt && target.card.data.namePt) ? target.card.data.namePt : target.card.data.name;
                 const action = target.card.data.effectDefinition?.action;
@@ -502,13 +539,25 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const handlePlayerMonsterZoneClick = (zoneIndex: number) => {
     if (!isPlayerTurn || match.isGameOver) return;
 
-    // 1. Invocação: Se há carta da mão selecionada
-    if (selectedHandCardUid && match.phase === 'MAIN1') {
+    // Se há carta da mão selecionada
+    if (selectedHandCardUid) {
       const card = p1.hand.find((c) => c.uid === selectedHandCardUid);
       if (!card) return;
 
-      const requiredTributes = card.data.level <= 4 ? 0 : card.data.level <= 6 ? 1 : 2;
-      const targetMonster = p1.monsterZones[zoneIndex];
+      // Blindagem: Cartas Mágicas e Armadilhas NÃO podem ser colocadas nas Zonas de Monstro
+      if (isSpellOrTrapCard(card)) {
+        showNotification(
+          languagePt
+            ? '⚠️ Cartas Mágicas e Armadilhas só podem ser colocadas nas Zonas de Magia e Armadilha (M/A) abaixo!'
+            : '⚠️ Spell and Trap cards can only be placed in the Spell & Trap Zones (M/A) below!'
+        );
+        return;
+      }
+
+      // Invocação de Monstro permitida na Fase Principal 1
+      if (match.phase === 'MAIN1') {
+        const requiredTributes = card.data.level <= 4 ? 0 : card.data.level <= 6 ? 1 : 2;
+        const targetMonster = p1.monsterZones[zoneIndex];
 
         // Caso com Sacrifício (Nível 5+)
       if (requiredTributes > 0) {
@@ -563,12 +612,14 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       }
 
       // Caso sem Sacrifício (Nível 1 a 4) -> Pergunta ao jogador se deseja invocar em Ataque ou Baixar virado para baixo
-      if (targetMonster === null) {
-        setSummonChoiceModal({
-          zoneIndex,
-          tributeIndices: [],
-          card,
-        });
+        if (targetMonster === null) {
+          setSummonChoiceModal({
+            zoneIndex,
+            tributeIndices: [],
+            card,
+          });
+        }
+        return;
       }
       return;
     }
@@ -760,6 +811,23 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     if (!selectedHandCardUid) {
       if (currentSlot) {
         setInspectedCard(currentSlot);
+
+        // Se for Carta Mágica virada para baixo e foi colocada em turno anterior (turnSet < currentTurn):
+        if (isSpellCard(currentSlot) && currentSlot.isFaceDown) {
+          if (typeof currentSlot.turnSet === 'number' && currentSlot.turnSet < match.currentTurn) {
+            setSpellChoiceModal({
+              zoneIndex,
+              card: currentSlot,
+              isFromField: true,
+            });
+          } else {
+            showNotification(
+              languagePt
+                ? '⏳ Cartas Mágicas baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.'
+                : '⏳ Set Spell cards cannot be activated during the same turn they were placed on the field.'
+            );
+          }
+        }
       }
       return;
     }
@@ -767,11 +835,17 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     const selectedCard = p1.hand.find((c) => c.uid === selectedHandCardUid);
     if (!selectedCard) return;
 
-    const typeLower = selectedCard.data.type.toLowerCase();
-    const isSpell = typeLower.includes('spell') || typeLower.includes('mágica');
-    const isTrap = typeLower.includes('trap') || typeLower.includes('armadilha');
+    // Blindagem: Monstros NÃO podem ser colocados nas Zonas de Magia e Armadilha
+    if (isMonsterCard(selectedCard)) {
+      showNotification(
+        languagePt
+          ? '⚠️ Monstros só podem ser invocados nas Zonas de Monstros!'
+          : '⚠️ Monsters can only be summoned in Monster Zones!'
+      );
+      return;
+    }
 
-    if (!isSpell && !isTrap) {
+    if (!isSpellOrTrapCard(selectedCard)) {
       showNotification(
         languagePt
           ? '⚠️ Apenas Cartas Mágicas ou Armadilhas podem ser colocadas nestas zonas!'
@@ -788,6 +862,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       );
       return;
     }
+
+    const isSpell = isSpellCard(selectedCard);
+    const isTrap = isTrapCard(selectedCard);
 
     // Se for Carta Mágica: exibe modal de escolha (Ativar Imediatamente ou Baixar Virada para Baixo)
     if (isSpell) {
@@ -973,7 +1050,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         const defenderEffAtk = session.getEffectiveAttack(defendingCard, p2, p1);
 
         // Se a carta defensora estava virada para baixo, revela e aciona animação 3D de flip
-        if (defendingCard.isFaceDown) {
+        const wasFaceDown = Boolean(defendingCard.isFaceDown);
+        if (wasFaceDown) {
           defendingCard.isFaceDown = false;
           setFlippedZones((prev) => [...prev, { isPlayer: false, zoneIndex: targetZoneIndex! }]);
           setTimeout(() => {
@@ -981,9 +1059,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           }, 450);
         }
 
-        const isDefendingFlipDefense = defendingCard.position === 'DEFENSE' && defendingCard.data.effectType === 'FLIP';
+        const isDefendingFlipDefense = wasFaceDown && defendingCard.position === 'DEFENSE' && defendingCard.data.effectType === 'FLIP';
 
-        // Checa se o alvo em DEFENSE possui Efeito FLIP
+        // Checa se o alvo em DEFENSE possui Efeito FLIP (apenas se estava virado para baixo)
         if (isDefendingFlipDefense) {
           const flipName = (languagePt && defendingCard.data.namePt) ? defendingCard.data.namePt : defendingCard.data.name;
           const action = defendingCard.data.effectDefinition?.action;
@@ -1824,10 +1902,13 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
             {p1.monsterZones.map((slot, i) => {
               const selectedHandCard = selectedHandCardUid ? p1.hand.find((c) => c.uid === selectedHandCardUid) : null;
-              const requiredTributes = selectedHandCard ? (selectedHandCard.data.level <= 4 ? 0 : selectedHandCard.data.level <= 6 ? 1 : 2) : 0;
+              const isSelectedCardMonster = isMonsterCard(selectedHandCard);
+              const requiredTributes = isSelectedCardMonster
+                ? (selectedHandCard!.data.level <= 4 ? 0 : selectedHandCard!.data.level <= 6 ? 1 : 2)
+                : 0;
               const isSelectedTribute = selectedTributeZones.includes(i);
-              const isTributeTargetZone = selectedHandCard !== null && requiredTributes > 0 && selectedTributeZones.length === requiredTributes && (slot === null || isSelectedTribute);
-              const isValidSummonZone = selectedHandCard !== null && requiredTributes === 0 && slot === null;
+              const isTributeTargetZone = isSelectedCardMonster && requiredTributes > 0 && selectedTributeZones.length === requiredTributes && (slot === null || isSelectedTribute);
+              const isValidSummonZone = isSelectedCardMonster && requiredTributes === 0 && slot === null;
               const isSelectedAttacker = selectedAttackerZone === i;
               const isDefense = slot?.position === 'DEFENSE';
               const isSlamming = slamZone && slamZone.isPlayer && slamZone.zoneIndex === i;
@@ -1974,9 +2055,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
             {p1.spellTrapZones.map((slot, i) => {
               const selectedHandCard = selectedHandCardUid ? p1.hand.find((c) => c.uid === selectedHandCardUid) : null;
-              const cardTypeLower = selectedHandCard?.data.type.toLowerCase() || '';
-              const isSelectedSpell = cardTypeLower.includes('spell') || cardTypeLower.includes('mágica');
-              const isSelectedTrap = cardTypeLower.includes('trap') || cardTypeLower.includes('armadilha');
+              const isSelectedSpell = isSpellCard(selectedHandCard);
+              const isSelectedTrap = isTrapCard(selectedHandCard);
               const isTargetableSpellZone = isSelectedSpell && slot === null;
               const isTargetableTrapZone = isSelectedTrap && slot === null;
 
@@ -2197,9 +2277,13 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   : spellChoiceModal.card.data.name}
               </h3>
               <p className="text-xs text-emerald-100/80 mb-5">
-                {languagePt
-                  ? 'Como deseja utilizar esta Carta Mágica?'
-                  : 'How would you like to play this Spell card?'}
+                {spellChoiceModal.isFromField
+                  ? (languagePt
+                      ? 'Deseja ativar esta Carta Mágica virada para baixo?'
+                      : 'Do you want to activate this face-down Spell card?')
+                  : (languagePt
+                      ? 'Como deseja utilizar esta Carta Mágica?'
+                      : 'How would you like to play this Spell card?')}
               </p>
 
               <div className="flex flex-col space-y-2.5">
@@ -2213,21 +2297,27 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
                 >
                   <span>⚡</span>
-                  <span>{languagePt ? 'Ativar Magia Imediatamente' : 'Activate Spell Immediately'}</span>
+                  <span>
+                    {spellChoiceModal.isFromField
+                      ? (languagePt ? 'Ativar Magia' : 'Activate Spell')
+                      : (languagePt ? 'Ativar Magia Imediatamente' : 'Activate Spell Immediately')}
+                  </span>
                 </button>
 
-                <button
-                  onClick={() =>
-                    handleSetSpellTrap(
-                      spellChoiceModal.card,
-                      spellChoiceModal.zoneIndex
-                    )
-                  }
-                  className="w-full py-2.5 px-4 bg-emerald-950/90 hover:bg-emerald-900 text-emerald-200 border border-emerald-500/60 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
-                >
-                  <span>👁️</span>
-                  <span>{languagePt ? 'Baixar na Zona (Virada para Baixo)' : 'Set in Zone (Face-Down)'}</span>
-                </button>
+                {!spellChoiceModal.isFromField && (
+                  <button
+                    onClick={() =>
+                      handleSetSpellTrap(
+                        spellChoiceModal.card,
+                        spellChoiceModal.zoneIndex
+                      )
+                    }
+                    className="w-full py-2.5 px-4 bg-emerald-950/90 hover:bg-emerald-900 text-emerald-200 border border-emerald-500/60 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                  >
+                    <span>👁️</span>
+                    <span>{languagePt ? 'Baixar na Zona (Virada para Baixo)' : 'Set in Zone (Face-Down)'}</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => setSpellChoiceModal(null)}
