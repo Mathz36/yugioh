@@ -27,6 +27,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const [selectedHandCardUid, setSelectedHandCardUid] = useState<string | null>(null);
   const [pendingSummonZone, setPendingSummonZone] = useState<number | null>(null); // Quando clica na zona para escolher ATK/DEF
   const [selectedTributeZones, setSelectedTributeZones] = useState<number[]>([]); // Zonas selecionadas para sacrifício
+  const [summonChoiceModal, setSummonChoiceModal] = useState<{
+    zoneIndex: number;
+    tributeIndices: number[];
+    card: CardInstance;
+  } | null>(null);
   const [selectedAttackerZone, setSelectedAttackerZone] = useState<number | null>(null);
   const [inspectedCard, setInspectedCard] = useState<CardInstance | null>(null);
   const [languagePt, setLanguagePt] = useState<boolean>(true);
@@ -347,6 +352,15 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               const attackerEffAtk = session.getEffectiveAttack(attacker.card, bot, opponent);
               const defenderEffAtk = session.getEffectiveAttack(target.card, opponent, bot);
 
+              // Se a carta do jogador estava virada para baixo, revela e aciona animação 3D de flip
+              if (target.card.isFaceDown) {
+                target.card.isFaceDown = false;
+                setFlippedZones((prev) => [...prev, { isPlayer: true, zoneIndex: target.index }]);
+                setTimeout(() => {
+                  setFlippedZones((prev) => prev.filter((z) => !(z.isPlayer && z.zoneIndex === target.index)));
+                }, 450);
+              }
+
               // Checa se o alvo em DEFENSE possui Efeito FLIP
               if (target.card.position === 'DEFENSE' && target.card.data.effectType === 'FLIP') {
                 const flipName = (languagePt && target.card.data.namePt) ? target.card.data.namePt : target.card.data.name;
@@ -450,7 +464,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         // Clicar em qualquer uma das zonas sacrificadas OU em uma zona vazia dispara a invocação imediata!
         if (selectedTributeZones.length === requiredTributes) {
           if (selectedTributeZones.includes(zoneIndex) || targetMonster === null) {
-            executeSummon(zoneIndex, selectedTributeZones);
+            setSummonChoiceModal({
+              zoneIndex,
+              tributeIndices: selectedTributeZones,
+              card,
+            });
             return;
           }
           showNotification(
@@ -492,9 +510,13 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         return;
       }
 
-      // Caso sem Sacrifício (Nível 1 a 4) -> Invoca direto em ATTACK na zona vazia
+      // Caso sem Sacrifício (Nível 1 a 4) -> Pergunta ao jogador se deseja invocar em Ataque ou Baixar virado para baixo
       if (targetMonster === null) {
-        executeSummon(zoneIndex, []);
+        setSummonChoiceModal({
+          zoneIndex,
+          tributeIndices: [],
+          card,
+        });
       }
       return;
     }
@@ -507,6 +529,19 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     // 2. Mudança de Posição Ilimitada ao Clicar na Carta (Apenas na Fase Principal)
     if (match.phase === 'MAIN1' || match.phase === 'MAIN2') {
       if (selectedHandCardUid === null && selectedAttackerZone === null) {
+        // Trava visual se foi baixado/invocado no mesmo turno
+        if (
+          currentMonster.turnSummoned === match.currentTurn ||
+          (currentMonster.turnSet !== undefined && currentMonster.turnSet === match.currentTurn)
+        ) {
+          showNotification(
+            languagePt
+              ? '⏳ Esta carta foi baixada neste turno e só poderá ser revelada no próximo turno!'
+              : '⏳ This card was set this turn and can only be flipped next turn!'
+          );
+          return;
+        }
+
         const success = session.changeMonsterPosition(zoneIndex);
         if (success) {
           soundFX.playPlaceCard();
@@ -542,14 +577,20 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     }
   };
 
-  // Executa Invocação Direta em Posição de Ataque (Vertical)
-  const executeSummon = (zoneIndex: number, tributeIndices: number[]) => {
+  // Executa Invocação Direta ou Baixar virado para baixo
+  const executeSummon = (
+    zoneIndex: number,
+    tributeIndices: number[],
+    position: BattlePosition = 'ATTACK',
+    isFaceDown: boolean = false
+  ) => {
     if (selectedHandCardUid === null) return;
-    const success = session.normalSummon(selectedHandCardUid, zoneIndex, 'ATTACK', tributeIndices);
+    const success = session.normalSummon(selectedHandCardUid, zoneIndex, position, tributeIndices, isFaceDown);
     if (success) {
       setSelectedHandCardUid(null);
       setPendingSummonZone(null);
       setSelectedTributeZones([]);
+      setSummonChoiceModal(null);
 
       // 1. VFX de Posicionamento: Card Slam e Som de Impacto
       soundFX.playPlaceCard();
@@ -558,7 +599,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
       forceUpdate();
     } else {
-      showNotification('❌ Falha ao invocar monstro. Verifique as regras.');
+      showNotification(languagePt ? '❌ Falha ao invocar monstro. Verifique as regras.' : '❌ Failed to summon monster. Check the rules.');
     }
   };
 
@@ -604,6 +645,15 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       } else if (defendingCard) {
         // Monstro vs Monstro
         const defenderEffAtk = session.getEffectiveAttack(defendingCard, p2, p1);
+
+        // Se a carta defensora estava virada para baixo, revela e aciona animação 3D de flip
+        if (defendingCard.isFaceDown) {
+          defendingCard.isFaceDown = false;
+          setFlippedZones((prev) => [...prev, { isPlayer: false, zoneIndex: targetZoneIndex! }]);
+          setTimeout(() => {
+            setFlippedZones((prev) => prev.filter((z) => !(!z.isPlayer && z.zoneIndex === targetZoneIndex)));
+          }, 450);
+        }
 
         // Checa se o alvo em DEFENSE possui Efeito FLIP
         if (defendingCard.position === 'DEFENSE' && defendingCard.data.effectType === 'FLIP') {
@@ -903,98 +953,139 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
           {/* Carta Inspecionada em Alta Definição */}
           {inspectedCard ? (
-            <div className="flex flex-col items-center w-full animate-fadeIn">
-              <div className="relative group w-60 h-84 rounded-lg p-2 bg-gradient-to-br from-[#7a4e23] via-[#472c13] to-[#1a0f05] border-2 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.4)] transition-transform duration-300 hover:scale-105">
-                <img
-                  src={inspectedCard.data.imageUrl}
-                  alt={inspectedCard.data.name}
-                  className="w-full h-full object-contain rounded drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]"
-                />
-              </div>
+            (() => {
+              const isPlayerOwned = p1.monsterZones.some((m) => m?.uid === inspectedCard.uid) || p1.hand.some((c) => c.uid === inspectedCard.uid);
+              const isOpponentOwned = p2.monsterZones.some((m) => m?.uid === inspectedCard.uid);
+              const isFaceDown = inspectedCard.isFaceDown;
 
-              {/* Detalhes da Carta Traduzida */}
-              <div className="mt-2.5 w-full bg-[#120c22] border-2 border-[#412760] rounded-lg p-2.5 shadow-md">
-                <div className="flex justify-between items-baseline mb-1">
-                  <span className="font-extrabold text-amber-300 text-sm tracking-wide">
-                    {languagePt && inspectedCard.data.namePt ? inspectedCard.data.namePt : inspectedCard.data.name}
-                  </span>
-                  <span className="text-[11px] font-serif text-amber-400">
-                    {'★'.repeat(inspectedCard.data.level)}
-                  </span>
-                </div>
-
-                <div className="text-[10px] uppercase font-serif tracking-wider text-purple-300 border-b border-purple-900/60 pb-1 mb-1.5 flex justify-between">
-                  <span>{formatCardType(inspectedCard.data.type)}</span>
-                  <span className="text-slate-400">
-                    {languagePt ? 'Nível' : 'Level'} {inspectedCard.data.level}
-                  </span>
-                </div>
-
-                <p className="text-[11px] text-amber-100/90 leading-relaxed italic bg-black/40 p-1.5 rounded border border-purple-950/80 min-h-[50px]">
-                  "{languagePt && inspectedCard.data.descriptionPt ? inspectedCard.data.descriptionPt : inspectedCard.data.description}"
-                </p>
-
-                {(() => {
-                  const isPlayerOwned = p1.monsterZones.some((m) => m?.uid === inspectedCard.uid) || p1.hand.some((c) => c.uid === inspectedCard.uid);
-                  const effectiveAtk = isPlayerOwned
-                    ? session.getEffectiveAttack(inspectedCard, p1, p2)
-                    : session.getEffectiveAttack(inspectedCard, p2, p1);
-                  const isBuffed = effectiveAtk > inspectedCard.data.attack;
-
-                  // Verifica se é o Time Wizard no campo do jogador pronto para usar efeito
-                  const playerZoneIdx = p1.monsterZones.findIndex((m) => m?.uid === inspectedCard.uid);
-                  const isPlayerTimeWizardOnField =
-                    playerZoneIdx !== -1 &&
-                    (inspectedCard.data.id === '71625222' || inspectedCard.data.name.toLowerCase().includes('time wizard'));
-                  const canUseTimeWizard =
-                    isPlayerTimeWizardOnField &&
-                    isPlayerTurn &&
-                    (match.phase === 'MAIN1' || match.phase === 'MAIN2') &&
-                    !inspectedCard.hasUsedEffectThisTurn;
-
-                  return (
-                    <>
-                      <div className="flex justify-between font-mono font-black text-xs pt-1.5 mt-1 text-slate-200">
-                        <div
-                          className={`px-2 py-0.5 rounded border flex items-center gap-1 transition-all ${
-                            isBuffed
-                              ? 'bg-emerald-950/90 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.7)] animate-pulse'
-                              : 'bg-amber-950/80 border-amber-600/60 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]'
-                          }`}
-                        >
-                          ATK ⚔️ {effectiveAtk} {isBuffed && <span className="text-[10px] font-sans text-yellow-300">▲</span>}
-                        </div>
-                        <div className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-600/60 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]">
-                          DEF 🛡️ {inspectedCard.data.defense}
-                        </div>
+              // Se for carta virada para baixo do oponente, mantém o segredo
+              if (isOpponentOwned && isFaceDown) {
+                return (
+                  <div className="flex flex-col items-center w-full animate-fadeIn">
+                    <div className="relative group w-60 h-84 rounded-lg p-2 bg-gradient-to-br from-[#7a4e23] via-[#472c13] to-[#1a0f05] border-2 border-purple-500/80 shadow-[0_0_25px_rgba(147,51,234,0.4)]">
+                      <img
+                        src="/card-back.jpg"
+                        alt="Carta Oculta do Adversário"
+                        className="w-full h-full object-contain rounded drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]"
+                      />
+                    </div>
+                    <div className="mt-2.5 w-full bg-[#120c22] border-2 border-purple-900/60 rounded-lg p-3 text-center shadow-md">
+                      <div className="text-amber-400 font-serif font-black text-sm mb-1 tracking-wider">
+                        Carta Oculta do Adversário 𓂀
                       </div>
+                      <p className="text-[11px] text-purple-200/80 italic leading-relaxed">
+                        {languagePt
+                          ? 'Esta carta está virada para baixo no campo do oponente. Seus segredos só serão revelados quando for atacada ou virada!'
+                          : 'This card is set face-down on the opponent field. Its secrets will remain hidden until attacked or flipped!'}
+                      </p>
+                      <div className="mt-2 text-xs font-mono font-bold text-slate-400 bg-black/40 py-1 rounded border border-purple-950">
+                        ATK ??? / DEF ???
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
 
-                      {/* Botão de Ativação do Efeito de Time Wizard */}
-                      {isPlayerTimeWizardOnField && (
-                        <div className="mt-2.5 pt-2 border-t border-purple-900/60">
-                          <button
-                            onClick={() => handleActivateTimeWizard(playerZoneIdx)}
-                            disabled={!canUseTimeWizard}
-                            className={`w-full py-1.5 px-3 rounded-lg font-serif font-black text-xs tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 ${
-                              canUseTimeWizard
-                                ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.8)] border border-yellow-200 animate-pulse'
-                                : 'bg-slate-800/80 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
-                            }`}
-                          >
-                            <span>⏳</span>
-                            <span>
-                              {inspectedCard.hasUsedEffectThisTurn
-                                ? 'Roleta Já Utilizada'
-                                : 'Girar Roleta do Tempo'}
-                            </span>
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
+              // Se for carta do jogador ou já revelada
+              return (
+                <div className="flex flex-col items-center w-full animate-fadeIn">
+                  <div className="relative group w-60 h-84 rounded-lg p-2 bg-gradient-to-br from-[#7a4e23] via-[#472c13] to-[#1a0f05] border-2 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.4)] transition-transform duration-300 hover:scale-105">
+                    <img
+                      src={inspectedCard.data.imageUrl}
+                      alt={inspectedCard.data.name}
+                      className="w-full h-full object-contain rounded drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]"
+                    />
+                    {isPlayerOwned && isFaceDown && (
+                      <div className="absolute top-3 left-3 right-3 bg-purple-950/90 border border-purple-400 text-purple-200 text-[10px] font-black py-1 px-2 rounded shadow-lg text-center backdrop-blur-sm">
+                        👁️ {languagePt ? 'Carta Oculta (Apenas você pode ver)' : 'Face-Down Card (Only you can see)'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Detalhes da Carta Traduzida */}
+                  <div className="mt-2.5 w-full bg-[#120c22] border-2 border-[#412760] rounded-lg p-2.5 shadow-md">
+                    <div className="flex justify-between items-baseline mb-1">
+                      <span className="font-extrabold text-amber-300 text-sm tracking-wide">
+                        {languagePt && inspectedCard.data.namePt ? inspectedCard.data.namePt : inspectedCard.data.name}
+                      </span>
+                      <span className="text-[11px] font-serif text-amber-400">
+                        {'★'.repeat(inspectedCard.data.level)}
+                      </span>
+                    </div>
+
+                    <div className="text-[10px] uppercase font-serif tracking-wider text-purple-300 border-b border-purple-900/60 pb-1 mb-1.5 flex justify-between">
+                      <span>{formatCardType(inspectedCard.data.type)}</span>
+                      <span className="text-slate-400">
+                        {languagePt ? 'Nível' : 'Level'} {inspectedCard.data.level}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-amber-100/90 leading-relaxed italic bg-black/40 p-1.5 rounded border border-purple-950/80 min-h-[50px]">
+                      "{languagePt && inspectedCard.data.descriptionPt ? inspectedCard.data.descriptionPt : inspectedCard.data.description}"
+                    </p>
+
+                    {(() => {
+                      const effectiveAtk = isPlayerOwned
+                        ? session.getEffectiveAttack(inspectedCard, p1, p2)
+                        : session.getEffectiveAttack(inspectedCard, p2, p1);
+                      const isBuffed = effectiveAtk > inspectedCard.data.attack;
+
+                      // Verifica se é o Time Wizard no campo do jogador pronto para usar efeito
+                      const playerZoneIdx = p1.monsterZones.findIndex((m) => m?.uid === inspectedCard.uid);
+                      const isPlayerTimeWizardOnField =
+                        playerZoneIdx !== -1 &&
+                        (inspectedCard.data.id === '71625222' || inspectedCard.data.name.toLowerCase().includes('time wizard'));
+                      const canUseTimeWizard =
+                        isPlayerTimeWizardOnField &&
+                        isPlayerTurn &&
+                        (match.phase === 'MAIN1' || match.phase === 'MAIN2') &&
+                        !inspectedCard.hasUsedEffectThisTurn;
+
+                      return (
+                        <>
+                          <div className="flex justify-between font-mono font-black text-xs pt-1.5 mt-1 text-slate-200">
+                            <div
+                              className={`px-2 py-0.5 rounded border flex items-center gap-1 transition-all ${
+                                isBuffed
+                                  ? 'bg-emerald-950/90 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.7)] animate-pulse'
+                                  : 'bg-amber-950/80 border-amber-600/60 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]'
+                              }`}
+                            >
+                              ATK ⚔️ {effectiveAtk} {isBuffed && <span className="text-[10px] font-sans text-yellow-300">▲</span>}
+                            </div>
+                            <div className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-600/60 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]">
+                              DEF 🛡️ {inspectedCard.data.defense}
+                            </div>
+                          </div>
+
+                          {/* Botão de Ativação do Efeito de Time Wizard */}
+                          {isPlayerTimeWizardOnField && (
+                            <div className="mt-2.5 pt-2 border-t border-purple-900/60">
+                              <button
+                                onClick={() => handleActivateTimeWizard(playerZoneIdx)}
+                                disabled={!canUseTimeWizard}
+                                className={`w-full py-1.5 px-3 rounded-lg font-serif font-black text-xs tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 ${
+                                  canUseTimeWizard
+                                    ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.8)] border border-yellow-200 animate-pulse'
+                                    : 'bg-slate-800/80 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
+                                }`}
+                              >
+                                <span>⏳</span>
+                                <span>
+                                  {inspectedCard.hasUsedEffectThisTurn
+                                    ? 'Roleta Já Utilizada'
+                                    : 'Girar Roleta do Tempo'}
+                                </span>
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              );
+            })()
           ) : (
             <div className="w-60 h-84 rounded-lg border-2 border-amber-900/60 shadow-[0_0_25px_rgba(245,158,11,0.2)] flex flex-col items-center justify-between p-3 bg-black/40">
               <div className="w-full h-64 rounded overflow-hidden shadow-2xl flex items-center justify-center">
@@ -1145,39 +1236,41 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
                   {slot ? (
                     <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
-                      {/* Apenas a Imagem Pura da Carta Preenchendo com Fidelidade */}
+                      {/* Imagem da Carta: Se virada para baixo, exibe verso */}
                       <img
-                        src={slot.data.imageUrl}
-                        alt={slot.data.name}
+                        src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
+                        alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
                         className={`w-full h-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.85)] transition-transform duration-300 ${
                           isDefense ? 'rotate-90 scale-90' : 'group-hover:scale-105'
                         }`}
                       />
 
-                      {/* Informações invisíveis por padrão - reveladas com suavidade apenas ao passar o mouse */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none rounded-lg">
-                        <div className="text-[11px] font-black text-amber-200 truncate drop-shadow text-center">
-                          {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
+                      {/* Informações reveladas suavemente apenas se não for oculta */}
+                      {!slot.isFaceDown && (
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none rounded-lg">
+                          <div className="text-[11px] font-black text-amber-200 truncate drop-shadow text-center">
+                            {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
+                          </div>
+                          <div className="flex justify-between items-center text-[10px] font-mono font-black bg-black/80 px-2 py-1 rounded border border-purple-500/50">
+                            {(() => {
+                              const effectiveAtk = session.getEffectiveAttack(slot, p2, p1);
+                              const isBuffed = effectiveAtk > slot.data.attack;
+                              return (
+                                <span
+                                  className={`flex items-center gap-0.5 ${
+                                    isBuffed
+                                      ? 'text-emerald-300 font-bold drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
+                                      : 'text-amber-400'
+                                  }`}
+                                >
+                                  ⚔️ {effectiveAtk} {isBuffed && <span className="text-[9px] text-yellow-300 font-sans">▲</span>}
+                                </span>
+                              );
+                            })()}
+                            <span className="text-blue-400">🛡️ {slot.data.defense}</span>
+                          </div>
                         </div>
-                        <div className="flex justify-between items-center text-[10px] font-mono font-black bg-black/80 px-2 py-1 rounded border border-purple-500/50">
-                          {(() => {
-                            const effectiveAtk = session.getEffectiveAttack(slot, p2, p1);
-                            const isBuffed = effectiveAtk > slot.data.attack;
-                            return (
-                              <span
-                                className={`flex items-center gap-0.5 ${
-                                  isBuffed
-                                    ? 'text-emerald-300 font-bold drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
-                                    : 'text-amber-400'
-                                }`}
-                              >
-                                ⚔️ {effectiveAtk} {isBuffed && <span className="text-[9px] text-yellow-300 font-sans">▲</span>}
-                              </span>
-                            );
-                          })()}
-                          <span className="text-blue-400">🛡️ {slot.data.defense}</span>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   ) : (
                     <span className="text-[11px] text-purple-900/60 font-serif tracking-widest uppercase">
@@ -1328,14 +1421,21 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
                   {slot ? (
                     <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
-                      {/* Apenas a Imagem Pura da Carta Original em Alta Definição */}
+                      {/* Imagem da Carta Original ou Verso se estiver Virada para Baixo */}
                       <img
-                        src={slot.data.imageUrl}
-                        alt={slot.data.name}
+                        src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
+                        alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
                         className={`w-full h-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.85)] transition-transform duration-300 ${
                           isDefense ? 'rotate-90 scale-90' : 'group-hover:scale-105'
                         }`}
                       />
+
+                      {/* Indicador de Carta Oculta do Jogador (visível permanentemente em tamanho sutil) */}
+                      {slot.isFaceDown && (
+                        <div className="absolute top-1 right-1 bg-purple-950/80 border border-purple-400 text-purple-200 text-[9px] px-1.5 py-0.5 rounded shadow pointer-events-none">
+                          👁️
+                        </div>
+                      )}
 
                       {/* Informações ocultas por padrão - reveladas suavemente apenas em hover */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none rounded-lg">
@@ -1469,6 +1569,69 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         </div>
 
 
+
+        {/* 🎴 MODAL DE ESCOLHA DE POSIÇÃO DE INVOCAÇÃO (FACE-UP OU VIRADO PARA BAIXO) */}
+        {summonChoiceModal && (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
+            <div className="bg-[#120c22] border-2 border-amber-400 rounded-2xl p-6 text-center max-w-sm shadow-[0_0_40px_rgba(245,158,11,0.5)]">
+              <h3 className="text-lg font-serif font-black text-amber-300 mb-1">
+                {languagePt ? 'COMO DESEJA BAIXAR?' : 'SUMMON POSITION'}
+              </h3>
+              <p className="text-xs text-slate-300 mb-4">
+                {languagePt ? 'Escolha a postura do monstro no campo:' : 'Choose how to place this monster:'}
+              </p>
+
+              <div className="flex justify-center mb-4">
+                <div className="w-28 h-40 rounded-lg p-1 bg-gradient-to-br from-[#7a4e23] to-[#1a0f05] border border-amber-400/80 shadow-md">
+                  <img
+                    src={summonChoiceModal.card.data.imageUrl}
+                    alt={summonChoiceModal.card.data.name}
+                    className="w-full h-full object-contain rounded"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={() =>
+                    executeSummon(
+                      summonChoiceModal.zoneIndex,
+                      summonChoiceModal.tributeIndices,
+                      'ATTACK',
+                      false
+                    )
+                  }
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                >
+                  <span>⚔️</span>
+                  <span>{languagePt ? 'Invocar em Modo de Ataque' : 'Summon in Attack Mode'}</span>
+                </button>
+
+                <button
+                  onClick={() =>
+                    executeSummon(
+                      summonChoiceModal.zoneIndex,
+                      summonChoiceModal.tributeIndices,
+                      'DEFENSE',
+                      true
+                    )
+                  }
+                  className="w-full py-2.5 px-4 bg-purple-900 hover:bg-purple-800 text-purple-100 border border-purple-400/60 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                >
+                  <span>👁️</span>
+                  <span>{languagePt ? 'Baixar de Cabeça para Baixo' : 'Set Face-Down (Defense)'}</span>
+                </button>
+
+                <button
+                  onClick={() => setSummonChoiceModal(null)}
+                  className="w-full py-1.5 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
+                >
+                  {languagePt ? 'Cancelar' : 'Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 🏳️ MODAL DE CONFIRMAÇÃO DE SAIR / RENDER-SE */}
         {showSurrenderModal && (

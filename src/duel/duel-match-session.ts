@@ -58,6 +58,8 @@ export class DuelMatchSession {
         monstersDestroyedCount: 0,
         hasAttackedDirectly: false,
         hasUsedEffectThisTurn: false,
+        isFaceDown: false,
+        turnSet: 0,
       }))
     );
 
@@ -159,7 +161,8 @@ export class DuelMatchSession {
     cardUid: string,
     targetZoneIndex: number,
     position: BattlePosition = 'ATTACK',
-    tributeZoneIndices: number[] = []
+    tributeZoneIndices: number[] = [],
+    isFaceDown: boolean = false
   ): boolean {
     if (this.matchState.isGameOver) return false;
     if (this.matchState.phase !== 'MAIN1' && this.matchState.phase !== 'MAIN2') {
@@ -218,7 +221,9 @@ export class DuelMatchSession {
     // Posiciona o monstro
     player.hand.splice(handIndex, 1);
     card.position = position;
+    card.isFaceDown = isFaceDown;
     card.turnSummoned = this.matchState.currentTurn;
+    card.turnSet = isFaceDown ? this.matchState.currentTurn : undefined;
     card.hasAttacked = false;
     card.hasChangedPositionThisTurn = false;
     card.hasUsedEffectThisTurn = false;
@@ -227,7 +232,11 @@ export class DuelMatchSession {
 
     const cardName = card.data.namePt || card.data.name;
     const posName = position === 'ATTACK' ? 'Posição de Ataque' : 'Posição de Defesa';
-    this.log(`🌟 ${player.nickname} invocou ${cardName} em ${posName}!`);
+    if (isFaceDown) {
+      this.log(`🎴 ${player.nickname} baixou um monstro de cabeça para baixo!`);
+    } else {
+      this.log(`🌟 ${player.nickname} invocou ${cardName} em ${posName}!`);
+    }
     return true;
   }
 
@@ -239,6 +248,7 @@ export class DuelMatchSession {
     }
 
     const player = this.getActivePlayer();
+    const opponent = this.getOpponentPlayer();
     const monster = player.monsterZones[zoneIndex];
     if (!monster) {
       this.log('Nenhum monstro na zona para alterar posição.');
@@ -250,7 +260,67 @@ export class DuelMatchSession {
       return false;
     }
 
+    // Trava de Flip: se monster.isFaceDown && monster.turnSet === currentTurn, impede
+    if (monster.isFaceDown && monster.turnSet === this.matchState.currentTurn) {
+      this.log('⏳ Um monstro baixado para baixo só pode ser virado de face para cima a partir do próximo turno.');
+      return false;
+    }
+
+    // Se estiver virado para baixo, ao mudar de posição é revelado (Flip Summon)
+    if (monster.isFaceDown) {
+      monster.isFaceDown = false;
+      monster.position = 'ATTACK';
+      monster.hasChangedPositionThisTurn = true;
+      const cardName = monster.data.namePt || monster.data.name;
+      this.log(`✨ INVOCAÇÃO POR VIRAR (FLIP)! ${player.nickname} revelou ${cardName} em Posição de Ataque!`);
+
+      // Dispara efeito FLIP caso possua
+      if (monster.data.effectType === 'FLIP') {
+        const action = monster.data.effectDefinition?.action;
+
+        if (action === 'DESTROY_MONSTER') {
+          // Man-Eater Bug: Destrói 1 monstro do oponente
+          const opponentMonsters = opponent.monsterZones
+            .map((m, idx) => ({ card: m, index: idx }))
+            .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
+
+          if (opponentMonsters.length > 0) {
+            const strongest = [...opponentMonsters].sort(
+              (a, b) =>
+                this.getEffectiveAttack(b.card, opponent, player) -
+                this.getEffectiveAttack(a.card, opponent, player)
+            )[0];
+
+            opponent.monsterZones[strongest.index] = null;
+            opponent.graveyard.push(strongest.card);
+            const targetName = strongest.card.data.namePt || strongest.card.data.name;
+            this.log(`🪲 EFEITO FLIP ATIVADO! ${cardName} destruiu o monstro ${targetName} do oponente!`);
+          }
+        } else if (action === 'RETURN_TO_HAND') {
+          // Penguin Soldier: Devolve 1 monstro do oponente para a mão
+          const opponentMonsters = opponent.monsterZones
+            .map((m, idx) => ({ card: m, index: idx }))
+            .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
+
+          if (opponentMonsters.length > 0) {
+            const strongest = [...opponentMonsters].sort(
+              (a, b) =>
+                this.getEffectiveAttack(b.card, opponent, player) -
+                this.getEffectiveAttack(a.card, opponent, player)
+            )[0];
+
+            opponent.monsterZones[strongest.index] = null;
+            opponent.hand.push(strongest.card);
+            const targetName = strongest.card.data.namePt || strongest.card.data.name;
+            this.log(`🐧 EFEITO FLIP ATIVADO! ${cardName} devolveu ${targetName} para a mão de ${opponent.nickname}!`);
+          }
+        }
+      }
+      return true;
+    }
+
     monster.position = monster.position === 'ATTACK' ? 'DEFENSE' : 'ATTACK';
+    monster.hasChangedPositionThisTurn = true;
 
     const cardName = monster.data.namePt || monster.data.name;
     const newPosName = monster.position === 'ATTACK' ? 'Posição de Ataque (Vertical)' : 'Posição de Defesa (Horizontal)';
@@ -524,12 +594,52 @@ export class DuelMatchSession {
     const defenderName = defendingCard.data.namePt || defendingCard.data.name;
     const defenderEffectiveAtk = this.getEffectiveAttack(defendingCard, defenderPlayer, attackerPlayer);
 
+    const wasFaceDown = Boolean(defendingCard.isFaceDown);
+    if (defendingCard.isFaceDown) {
+      defendingCard.isFaceDown = false;
+      this.log(`👁️ O monstro virado para baixo do oponente foi revelado: ${defenderName}!`);
+    }
+
+    const defPosName = defendingCard.position === 'ATTACK' ? 'Ataque' : 'Defesa';
+    this.log(`⚔️ BATALHA: ${attackerName} (ATK ${attackerEffectiveAtk}) atacou ${defenderName} em ${defPosName}!`);
+
+    // 1. Resolução prioritária de Efeito FLIP antes do combate/dano
+    // Dispara se a carta era virada para baixo (Face-Down) OU se estava em Posição de Defesa com efeito FLIP
+    const triggersFlip = (wasFaceDown || defendingCard.position === 'DEFENSE') && defendingCard.data.effectType === 'FLIP';
+    let attackerRemovedByFlip = false;
+
+    if (triggersFlip) {
+      const action = defendingCard.data.effectDefinition?.action;
+
+      if (action === 'DESTROY_MONSTER') {
+        // Man-Eater Bug: Destrói o monstro atacante
+        attackerPlayer.monsterZones[attackerZoneIndex] = null;
+        attackerPlayer.graveyard.push(attackingCard);
+        attackerRemovedByFlip = true;
+        this.log(`🪲 EFEITO FLIP ATIVADO! ${defenderName} ativou seu efeito e destruiu o monstro atacante ${attackerName}! O ataque foi interrompido!`);
+      } else if (action === 'RETURN_TO_HAND') {
+        // Penguin Soldier: Devolve o monstro atacante para a mão do dono
+        attackerPlayer.monsterZones[attackerZoneIndex] = null;
+        attackerPlayer.hand.push(attackingCard);
+        attackerRemovedByFlip = true;
+        this.log(`🐧 EFEITO FLIP ATIVADO! ${defenderName} ativou seu efeito e devolveu ${attackerName} para a mão de ${attackerPlayer.nickname}! O ataque foi interrompido!`);
+      }
+    }
+
+    // Se o efeito FLIP destruiu ou devolveu o monstro atacante para a mão:
+    // INTERROMPE o ataque imediatamente: o defensor permanece vivo e não sofre dano de batalha
+    if (attackerRemovedByFlip) {
+      attackingCard.hasAttacked = true;
+      return true;
+    }
+
+    // 2. Cálculo regular de batalha (apenas se o atacante ainda estiver no campo)
     const attackerDomain: MonsterCard = {
       id: attackingCard.uid,
       name: attackerName,
       level: attackingCard.data.level,
       attack: attackerEffectiveAtk,
-      defense: attackingCard.data.defense,
+      defense: defendingCard.data.defense,
       position: attackingCard.position,
     };
 
@@ -544,31 +654,7 @@ export class DuelMatchSession {
 
     const result = DuelRuleEngine.calculateBattle(attackerDomain, defenderDomain);
 
-    const defPosName = defendingCard.position === 'ATTACK' ? 'Ataque' : 'Defesa';
-    this.log(`⚔️ BATALHA: ${attackerName} (ATK ${attackerEffectiveAtk}) atacou ${defenderName} em ${defPosName}!`);
-
-    // Resolução de efeito FLIP quando monstro em Defesa é atacado
-    const wasDefendingInDefense = defendingCard.position === 'DEFENSE';
-    let attackerReturnedToHand = false;
-
-    if (wasDefendingInDefense && defendingCard.data.effectType === 'FLIP') {
-      const action = defendingCard.data.effectDefinition?.action;
-
-      if (action === 'DESTROY_MONSTER') {
-        // Man-Eater Bug: Destrói o monstro atacante
-        attackerPlayer.monsterZones[attackerZoneIndex] = null;
-        attackerPlayer.graveyard.push(attackingCard);
-        this.log(`🪲 EFEITO FLIP ATIVADO! ${defenderName} ativou seu efeito e destruiu o monstro atacante ${attackerName}!`);
-      } else if (action === 'RETURN_TO_HAND') {
-        // Penguin Soldier: Devolve o monstro atacante para a mão do dono
-        attackerPlayer.monsterZones[attackerZoneIndex] = null;
-        attackerPlayer.hand.push(attackingCard);
-        attackerReturnedToHand = true;
-        this.log(`🐧 EFEITO FLIP ATIVADO! ${defenderName} ativou seu efeito e devolveu ${attackerName} para a mão de ${attackerPlayer.nickname}!`);
-      }
-    }
-
-    if (result.attackerDestroyed && !attackerReturnedToHand) {
+    if (result.attackerDestroyed) {
       attackerPlayer.monsterZones[attackerZoneIndex] = null;
       attackerPlayer.graveyard.push(attackingCard);
       this.log(`💥 ${attackerName} foi destruído e enviado ao Cemitério!`);

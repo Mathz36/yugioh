@@ -54,7 +54,11 @@ export class DuelBot {
     for (const card of summonableCards) {
       if (card.data.level <= 4 && emptyZoneIndex !== -1) {
         // Direct summon, 0 tributes needed
-        const success = session.normalSummon(card.uid, emptyZoneIndex, 'ATTACK', []);
+        const isFlipMonster = card.data.effectType === 'FLIP';
+        const position = isFlipMonster ? 'DEFENSE' : 'ATTACK';
+        const isFaceDown = isFlipMonster;
+
+        const success = session.normalSummon(card.uid, emptyZoneIndex, position, [], isFaceDown);
         if (success) {
           return { summonedCard: card, zoneIndex: emptyZoneIndex };
         }

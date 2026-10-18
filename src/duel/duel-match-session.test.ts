@@ -521,13 +521,13 @@ describe('DuelMatchSession & DuelBot Integration', () => {
 
     // Assert:
     // 1. Attack succeeded
-    // 2. Defending Man-Eater Bug was destroyed by battle (2500 > 600 DEF)
-    // 3. FLIP effect destroyed the attacker Summoned Skull and sent it to Yugi GY
+    // 2. FLIP effect destroyed the attacker Summoned Skull and sent it to Yugi GY
+    // 3. Attack was interrupted before damage calculation: Man-Eater Bug stays alive on field!
     expect(attackSuccess).toBe(true);
-    expect(kaiba.monsterZones[0]).toBeNull();
+    expect(kaiba.monsterZones[0]?.uid).toBe('man_eater_bug_1');
     expect(yugi.monsterZones[0]).toBeNull();
     expect(yugi.graveyard.some((c) => c.uid === 'summoned_skull_1')).toBe(true);
-    expect(kaiba.graveyard.some((c) => c.uid === 'man_eater_bug_1')).toBe(true);
+    expect(kaiba.graveyard.some((c) => c.uid === 'man_eater_bug_1')).toBe(false);
   });
 
   it('should trigger Penguin Soldier FLIP effect to return the attacking monster to hand when attacked in DEFENSE position', () => {
@@ -591,13 +591,14 @@ describe('DuelMatchSession & DuelBot Integration', () => {
 
     // Assert:
     // 1. Attack succeeded
-    // 2. Penguin Soldier was destroyed by battle (2500 > 500 DEF) and went to GY
-    // 3. FLIP effect returned Dark Magician to Yugi hand (NOT graveyard, NOT on field)
+    // 2. FLIP effect returned Dark Magician to Yugi hand (NOT graveyard, NOT on field)
+    // 3. Attack was interrupted: Penguin Soldier stays alive on field!
     expect(attackSuccess).toBe(true);
     expect(yugi.monsterZones[0]).toBeNull();
     expect(yugi.hand.some((c) => c.uid === 'dark_magician_1')).toBe(true);
     expect(yugi.graveyard.some((c) => c.uid === 'dark_magician_1')).toBe(false);
-    expect(kaiba.graveyard.some((c) => c.uid === 'penguin_soldier_1')).toBe(true);
+    expect(kaiba.monsterZones[0]?.uid).toBe('penguin_soldier_1');
+    expect(kaiba.graveyard.some((c) => c.uid === 'penguin_soldier_1')).toBe(false);
   });
 
   describe('Card Effects: Continuous and Flip Effects', () => {
@@ -716,10 +717,10 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       expect(p1.monsterZones[0]).toBeNull();
       expect(p1.graveyard.some((c) => c.uid === 'celtic_guardian_p1')).toBe(true);
 
-      // Como o ataque do Celtic Guardian (1400) > DEF do Man-Eater Bug (600),
-      // o Man-Eater Bug também é destruído em batalha
-      expect(p2.monsterZones[0]).toBeNull();
-      expect(p2.graveyard.some((c) => c.uid === 'man_eater_bug_p2')).toBe(true);
+      // Como o efeito FLIP interrompe o ataque antes do cálculo de dano,
+      // o Man-Eater Bug permanece vivo no campo e NÃO vai para o cemitério
+      expect(p2.monsterZones[0]?.uid).toBe('man_eater_bug_p2');
+      expect(p2.graveyard.some((c) => c.uid === 'man_eater_bug_p2')).toBe(false);
     });
 
     it('Teste 3: Atacar Penguin Soldier virado em defesa devolve o monstro atacante para a mão do dono', () => {
@@ -770,9 +771,9 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       expect(p1.hand.length).toBe(initialP1HandCount + 1);
       expect(p1.graveyard.some((c) => c.uid === 'summoned_skull_p1')).toBe(false);
 
-      // Em batalha, Penguin Soldier (DEF 500) foi destruído pelo ATK 2500 do Summoned Skull
-      expect(p2.monsterZones[0]).toBeNull();
-      expect(p2.graveyard.some((c) => c.uid === 'penguin_soldier_p2')).toBe(true);
+      // O ataque foi interrompido antes do cálculo de dano: Penguin Soldier permanece no campo!
+      expect(p2.monsterZones[0]?.uid).toBe('penguin_soldier_p2');
+      expect(p2.graveyard.some((c) => c.uid === 'penguin_soldier_p2')).toBe(false);
     });
 
     it('Teste 4: canActivateKuriboh e activateKuriboh descartam Kuriboh da mão para o cemitério e anulam dano', () => {
@@ -945,6 +946,134 @@ describe('DuelMatchSession & DuelBot Integration', () => {
 
       // Joey sofre 1500 de dano: 8000 - 1500 = 6500 LP
       expect(joey.lifePoints).toBe(6500);
+    });
+
+    it('Teste 7: Bloqueio de flip manual no mesmo turno em que o monstro foi baixado', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+
+      // Localiza uma carta na mão para baixar virada para baixo
+      const card = p1.hand.find((c) => c.data.level <= 4)!;
+      const summonSuccess = session.normalSummon(card.uid, 0, 'DEFENSE', [], true);
+
+      expect(summonSuccess).toBe(true);
+      expect(p1.monsterZones[0]?.isFaceDown).toBe(true);
+      expect(p1.monsterZones[0]?.turnSet).toBe(1);
+
+      // Act: Tentar flipar manualmente no mesmo turno (Turno 1)
+      const flipOnSameTurn = session.changeMonsterPosition(0);
+
+      // Assert: Deve ser bloqueado
+      expect(flipOnSameTurn).toBe(false);
+      expect(p1.monsterZones[0]?.isFaceDown).toBe(true);
+      expect(p1.monsterZones[0]?.position).toBe('DEFENSE');
+    });
+
+    it('Teste 8: Flip manual liberado nos turnos subsequentes disparando o efeito FLIP', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+      const p2 = session.player2;
+
+      // Coloca Man-Eater Bug virado para baixo no Turno 1
+      p1.monsterZones[0] = {
+        uid: 'man_eater_p1',
+        data: CLASSIC_CARDS.MAN_EATER_BUG,
+        position: 'DEFENSE',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        isFaceDown: true,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Oponente tem Blue-Eyes White Dragon no campo
+      p2.monsterZones[0] = {
+        uid: 'blue_eyes_p2',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Avança o turno para o turno 3 do jogador
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = p1.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Act: Virar manualmente para cima (Flip Summon)
+      const flipSuccess = session.changeMonsterPosition(0);
+
+      // Assert
+      expect(flipSuccess).toBe(true);
+      expect(p1.monsterZones[0]?.isFaceDown).toBe(false);
+      expect(p1.monsterZones[0]?.position).toBe('ATTACK');
+      expect(p1.monsterZones[0]?.hasChangedPositionThisTurn).toBe(true);
+
+      // Efeito FLIP destruiu o monstro mais forte do oponente (Blue-Eyes)
+      expect(p2.monsterZones[0]).toBeNull();
+      expect(p2.graveyard.some((c) => c.uid === 'blue_eyes_p2')).toBe(true);
+    });
+
+    it('Teste 9: Flip por combate interrompe o ataque do agressor antes do cálculo de dano e mantém o defensor vivo', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Kaiba possui Man-Eater Bug virado para baixo em DEFENSE (DEF 600)
+      kaiba.monsterZones[0] = {
+        uid: 'meb_face_down',
+        data: CLASSIC_CARDS.MAN_EATER_BUG,
+        position: 'DEFENSE',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        isFaceDown: true,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Yugi possui Blue-Eyes White Dragon em ATTACK (ATK 3000)
+      yugi.monsterZones[0] = {
+        uid: 'blue_eyes_attacker',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.phase = 'BATTLE';
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = yugi.id;
+
+      // Act: Blue-Eyes ataca o Man-Eater Bug virado para baixo
+      const attackSuccess = session.declareAttack(0, 0);
+
+      // Assert:
+      // 1. O ataque é declarado com sucesso
+      expect(attackSuccess).toBe(true);
+      // 2. O monstro virado para baixo foi revelado
+      expect(kaiba.monsterZones[0]?.isFaceDown).toBe(false);
+      // 3. Efeito FLIP destruiu o atacante Blue-Eyes White Dragon (enviado ao cemitério de Yugi)
+      expect(yugi.monsterZones[0]).toBeNull();
+      expect(yugi.graveyard.some((c) => c.uid === 'blue_eyes_attacker')).toBe(true);
+      // 4. Ataque foi INTERROMPIDO: Man-Eater Bug não sofre dano e permanece VIVO no campo!
+      expect(kaiba.monsterZones[0]?.uid).toBe('meb_face_down');
+      expect(kaiba.graveyard.some((c) => c.uid === 'meb_face_down')).toBe(false);
+      // 5. Nenhum dano de batalha foi aplicado aos LPs
+      expect(kaiba.lifePoints).toBe(8000);
+      expect(yugi.lifePoints).toBe(8000);
     });
   });
 });

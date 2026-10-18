@@ -54,6 +54,8 @@ export interface CardInstance {
   monstersDestroyedCount: number;
   hasAttackedDirectly: boolean;
   hasUsedEffectThisTurn?: boolean;
+  isFaceDown?: boolean;
+  turnSet?: number;
 }
 
 export interface PlayerDuelState {
