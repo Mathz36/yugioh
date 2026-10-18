@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DuelMatchSession } from './duel-match-session.js';
-import { createKaibaDeck, createYugiDeck } from './starter-decks.js';
+import { createKaibaDeck, createYugiDeck, CLASSIC_CARDS } from './starter-decks.js';
 import { DuelBot } from './duel-bot.js';
 
 describe('DuelMatchSession & DuelBot Integration', () => {
@@ -359,5 +359,419 @@ describe('DuelMatchSession & DuelBot Integration', () => {
     expect(opponent.graveyard.some((c) => c.uid === 'yugi_kuriboh')).toBe(true);
     expect(bot.monsterZones[0]?.hasAttacked).toBe(true);
     expect(opponent.lifePoints).toBe(8000 - (1900 - 300)); // 6400 LP
+  });
+
+  it('should dynamically boost Buster Blader ATK by 500 for each Dragon on opponent field or graveyard', () => {
+    // Arrange
+    const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+    const yugi = session.player1;
+    const kaiba = session.player2;
+
+    const busterBlader: CardInstance = {
+      uid: 'buster_blader_1',
+      data: {
+        id: '78193831',
+        name: 'Buster Blader',
+        type: 'Effect Monster',
+        race: 'Warrior',
+        level: 7,
+        attack: 2600,
+        defense: 2300,
+        description: 'Gains 500 ATK for each Dragon monster on your opponent side of the field or in their GY.',
+        imageUrl: '',
+        effectType: 'CONTINUOUS',
+        effectDefinition: { action: 'BOOST_ATK', value: 500, condition: 'OPPONENT_DRAGON' },
+      },
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+
+    yugi.monsterZones[0] = busterBlader;
+
+    // Base attack with 0 Dragons
+    expect(session.getEffectiveAttack(busterBlader, yugi, kaiba)).toBe(2600);
+
+    // Add 1 Dragon on opponent field (Blue-Eyes)
+    kaiba.monsterZones[0] = {
+      uid: 'blue_eyes_1',
+      data: {
+        id: '89631139',
+        name: 'Blue-Eyes White Dragon',
+        type: 'Normal Monster',
+        race: 'Dragon',
+        level: 8,
+        attack: 3000,
+        defense: 2500,
+        description: 'Dragon monster',
+        imageUrl: '',
+      },
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+
+    // Should gain +500 -> 3100
+    expect(session.getEffectiveAttack(busterBlader, yugi, kaiba)).toBe(3100);
+
+    // Add 1 Dragon in opponent graveyard (Koumori Dragon)
+    kaiba.graveyard.push({
+      uid: 'koumori_dragon_gy',
+      data: {
+        id: '67724855',
+        name: 'Koumori Dragon',
+        type: 'Normal Monster',
+        race: 'Dragon',
+        level: 4,
+        attack: 1500,
+        defense: 1200,
+        description: 'Dragon monster',
+        imageUrl: '',
+      },
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    });
+
+    // Should gain +1000 total -> 3600
+    expect(session.getEffectiveAttack(busterBlader, yugi, kaiba)).toBe(3600);
+
+    // Act: Buster Blader attacks Blue-Eyes White Dragon
+    session.matchState.phase = 'BATTLE';
+    session.matchState.currentTurn = 3; // Eligible to attack
+    busterBlader.turnSummoned = 1;
+
+    const attackSuccess = session.declareAttack(0, 0);
+
+    // Assert: Blue-Eyes (3000 ATK) destroyed by Buster Blader (3600 effective ATK), 600 damage to Kaiba
+    expect(attackSuccess).toBe(true);
+    expect(kaiba.monsterZones[0]).toBeNull();
+    expect(kaiba.graveyard.some((c) => c.uid === 'blue_eyes_1')).toBe(true);
+    expect(kaiba.lifePoints).toBe(8000 - 600);
+  });
+
+  it('should trigger Man-Eater Bug FLIP effect to destroy the attacking monster when attacked in DEFENSE position', () => {
+    // Arrange
+    const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+    const yugi = session.player1;
+    const kaiba = session.player2;
+
+    const manEaterBug: CardInstance = {
+      uid: 'man_eater_bug_1',
+      data: {
+        id: '54652250',
+        name: 'Man-Eater Bug',
+        type: 'Flip Effect Monster',
+        race: 'Insect',
+        level: 2,
+        attack: 450,
+        defense: 600,
+        description: 'FLIP: Target 1 monster on the field; destroy that target.',
+        imageUrl: '',
+        effectType: 'FLIP',
+        effectDefinition: { action: 'DESTROY_MONSTER', target: 'ATTACKER_OR_FIELD' },
+      },
+      position: 'DEFENSE',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+
+    kaiba.monsterZones[0] = manEaterBug;
+
+    const attacker: CardInstance = {
+      uid: 'summoned_skull_1',
+      data: {
+        id: '70781052',
+        name: 'Summoned Skull',
+        type: 'Normal Monster',
+        race: 'Fiend',
+        level: 6,
+        attack: 2500,
+        defense: 1200,
+        description: 'Fiend monster',
+        imageUrl: '',
+      },
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionTherTurn: false as any,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+    yugi.monsterZones[0] = attacker;
+
+    session.matchState.phase = 'BATTLE';
+    session.matchState.currentTurn = 3;
+
+    // Act: Summoned Skull attacks face-down/DEFENSE Man-Eater Bug
+    const attackSuccess = session.declareAttack(0, 0);
+
+    // Assert:
+    // 1. Attack succeeded
+    // 2. Defending Man-Eater Bug was destroyed by battle (2500 > 600 DEF)
+    // 3. FLIP effect destroyed the attacker Summoned Skull and sent it to Yugi GY
+    expect(attackSuccess).toBe(true);
+    expect(kaiba.monsterZones[0]).toBeNull();
+    expect(yugi.monsterZones[0]).toBeNull();
+    expect(yugi.graveyard.some((c) => c.uid === 'summoned_skull_1')).toBe(true);
+    expect(kaiba.graveyard.some((c) => c.uid === 'man_eater_bug_1')).toBe(true);
+  });
+
+  it('should trigger Penguin Soldier FLIP effect to return the attacking monster to hand when attacked in DEFENSE position', () => {
+    // Arrange
+    const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+    const yugi = session.player1;
+    const kaiba = session.player2;
+
+    const penguinSoldier: CardInstance = {
+      uid: 'penguin_soldier_1',
+      data: {
+        id: '93920745',
+        name: 'Penguin Soldier',
+        type: 'Flip Effect Monster',
+        race: 'Aqua',
+        level: 2,
+        attack: 750,
+        defense: 500,
+        description: 'FLIP: Target up to 2 monsters on the field; return those targets to the hand.',
+        imageUrl: '',
+        effectType: 'FLIP',
+        effectDefinition: { action: 'RETURN_TO_HAND', count: 1, target: 'ATTACKER_MONSTER' },
+      },
+      position: 'DEFENSE',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+
+    kaiba.monsterZones[0] = penguinSoldier;
+
+    const attacker: CardInstance = {
+      uid: 'dark_magician_1',
+      data: {
+        id: '46986414',
+        name: 'Dark Magician',
+        type: 'Normal Monster',
+        race: 'Spellcaster',
+        level: 7,
+        attack: 2500,
+        defense: 2100,
+        description: 'The ultimate wizard in terms of attack and defense.',
+        imageUrl: '',
+      },
+      position: 'ATTACK',
+      hasAttacked: false,
+      hasChangedPositionThisTurn: false,
+      turnSummoned: 1,
+      monstersDestroyedCount: 0,
+      hasAttackedDirectly: false,
+    };
+    yugi.monsterZones[0] = attacker;
+
+    session.matchState.phase = 'BATTLE';
+    session.matchState.currentTurn = 3;
+
+    // Act: Dark Magician attacks Penguin Soldier
+    const attackSuccess = session.declareAttack(0, 0);
+
+    // Assert:
+    // 1. Attack succeeded
+    // 2. Penguin Soldier was destroyed by battle (2500 > 500 DEF) and went to GY
+    // 3. FLIP effect returned Dark Magician to Yugi hand (NOT graveyard, NOT on field)
+    expect(attackSuccess).toBe(true);
+    expect(yugi.monsterZones[0]).toBeNull();
+    expect(yugi.hand.some((c) => c.uid === 'dark_magician_1')).toBe(true);
+    expect(yugi.graveyard.some((c) => c.uid === 'dark_magician_1')).toBe(false);
+    expect(kaiba.graveyard.some((c) => c.uid === 'penguin_soldier_1')).toBe(true);
+  });
+
+  describe('Card Effects: Continuous and Flip Effects', () => {
+    it('Teste 1: Buster Blader ganha 500 de ATK para cada Blue-Eyes no campo/cemitério do oponente', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+      const p2 = session.player2;
+
+      // Equip player 1 with Buster Blader (Base ATK: 2600)
+      const busterBladerInstance = {
+        uid: 'buster_blader_p1',
+        data: CLASSIC_CARDS.BUSTER_BLADER,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      p1.monsterZones[0] = busterBladerInstance;
+
+      // Base: sem dragões do oponente, ATK efetivo é 2600
+      expect(session.getEffectiveAttack(busterBladerInstance, p1, p2)).toBe(2600);
+
+      // Coloca 1 Blue-Eyes no campo do oponente
+      const blueEyesField = {
+        uid: 'blue_eyes_field',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      p2.monsterZones[0] = blueEyesField;
+
+      // Coloca 1 Blue-Eyes no cemitério do oponente
+      const blueEyesGraveyard = {
+        uid: 'blue_eyes_gy',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      p2.graveyard.push(blueEyesGraveyard);
+
+      // Act
+      const effectiveAtkWithTwoDragons = session.getEffectiveAttack(busterBladerInstance, p1, p2);
+
+      // Assert
+      // 2600 (base) + 500 (campo) + 500 (cemitério) = 3600 ATK
+      expect(effectiveAtkWithTwoDragons).toBe(3600);
+
+      // Adiciona mais um dragão no cemitério do oponente (total 3 dragões)
+      const blueEyesGY2 = {
+        uid: 'blue_eyes_gy_2',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      p2.graveyard.push(blueEyesGY2);
+
+      const effectiveAtkWithThreeDragons = session.getEffectiveAttack(busterBladerInstance, p1, p2);
+      expect(effectiveAtkWithThreeDragons).toBe(4100);
+    });
+
+    it('Teste 2: Atacar Man-Eater Bug virado em defesa destrói o atacante através do efeito FLIP', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+      const p2 = session.player2;
+
+      // Kaiba (p2) tem Man-Eater Bug em DEFENSE (ATK 450, DEF 600)
+      p2.monsterZones[0] = {
+        uid: 'man_eater_bug_p2',
+        data: CLASSIC_CARDS.MAN_EATER_BUG,
+        position: 'DEFENSE',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Yugi (p1) tem Celtic Guardian em ATTACK (ATK 1400, DEF 1200) convocado no turno anterior
+      p1.monsterZones[0] = {
+        uid: 'celtic_guardian_p1',
+        data: CLASSIC_CARDS.CELTIC_GUARDIAN,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = p1.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act
+      const attackSuccess = session.declareAttack(0, 0);
+
+      // Assert
+      expect(attackSuccess).toBe(true);
+      // Man-Eater Bug destrói o atacante Celtic Guardian
+      expect(p1.monsterZones[0]).toBeNull();
+      expect(p1.graveyard.some((c) => c.uid === 'celtic_guardian_p1')).toBe(true);
+
+      // Como o ataque do Celtic Guardian (1400) > DEF do Man-Eater Bug (600),
+      // o Man-Eater Bug também é destruído em batalha
+      expect(p2.monsterZones[0]).toBeNull();
+      expect(p2.graveyard.some((c) => c.uid === 'man_eater_bug_p2')).toBe(true);
+    });
+
+    it('Teste 3: Atacar Penguin Soldier virado em defesa devolve o monstro atacante para a mão do dono', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+      const p2 = session.player2;
+
+      // Kaiba (p2) tem Penguin Soldier em DEFENSE (DEF 500)
+      p2.monsterZones[0] = {
+        uid: 'penguin_soldier_p2',
+        data: CLASSIC_CARDS.PENGUIN_SOLDIER,
+        position: 'DEFENSE',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Yugi (p1) tem Summoned Skull em ATTACK (ATK 2500)
+      p1.monsterZones[0] = {
+        uid: 'summoned_skull_p1',
+        data: CLASSIC_CARDS.SUMMONED_SKULL,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      const initialP1HandCount = p1.hand.length;
+
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = p1.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act
+      const attackSuccess = session.declareAttack(0, 0);
+
+      // Assert
+      expect(attackSuccess).toBe(true);
+
+      // O monstro atacante (Summoned Skull) deve ser devolvido para a mão do dono (P1)
+      expect(p1.monsterZones[0]).toBeNull();
+      expect(p1.hand.some((c) => c.uid === 'summoned_skull_p1')).toBe(true);
+      expect(p1.hand.length).toBe(initialP1HandCount + 1);
+      expect(p1.graveyard.some((c) => c.uid === 'summoned_skull_p1')).toBe(false);
+
+      // Em batalha, Penguin Soldier (DEF 500) foi destruído pelo ATK 2500 do Summoned Skull
+      expect(p2.monsterZones[0]).toBeNull();
+      expect(p2.graveyard.some((c) => c.uid === 'penguin_soldier_p2')).toBe(true);
+    });
   });
 });

@@ -256,6 +256,49 @@ export class DuelMatchSession {
     return true;
   }
 
+  /**
+   * Calculates the dynamic effective ATK of a monster on the field,
+   * applying continuous effects (e.g. Buster Blader gaining +500 ATK per Dragon).
+   */
+  public getEffectiveAttack(
+    cardInstance: CardInstance,
+    owner: PlayerDuelState,
+    opponent: PlayerDuelState
+  ): number {
+    let effectiveAtk = cardInstance.data.attack;
+
+    // Efeito CONTINUOUS do Buster Blader (ID 78193831): +500 ATK por monstro Dragão
+    const isBusterBlader =
+      cardInstance.data.id === '78193831' ||
+      cardInstance.data.name.toLowerCase().includes('buster blader') ||
+      (cardInstance.data.effectType === 'CONTINUOUS' &&
+        cardInstance.data.effectDefinition?.action === 'BOOST_ATK');
+
+    if (isBusterBlader) {
+      const isDragon = (c: CardInstance) => {
+        const race = (c.data as any).race?.toLowerCase() || '';
+        const name = c.data.name.toLowerCase();
+        const type = c.data.type.toLowerCase();
+        return race === 'dragon' || name.includes('dragon') || type.includes('dragon');
+      };
+
+      const opponentDragonsOnField = opponent.monsterZones.filter(
+        (m): m is CardInstance => m !== null && isDragon(m)
+      ).length;
+
+      const opponentDragonsInGY = opponent.graveyard.filter((m) => isDragon(m)).length;
+
+      const totalOpponentDragons = opponentDragonsOnField + opponentDragonsInGY;
+      if (totalOpponentDragons > 0) {
+        const boostValue = cardInstance.data.effectDefinition?.value || 500;
+        const totalBoost = totalOpponentDragons * boostValue;
+        effectiveAtk += totalBoost;
+      }
+    }
+
+    return effectiveAtk;
+  }
+
   public declareAttack(attackerZoneIndex: number, targetZoneIndex: number | null): boolean {
     if (this.matchState.isGameOver) return false;
     if (this.matchState.phase !== 'BATTLE') {
@@ -290,6 +333,9 @@ export class DuelMatchSession {
     const opponentMonsters = defenderPlayer.monsterZones.filter((m): m is CardInstance => m !== null);
     const attackerName = attackingCard.data.namePt || attackingCard.data.name;
 
+    // Cálculo dinâmico do ATK do atacante
+    const attackerEffectiveAtk = this.getEffectiveAttack(attackingCard, attackerPlayer, defenderPlayer);
+
     // Ataque direto
     if (targetZoneIndex === null) {
       if (opponentMonsters.length > 0) {
@@ -297,7 +343,7 @@ export class DuelMatchSession {
         return false;
       }
 
-      const damage = attackingCard.data.attack;
+      const damage = attackerEffectiveAtk;
       defenderPlayer.lifePoints = Math.max(0, defenderPlayer.lifePoints - damage);
       attackingCard.hasAttacked = true;
       attackingCard.hasAttackedDirectly = true;
@@ -317,13 +363,14 @@ export class DuelMatchSession {
     }
 
     const defenderName = defendingCard.data.namePt || defendingCard.data.name;
+    const defenderEffectiveAtk = this.getEffectiveAttack(defendingCard, defenderPlayer, attackerPlayer);
 
     const attackerDomain: MonsterCard = {
       id: attackingCard.uid,
       name: attackerName,
       level: attackingCard.data.level,
-      attack: attackingCard.data.attack,
-      defense: defendingCard.data.defense,
+      attack: attackerEffectiveAtk,
+      defense: attackingCard.data.defense,
       position: attackingCard.position,
     };
 
@@ -331,7 +378,7 @@ export class DuelMatchSession {
       id: defendingCard.uid,
       name: defenderName,
       level: defendingCard.data.level,
-      attack: defendingCard.data.attack,
+      attack: defenderEffectiveAtk,
       defense: defendingCard.data.defense,
       position: defendingCard.position,
     };
@@ -339,9 +386,30 @@ export class DuelMatchSession {
     const result = DuelRuleEngine.calculateBattle(attackerDomain, defenderDomain);
 
     const defPosName = defendingCard.position === 'ATTACK' ? 'Ataque' : 'Defesa';
-    this.log(`⚔️ BATALHA: ${attackerName} (ATK ${attackingCard.data.attack}) atacou ${defenderName} em ${defPosName}!`);
+    this.log(`⚔️ BATALHA: ${attackerName} (ATK ${attackerEffectiveAtk}) atacou ${defenderName} em ${defPosName}!`);
 
-    if (result.attackerDestroyed) {
+    // Resolução de efeito FLIP quando monstro em Defesa é atacado
+    const wasDefendingInDefense = defendingCard.position === 'DEFENSE';
+    let attackerReturnedToHand = false;
+
+    if (wasDefendingInDefense && defendingCard.data.effectType === 'FLIP') {
+      const action = defendingCard.data.effectDefinition?.action;
+
+      if (action === 'DESTROY_MONSTER') {
+        // Man-Eater Bug: Destrói o monstro atacante
+        attackerPlayer.monsterZones[attackerZoneIndex] = null;
+        attackerPlayer.graveyard.push(attackingCard);
+        this.log(`🪲 EFEITO FLIP ATIVADO! ${defenderName} ativou seu efeito e destruiu o monstro atacante ${attackerName}!`);
+      } else if (action === 'RETURN_TO_HAND') {
+        // Penguin Soldier: Devolve o monstro atacante para a mão do dono
+        attackerPlayer.monsterZones[attackerZoneIndex] = null;
+        attackerPlayer.hand.push(attackingCard);
+        attackerReturnedToHand = true;
+        this.log(`🐧 EFEITO FLIP ATIVADO! ${defenderName} ativou seu efeito e devolveu ${attackerName} para a mão de ${attackerPlayer.nickname}!`);
+      }
+    }
+
+    if (result.attackerDestroyed && !attackerReturnedToHand) {
       attackerPlayer.monsterZones[attackerZoneIndex] = null;
       attackerPlayer.graveyard.push(attackingCard);
       this.log(`💥 ${attackerName} foi destruído e enviado ao Cemitério!`);

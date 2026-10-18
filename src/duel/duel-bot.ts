@@ -100,11 +100,16 @@ export class DuelBot {
           !item.card.hasAttacked &&
           item.card.turnSummoned !== session.matchState.currentTurn
       )
-      .sort((a, b) => b.card.data.attack - a.card.data.attack);
+      .sort(
+        (a, b) =>
+          session.getEffectiveAttack(b.card, bot, opponent) -
+          session.getEffectiveAttack(a.card, bot, opponent)
+      );
 
     for (const attacker of botAttackers) {
       if (session.matchState.isGameOver) break;
 
+      const attackerAtk = session.getEffectiveAttack(attacker.card, bot, opponent);
       const opponentMonsters = opponent.monsterZones
         .map((m, idx) => ({ card: m, index: idx }))
         .filter((item): item is { card: CardInstance; index: number } => item.card !== null);
@@ -116,8 +121,8 @@ export class DuelBot {
         // Find best target to destroy with favorable exchange
         const vulnerableTarget = opponentMonsters.find(
           (target) =>
-            (target.card.position === 'ATTACK' && attacker.card.data.attack > target.card.data.attack) ||
-            (target.card.position === 'DEFENSE' && attacker.card.data.attack > target.card.data.defense)
+            (target.card.position === 'ATTACK' && attackerAtk > session.getEffectiveAttack(target.card, opponent, bot)) ||
+            (target.card.position === 'DEFENSE' && attackerAtk > target.card.data.defense)
         );
 
         if (vulnerableTarget) {
