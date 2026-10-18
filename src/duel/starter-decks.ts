@@ -396,10 +396,90 @@ export const CLASSIC_CARDS: Record<string, CardData> = {
     descriptionPt: 'Este palhaço surge do nada e executa movimentos muito estranhos para se esquivar de ataques inimigos.',
     imageUrl: 'https://images.ygoprodeck.com/images/cards/66602787.jpg',
   },
+
+  // --- SPELL CARDS ---
+  POT_OF_GREED: {
+    id: '55144522',
+    name: 'Pot of Greed',
+    namePt: 'Pote da Ganância',
+    type: 'Spell Card',
+    level: 0,
+    attack: 0,
+    defense: 0,
+    description: 'Draw 2 cards from your Deck.',
+    descriptionPt: 'Compre 2 cartas do seu Deck.',
+    imageUrl: 'https://images.ygoprodeck.com/images/cards/55144522.jpg',
+    effectType: 'IGNITION',
+    effectDefinition: {
+      trigger: 'IGNITION',
+      action: 'DRAW_CARDS',
+      value: 2,
+      count: 2,
+      description_pt: 'Compre 2 cartas do seu Deck.',
+    },
+  },
+  DARK_HOLE: {
+    id: '53129443',
+    name: 'Dark Hole',
+    namePt: 'Buraco Negro',
+    type: 'Spell Card',
+    level: 0,
+    attack: 0,
+    defense: 0,
+    description: 'Destroy all monsters on the field.',
+    descriptionPt: 'Destrua todos os monstros no campo.',
+    imageUrl: 'https://images.ygoprodeck.com/images/cards/53129443.jpg',
+    effectType: 'IGNITION',
+    effectDefinition: {
+      trigger: 'IGNITION',
+      action: 'DESTROY_ALL_MONSTERS',
+      description_pt: 'Destrua todos os monstros no campo.',
+    },
+  },
+  FISSURE: {
+    id: '66788016',
+    name: 'Fissure',
+    namePt: 'Fissura',
+    type: 'Spell Card',
+    level: 0,
+    attack: 0,
+    defense: 0,
+    description: 'Destroy the 1 face-up monster your opponent controls that has the lowest ATK (your choice, if tied).',
+    descriptionPt: 'Destrua 1 monstro com a face para cima que seu oponente controla e que tiver o menor ATK (em caso de empate, você escolhe).',
+    imageUrl: 'https://images.ygoprodeck.com/images/cards/66788016.jpg',
+    effectType: 'IGNITION',
+    effectDefinition: {
+      trigger: 'IGNITION',
+      action: 'DESTROY_LOWEST_ATK_MONSTER',
+      description_pt: 'Destrua 1 monstro com a face para cima do oponente que tiver o menor ATK.',
+    },
+  },
+
+  // --- TRAP CARDS ---
+  TRAP_HOLE: {
+    id: '04206964',
+    name: 'Trap Hole',
+    namePt: 'Buraco Armadilha',
+    type: 'Trap Card',
+    level: 0,
+    attack: 0,
+    defense: 0,
+    description: 'When your opponent Normal or Flip Summons a monster with 1000 or more ATK: Target that monster; destroy that target.',
+    descriptionPt: 'Quando seu oponente Invocar por Invocação-Normal ou Virar um monstro com 1000 ou mais de ATK: Escolha aquele monstro; destrua o alvo.',
+    imageUrl: 'https://images.ygoprodeck.com/images/cards/4206964.jpg',
+    effectType: 'TRIGGER',
+    effectDefinition: {
+      trigger: 'TRIGGER',
+      action: 'TRAP_TRIGGER_ON_SUMMON',
+      minAtk: 1000,
+      description_pt: 'Quando seu oponente Invocar um monstro com 1000 ou mais de ATK: destrua aquele monstro.',
+    },
+  },
 };
 
 /**
  * Creates Yugi Muto's iconic classic 40-card deck with strict maximum 2-3 copies per card.
+ * Balanced with 34 monsters + 6 classic spells/traps.
  */
 export function createYugiDeck(): CardData[] {
   return [
@@ -413,29 +493,25 @@ export function createYugiDeck(): CardData[] {
     CLASSIC_CARDS.CURSE_OF_DRAGON,
     CLASSIC_CARDS.BUSTER_BLADER,
 
-    // Level 4 Attackers (12 cards)
+    // Level 4 Attackers (10 cards)
     CLASSIC_CARDS.CELTIC_GUARDIAN,
     CLASSIC_CARDS.CELTIC_GUARDIAN,
     CLASSIC_CARDS.CELTIC_GUARDIAN,
     CLASSIC_CARDS.FERAL_IMP,
     CLASSIC_CARDS.FERAL_IMP,
-    CLASSIC_CARDS.FERAL_IMP,
-    CLASSIC_CARDS.BEAVER_WARRIOR,
     CLASSIC_CARDS.BEAVER_WARRIOR,
     CLASSIC_CARDS.BEAVER_WARRIOR,
     CLASSIC_CARDS.SILVER_FANG,
     CLASSIC_CARDS.SILVER_FANG,
-    CLASSIC_CARDS.SILVER_FANG,
+    CLASSIC_CARDS.BABY_DRAGON,
 
-    // High Defense Walls (6 cards)
+    // High Defense Walls (4 cards)
     CLASSIC_CARDS.MYSTICAL_ELF,
     CLASSIC_CARDS.MYSTICAL_ELF,
-    CLASSIC_CARDS.MYSTICAL_ELF,
-    CLASSIC_CARDS.GIANT_SOLDIER,
     CLASSIC_CARDS.GIANT_SOLDIER,
     CLASSIC_CARDS.GIANT_SOLDIER,
 
-    // Effect Monsters & Utility (14 cards)
+    // Effect Monsters & Utility (12 cards)
     CLASSIC_CARDS.MAN_EATER_BUG,
     CLASSIC_CARDS.MAN_EATER_BUG,
     CLASSIC_CARDS.MAN_EATER_BUG,
@@ -448,13 +524,20 @@ export function createYugiDeck(): CardData[] {
     CLASSIC_CARDS.TIME_WIZARD,
     CLASSIC_CARDS.TIME_WIZARD,
     CLASSIC_CARDS.TIME_WIZARD,
-    CLASSIC_CARDS.BABY_DRAGON,
-    CLASSIC_CARDS.BABY_DRAGON,
+
+    // Classic Spells & Traps (6 cards)
+    CLASSIC_CARDS.POT_OF_GREED,
+    CLASSIC_CARDS.POT_OF_GREED,
+    CLASSIC_CARDS.DARK_HOLE,
+    CLASSIC_CARDS.FISSURE,
+    CLASSIC_CARDS.TRAP_HOLE,
+    CLASSIC_CARDS.TRAP_HOLE,
   ];
 }
 
 /**
  * Creates Seto Kaiba's iconic beatdown 40-card deck with strict maximum 2-3 copies per card.
+ * Balanced with 34 monsters + 6 classic spells/traps.
  */
 export function createKaibaDeck(): CardData[] {
   return [
@@ -468,7 +551,7 @@ export function createKaibaDeck(): CardData[] {
     CLASSIC_CARDS.SWORDSTALKER,
     CLASSIC_CARDS.HYOZANRYU,
 
-    // Top-tier Level 4 beatdown attackers (18 cards)
+    // Top-tier Level 4 beatdown attackers (14 cards)
     CLASSIC_CARDS.VORSE_RAIDER,
     CLASSIC_CARDS.VORSE_RAIDER,
     CLASSIC_CARDS.VORSE_RAIDER,
@@ -477,19 +560,14 @@ export function createKaibaDeck(): CardData[] {
     CLASSIC_CARDS.LUSTER_DRAGON,
     CLASSIC_CARDS.LA_JINN,
     CLASSIC_CARDS.LA_JINN,
-    CLASSIC_CARDS.LA_JINN,
-    CLASSIC_CARDS.OPTICLOPS,
     CLASSIC_CARDS.OPTICLOPS,
     CLASSIC_CARDS.OPTICLOPS,
     CLASSIC_CARDS.BATTLE_OX,
     CLASSIC_CARDS.BATTLE_OX,
-    CLASSIC_CARDS.BATTLE_OX,
-    CLASSIC_CARDS.RYU_KISHIN_POWERED,
     CLASSIC_CARDS.RYU_KISHIN_POWERED,
     CLASSIC_CARDS.RYU_KISHIN_POWERED,
 
-    // Utility, Burn & Defensive Stalls (14 cards)
-    CLASSIC_CARDS.KOUMORI_DRAGON,
+    // Utility & Defensive Stalls (12 cards)
     CLASSIC_CARDS.KOUMORI_DRAGON,
     CLASSIC_CARDS.KOUMORI_DRAGON,
     CLASSIC_CARDS.SAGGI_DARK_CLOWN,
@@ -501,7 +579,14 @@ export function createKaibaDeck(): CardData[] {
     CLASSIC_CARDS.PENGUIN_SOLDIER,
     CLASSIC_CARDS.PENGUIN_SOLDIER,
     CLASSIC_CARDS.PENGUIN_SOLDIER,
-    CLASSIC_CARDS.JUDGE_MAN,
-    CLASSIC_CARDS.SWORDSTALKER,
+    CLASSIC_CARDS.KOUMORI_DRAGON,
+
+    // Classic Spells & Traps (6 cards)
+    CLASSIC_CARDS.POT_OF_GREED,
+    CLASSIC_CARDS.POT_OF_GREED,
+    CLASSIC_CARDS.DARK_HOLE,
+    CLASSIC_CARDS.FISSURE,
+    CLASSIC_CARDS.TRAP_HOLE,
+    CLASSIC_CARDS.TRAP_HOLE,
   ];
 }

@@ -49,7 +49,7 @@ describe('DuelMatchSession & DuelBot Integration', () => {
   it('should allow changing position freely during Main Phase, but prevent it during Battle Phase or opponent turn', () => {
     // Arrange
     const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
-    const lvl4Card = session.player1.hand.find((c) => c.data.level <= 4);
+    const lvl4Card = session.player1.hand.find((c) => c.data.level >= 1 && c.data.level <= 4);
     session.normalSummon(lvl4Card!.uid, 0, 'ATTACK', []);
 
     // Act 1: Monstro entra em ATTACK por padrão
@@ -179,7 +179,11 @@ describe('DuelMatchSession & DuelBot Integration', () => {
     // Arrange
     const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
     const p1 = session.player1;
-    const lvl4Card = p1.hand.find((c) => c.data.level <= 4)!;
+    const lvl4Card = p1.hand.find((c) => {
+      const typeLower = (c.data.type || '').toLowerCase();
+      const isSpellOrTrap = typeLower.includes('spell') || typeLower.includes('mágica') || typeLower.includes('trap') || typeLower.includes('armadilha');
+      return !isSpellOrTrap && c.data.level >= 1 && c.data.level <= 4;
+    })!;
 
     // Invocação no Turno 1
     session.normalSummon(lvl4Card.uid, 0, 'ATTACK', []);
@@ -2446,6 +2450,443 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       expect(kaiba.monsterZones[1]?.uid).toBe(zone1Mon.uid);
       expect(kaiba.graveyard.some((c) => c.uid === zone0Mon.uid)).toBe(false);
       expect(kaiba.graveyard.some((c) => c.uid === zone1Mon.uid)).toBe(false);
+    });
+  });
+
+  describe('Spell and Trap Cards Engine Suite', () => {
+    it('Teste 1 (Ativação do Pote da Ganância - Pot of Greed)', () => {
+      // Arrange: Jogador tem Pot of Greed na mão. Mão possui 5 cartas.
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+
+      // Garante que a mão tenha exatamente 5 cartas incluindo o Pot of Greed
+      const potOfGreedCard = {
+        uid: 'p1_pot_of_greed',
+        data: CLASSIC_CARDS.POT_OF_GREED,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Limita a mão a 4 cartas + Pot of Greed (total 5)
+      p1.hand = p1.hand.slice(0, 4);
+      p1.hand.push(potOfGreedCard);
+      expect(p1.hand.length).toBe(5);
+
+      const deckCountBefore = p1.deck.length;
+
+      // Act: session.activateSpell(potOfGreedUid, zoneIndex)
+      const activationSuccess = session.activateSpell(potOfGreedCard.uid, 0);
+
+      // Assert:
+      expect(activationSuccess).toBe(true);
+
+      // Compra 2 cartas do deck (mão agora tem 6 cartas: 5 - 1 jogada + 2 compradas)
+      expect(p1.hand.length).toBe(6);
+      expect(p1.deck.length).toBe(deckCountBefore - 2);
+
+      // Pot of Greed vai para o cemitério (player.graveyard)
+      expect(p1.graveyard.some((c) => c.uid === potOfGreedCard.uid)).toBe(true);
+      expect(p1.hand.some((c) => c.uid === potOfGreedCard.uid)).toBe(false);
+
+      // A zona de magia/armadilha fica livre
+      expect(p1.spellTrapZones[0]).toBeNull();
+    });
+
+    it('Teste 2 (Ativação do Buraco Negro - Dark Hole)', () => {
+      // Arrange: Yugi tem 2 monstros e Kaiba tem 2 monstros em campo
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi tem 2 monstros em campo
+      const yugiMon1 = {
+        uid: 'yugi_field_mon1',
+        data: CLASSIC_CARDS.CELTIC_GUARDIAN,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const yugiMon2 = {
+        uid: 'yugi_field_mon2',
+        data: CLASSIC_CARDS.FERAL_IMP,
+        position: 'DEFENSE' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.monsterZones[0] = yugiMon1;
+      yugi.monsterZones[1] = yugiMon2;
+
+      // Kaiba tem 2 monstros em campo
+      const kaibaMon1 = {
+        uid: 'kaiba_field_mon1',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const kaibaMon2 = {
+        uid: 'kaiba_field_mon2',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = kaibaMon1;
+      kaiba.monsterZones[1] = kaibaMon2;
+
+      // Adiciona Dark Hole à mão de Yugi
+      const darkHoleCard = {
+        uid: 'yugi_dark_hole',
+        data: CLASSIC_CARDS.DARK_HOLE,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.hand.push(darkHoleCard);
+
+      // Act: Yugi ativa Dark Hole (session.activateSpell(darkHoleUid, zoneIndex))
+      const activationSuccess = session.activateSpell(darkHoleCard.uid, 0);
+
+      // Assert:
+      expect(activationSuccess).toBe(true);
+
+      // Todos os 4 monstros no campo são destruídos e enviados aos respectivos cemitérios
+      expect(yugi.graveyard.some((c) => c.uid === yugiMon1.uid)).toBe(true);
+      expect(yugi.graveyard.some((c) => c.uid === yugiMon2.uid)).toBe(true);
+      expect(kaiba.graveyard.some((c) => c.uid === kaibaMon1.uid)).toBe(true);
+      expect(kaiba.graveyard.some((c) => c.uid === kaibaMon2.uid)).toBe(true);
+
+      // Todas as zonas de monstros ficam vazias (null)
+      expect(yugi.monsterZones.every((z) => z === null)).toBe(true);
+      expect(kaiba.monsterZones.every((z) => z === null)).toBe(true);
+
+      // Dark Hole vai para o cemitério de Yugi
+      expect(yugi.graveyard.some((c) => c.uid === darkHoleCard.uid)).toBe(true);
+    });
+
+    it('Teste 3 (Baixar Carta Mágica ou Armadilha virada para baixo - Set)', () => {
+      // Arrange: Jogador tem Trap Hole na mão
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+
+      const trapHoleCard = {
+        uid: 'p1_trap_hole',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK' as const,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      p1.hand.push(trapHoleCard);
+
+      // Act: session.setSpellTrap(trapHoleUid, zoneIndex)
+      const setSuccess = session.setSpellTrap(trapHoleCard.uid, 2);
+
+      // Assert:
+      expect(setSuccess).toBe(true);
+
+      // A carta é removida da mão e colocada em player.spellTrapZones[zoneIndex]
+      expect(p1.hand.some((c) => c.uid === trapHoleCard.uid)).toBe(false);
+      expect(p1.spellTrapZones[2]).not.toBeNull();
+      expect(p1.spellTrapZones[2]?.uid).toBe(trapHoleCard.uid);
+
+      // Possui isFaceDown === true
+      expect(p1.spellTrapZones[2]?.isFaceDown).toBe(true);
+      expect(p1.spellTrapZones[2]?.turnSet).toBe(session.matchState.currentTurn);
+    });
+
+    it('Teste 4 (Trap Hole baixada no turno anterior destrói monstro inimigo recém-invocado com ATK >= 1000)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi baixou Trap Hole no turno 1
+      const trapHole = {
+        uid: 'yugi_trap_hole',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK' as const,
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.spellTrapZones[0] = trapHole;
+
+      // Avança para o turno 2 (Turno de Kaiba)
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Kaiba invoca Vorse Raider (ATK 1900 >= 1000)
+      const vorseRaider = {
+        uid: 'kaiba_vorse_raider',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = vorseRaider;
+
+      // Act: Yugi ativa a Trap Hole em resposta à invocação de Vorse Raider
+      const activationSuccess = session.activateTrap(trapHole.uid, vorseRaider.uid);
+
+      // Assert
+      expect(activationSuccess).toBe(true);
+
+      // O monstro de Kaiba é destruído e enviado ao cemitério
+      expect(kaiba.monsterZones[0]).toBeNull();
+      expect(kaiba.graveyard.some((c) => c.uid === vorseRaider.uid)).toBe(true);
+
+      // A Trap Hole vai para o cemitério de Yugi e sai da zona de Magia/Armadilha
+      expect(yugi.spellTrapZones[0]).toBeNull();
+      expect(yugi.graveyard.some((c) => c.uid === trapHole.uid)).toBe(true);
+    });
+
+    it('Teste 5 (Trap Hole NÃO pode ser ativada no mesmo turno em que foi baixada)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi baixou Trap Hole no turno 1
+      const trapHole = {
+        uid: 'yugi_trap_hole_same_turn',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK' as const,
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1, // Set no turno 1
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.spellTrapZones[0] = trapHole;
+
+      // O turno atual ainda é o Turno 1
+      session.matchState.currentTurn = 1;
+      session.matchState.activePlayerId = yugi.id;
+
+      // Monstro alvo qualquer invocado no turno 1
+      const enemyMonster = {
+        uid: 'kaiba_summoned_mon',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = enemyMonster;
+
+      // Act: Tentativa de ativar a armadilha no mesmo turno que foi baixada
+      const activationSuccess = session.activateTrap(trapHole.uid, enemyMonster.uid);
+
+      // Assert
+      expect(activationSuccess).toBe(false);
+
+      // A armadilha permanece intacta virada para baixo no campo
+      expect(yugi.spellTrapZones[0]).not.toBeNull();
+      expect(yugi.spellTrapZones[0]?.uid).toBe(trapHole.uid);
+      expect(yugi.spellTrapZones[0]?.isFaceDown).toBe(true);
+
+      // O monstro inimigo permanece no campo
+      expect(kaiba.monsterZones[0]).not.toBeNull();
+      expect(kaiba.monsterZones[0]?.uid).toBe(enemyMonster.uid);
+    });
+
+    it('Teste 6 (Trap Hole NÃO pode ser ativada contra monstro com ATK < 1000)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi baixou Trap Hole no turno 1
+      const trapHole = {
+        uid: 'yugi_trap_hole_vs_weak',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK' as const,
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.spellTrapZones[0] = trapHole;
+
+      // Turno 2 (Turno de Kaiba)
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Kaiba invoca Kuriboh (ATK 300 < 1000)
+      const kuriboh = {
+        uid: 'kaiba_kuriboh',
+        data: CLASSIC_CARDS.KURIBOH,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = kuriboh;
+
+      // Act: Tentativa de ativar Trap Hole contra o Kuriboh (ATK 300)
+      const activationSuccess = session.activateTrap(trapHole.uid, kuriboh.uid);
+
+      // Assert
+      expect(activationSuccess).toBe(false);
+
+      // Kuriboh permanece vivo no campo
+      expect(kaiba.monsterZones[0]).not.toBeNull();
+      expect(kaiba.monsterZones[0]?.uid).toBe(kuriboh.uid);
+      expect(kaiba.graveyard.some((c) => c.uid === kuriboh.uid)).toBe(false);
+
+      // Trap Hole permanece virada para baixo no campo de Yugi
+      expect(yugi.spellTrapZones[0]).not.toBeNull();
+      expect(yugi.spellTrapZones[0]?.uid).toBe(trapHole.uid);
+      expect(yugi.spellTrapZones[0]?.isFaceDown).toBe(true);
+      expect(yugi.graveyard.some((c) => c.uid === trapHole.uid)).toBe(false);
+    });
+
+    it('Teste 7 (canActivateTrapHole e activateTrapHole métodos dedicados)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi baixou Trap Hole no turno 1
+      const trapHole = {
+        uid: 'yugi_trap_hole_method_test',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK' as const,
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.spellTrapZones[2] = trapHole;
+
+      // Turno 2 (Turno de Kaiba)
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Kaiba invoca Vorse Raider (ATK 1900 >= 1000) na zona 1
+      const vorseRaider = {
+        uid: 'kaiba_vorse_raider_summoned',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[1] = vorseRaider;
+
+      // Act 1: canActivateTrapHole
+      const checkResult = session.canActivateTrapHole(vorseRaider, yugi.id);
+      expect(checkResult.canActivate).toBe(true);
+      expect(checkResult.trapZoneIndex).toBe(2);
+
+      // Act 2: activateTrapHole
+      const activateSuccess = session.activateTrapHole(yugi.id, checkResult.trapZoneIndex, 1);
+      expect(activateSuccess).toBe(true);
+
+      // Assert:
+      // Trap Hole enviada para o cemitério de Yugi e removida da zona
+      expect(yugi.spellTrapZones[2]).toBeNull();
+      expect(yugi.graveyard.some((c) => c.uid === trapHole.uid)).toBe(true);
+
+      // Vorse Raider destruído e enviado para o cemitério de Kaiba
+      expect(kaiba.monsterZones[1]).toBeNull();
+      expect(kaiba.graveyard.some((c) => c.uid === vorseRaider.uid)).toBe(true);
+    });
+
+    it('Teste 8 (canActivateTrapHole retorna falso se Trap Hole foi baixada no mesmo turno)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Yugi baixou Trap Hole no turno 2 (mesmo turno atual)
+      const trapHole = {
+        uid: 'yugi_trap_hole_same_turn',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK' as const,
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.spellTrapZones[0] = trapHole;
+
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+
+      const vorseRaider = {
+        uid: 'kaiba_vorse_raider_2',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK' as const,
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = vorseRaider;
+
+      // Act & Assert
+      const checkResult = session.canActivateTrapHole(vorseRaider, yugi.id);
+      expect(checkResult.canActivate).toBe(false);
+      expect(checkResult.trapZoneIndex).toBe(-1);
+
+      const activateResult = session.activateTrapHole(yugi.id, 0, 0);
+      expect(activateResult).toBe(false);
     });
   });
 });

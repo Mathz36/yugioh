@@ -273,4 +273,124 @@ export const ACTION_HANDLERS = {
       burnDamage,
     };
   },
+
+  /**
+   * DRAW_CARDS: Draws N cards from deck (e.g. Pot of Greed).
+   */
+  DRAW_CARDS(context: ActionExecutionContext): { cardsDrawn: number } {
+    const { cardInstance, player, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const count = cardInstance.data.effectDefinition?.value || 2;
+    let drawn = 0;
+
+    for (let i = 0; i < count; i++) {
+      if (player.deck.length > 0) {
+        const topCard = player.deck.pop()!;
+        player.hand.push(topCard);
+        drawn++;
+      }
+    }
+
+    logFn?.(`🏺 EFEITO MÁGICO! ${player.nickname} ativou ${cardName} e comprou ${drawn} carta(s) do Deck!`);
+    return { cardsDrawn: drawn };
+  },
+
+  /**
+   * DESTROY_ALL_MONSTERS: Destroys all monsters on both sides of the field (e.g. Dark Hole).
+   */
+  DESTROY_ALL_MONSTERS(context: ActionExecutionContext): { destroyedCardUids: string[] } {
+    const { cardInstance, player, opponent, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const destroyedCardUids: string[] = [];
+
+    // Player monsters
+    for (let i = 0; i < player.monsterZones.length; i++) {
+      const monster = player.monsterZones[i];
+      if (monster) {
+        destroyedCardUids.push(monster.uid);
+        player.monsterZones[i] = null;
+        player.graveyard.push(monster);
+      }
+    }
+
+    // Opponent monsters
+    for (let i = 0; i < opponent.monsterZones.length; i++) {
+      const monster = opponent.monsterZones[i];
+      if (monster) {
+        destroyedCardUids.push(monster.uid);
+        opponent.monsterZones[i] = null;
+        opponent.graveyard.push(monster);
+      }
+    }
+
+    logFn?.(`🕳️ EFEITO MÁGICO! ${player.nickname} ativou ${cardName}! Todos os monstros no campo foram destruídos!`);
+    return { destroyedCardUids };
+  },
+
+  /**
+   * DESTROY_LOWEST_ATK_MONSTER: Destroys the opponent's face-up monster with the lowest ATK (e.g. Fissure).
+   */
+  DESTROY_LOWEST_ATK_MONSTER(
+    context: ActionExecutionContext,
+    effectiveAtkFn?: (card: CardInstance, owner: PlayerDuelState, opp: PlayerDuelState) => number
+  ): { destroyedCardUid?: string; destroyedName?: string } {
+    const { cardInstance, player, opponent, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+
+    // Face-up opponent monsters
+    const faceUpMonsters = opponent.monsterZones
+      .map((m, idx) => ({ card: m, index: idx }))
+      .filter((item): item is { card: CardInstance; index: number } => item.card !== null && !item.card.isFaceDown);
+
+    if (faceUpMonsters.length === 0) {
+      logFn?.(`⚡ ${player.nickname} ativou ${cardName}, mas o oponente não controla monstros com a face para cima!`);
+      return {};
+    }
+
+    const getAtk = effectiveAtkFn || ((c: CardInstance) => c.data.attack);
+    const lowest = [...faceUpMonsters].sort(
+      (a, b) => getAtk(a.card, opponent, player) - getAtk(b.card, opponent, player)
+    )[0];
+
+    opponent.monsterZones[lowest.index] = null;
+    opponent.graveyard.push(lowest.card);
+    const targetName = lowest.card.data.namePt || lowest.card.data.name;
+
+    logFn?.(`⚡ EFEITO MÁGICO! ${cardName} abriu uma fenda no solo e destruiu ${targetName}!`);
+    return {
+      destroyedCardUid: lowest.card.uid,
+      destroyedName: targetName,
+    };
+  },
+
+  /**
+   * DESTROY_SUMMONED_MONSTER / TRAP_TRIGGER_ON_SUMMON: Destroys a summoned monster (e.g. Trap Hole).
+   */
+  DESTROY_SUMMONED_MONSTER(context: ActionExecutionContext): { destroyed: boolean } {
+    const { cardInstance, opponent, targetUids, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+
+    if (!targetUids || targetUids.length === 0) {
+      return { destroyed: false };
+    }
+
+    const targetUid = targetUids[0];
+    const zoneIdx = opponent.monsterZones.findIndex((m) => m?.uid === targetUid);
+
+    if (zoneIdx === -1) {
+      return { destroyed: false };
+    }
+
+    const targetMonster = opponent.monsterZones[zoneIdx]!;
+    opponent.monsterZones[zoneIdx] = null;
+    opponent.graveyard.push(targetMonster);
+    const targetName = targetMonster.data.namePt || targetMonster.data.name;
+
+    logFn?.(`🪤 ARMADILHA ATIVADA! ${cardName} destruiu o monstro recém-invocado ${targetName}!`);
+    return { destroyed: true };
+  },
+
+  TRAP_TRIGGER_ON_SUMMON(context: ActionExecutionContext): { destroyed: boolean } {
+    return this.DESTROY_SUMMONED_MONSTER(context);
+  },
 };

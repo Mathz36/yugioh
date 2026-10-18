@@ -182,6 +182,13 @@ export class DuelMatchSession {
     if (handIndex === -1) return false;
     const card = player.hand[handIndex];
 
+    const typeLower = (card.data.type || '').toLowerCase();
+    const isSpellOrTrap = typeLower.includes('spell') || typeLower.includes('mágica') || typeLower.includes('trap') || typeLower.includes('armadilha');
+    if (isSpellOrTrap) {
+      this.log('Apenas Cartas de Monstro podem ser invocadas.');
+      return false;
+    }
+
     if (targetZoneIndex < 0 || targetZoneIndex > 4) {
       this.log('Zona de monstro inválida.');
       return false;
@@ -239,6 +246,335 @@ export class DuelMatchSession {
     } else {
       this.log(`🌟 ${player.nickname} invocou ${cardName} em ${posName}!`);
     }
+    return true;
+  }
+
+  /**
+   * Activates a Spell card from hand or spell/trap zone.
+   * Resolves the spell effect and sends the card to the GY.
+   */
+  public activateSpell(cardUid: string, zoneIndex?: number): boolean {
+    if (this.matchState.isGameOver) return false;
+    if (this.matchState.phase !== 'MAIN1' && this.matchState.phase !== 'MAIN2') {
+      this.log('Cartas Mágicas só podem ser ativadas durante a Fase Principal.');
+      return false;
+    }
+
+    const player = this.getActivePlayer();
+    const opponent = this.getOpponentPlayer();
+
+    // Check in hand first
+    const handIndex = player.hand.findIndex((c) => c.uid === cardUid);
+    let cardInstance: CardInstance | null = null;
+    let fromZoneIndex: number | null = null;
+
+    if (handIndex !== -1) {
+      cardInstance = player.hand[handIndex];
+    } else {
+      // Check in spell/trap zones
+      const stZoneIndex = player.spellTrapZones.findIndex((c) => c?.uid === cardUid);
+      if (stZoneIndex !== -1) {
+        cardInstance = player.spellTrapZones[stZoneIndex];
+        fromZoneIndex = stZoneIndex;
+      }
+    }
+
+    if (!cardInstance) {
+      this.log('Carta Mágica não encontrada na mão ou campo.');
+      return false;
+    }
+
+    const cardType = cardInstance.data.type.toLowerCase();
+    if (!cardType.includes('spell') && !cardType.includes('mágica')) {
+      this.log('Apenas Cartas Mágicas podem ser ativadas diretamente.');
+      return false;
+    }
+
+    const effectDef = cardInstance.data.effectDefinition;
+    const action = effectDef?.action;
+
+    // Remove card from hand or zone
+    if (handIndex !== -1) {
+      player.hand.splice(handIndex, 1);
+    } else if (fromZoneIndex !== null) {
+      player.spellTrapZones[fromZoneIndex] = null;
+    }
+
+    // Execute spell effect
+    if (action === 'DRAW_CARDS') {
+      ACTION_HANDLERS.DRAW_CARDS({
+        cardInstance,
+        player,
+        opponent,
+        logFn: (msg) => this.log(msg),
+      });
+    } else if (action === 'DESTROY_ALL_MONSTERS') {
+      ACTION_HANDLERS.DESTROY_ALL_MONSTERS({
+        cardInstance,
+        player,
+        opponent,
+        logFn: (msg) => this.log(msg),
+      });
+    } else if (action === 'DESTROY_LOWEST_ATK_MONSTER') {
+      ACTION_HANDLERS.DESTROY_LOWEST_ATK_MONSTER(
+        {
+          cardInstance,
+          player,
+          opponent,
+          logFn: (msg) => this.log(msg),
+        },
+        (c, own, opp) => this.getEffectiveAttack(c, own, opp)
+      );
+    } else {
+      const cardName = cardInstance.data.namePt || cardInstance.data.name;
+      this.log(`✨ ${player.nickname} ativou a Carta Mágica ${cardName}!`);
+    }
+
+    // Standard Normal Spell: goes to graveyard upon resolution
+    player.graveyard.push(cardInstance);
+    return true;
+  }
+
+  /**
+   * Sets a Spell or Trap card face-down in a spell/trap zone.
+   */
+  public setSpellTrap(cardUid: string, zoneIndex: number): boolean {
+    if (this.matchState.isGameOver) return false;
+    if (this.matchState.phase !== 'MAIN1' && this.matchState.phase !== 'MAIN2') {
+      this.log('Você só pode baixar cartas durante a Fase Principal.');
+      return false;
+    }
+
+    if (zoneIndex < 0 || zoneIndex > 4) {
+      this.log('Zona de Magia/Armadilha inválida.');
+      return false;
+    }
+
+    const player = this.getActivePlayer();
+    if (player.spellTrapZones[zoneIndex] !== null) {
+      this.log('A Zona de Magia/Armadilha já está ocupada.');
+      return false;
+    }
+
+    const handIndex = player.hand.findIndex((c) => c.uid === cardUid);
+    if (handIndex === -1) {
+      this.log('Carta não encontrada na mão.');
+      return false;
+    }
+
+    const card = player.hand.splice(handIndex, 1)[0];
+    card.isFaceDown = true;
+    card.turnSet = this.matchState.currentTurn;
+    player.spellTrapZones[zoneIndex] = card;
+
+    const cardType = card.data.type.toLowerCase();
+    const typeLabel = cardType.includes('trap') || cardType.includes('armadilha') ? 'Armadilha' : 'Mágica';
+    this.log(`🎴 ${player.nickname} baixou uma Carta ${typeLabel} virada para baixo.`);
+    return true;
+  }
+
+  /**
+   * Checks whether the defender has a set Trap Hole ready to trigger against a summoned monster:
+   * - Must have Trap Hole set face-down in spell/trap zone with turnSet < currentTurn.
+   * - Target monster must have effective ATK >= 1000.
+   */
+  public canActivateTrapHole(
+    targetMonster: CardInstance,
+    defenderPlayerId: string
+  ): { canActivate: boolean; trapZoneIndex: number } {
+    const defender = this.player1.id === defenderPlayerId ? this.player1 : this.player2;
+    const attacker = this.player1.id === defenderPlayerId ? this.player2 : this.player1;
+
+    // Check effective attack of target monster >= 1000
+    const effectiveAtk = this.getEffectiveAttack(targetMonster, attacker, defender);
+    if (effectiveAtk < 1000) {
+      return { canActivate: false, trapZoneIndex: -1 };
+    }
+
+    // Look for face-down Trap Hole set before the current turn
+    const trapZoneIndex = defender.spellTrapZones.findIndex((card) => {
+      if (!card || !card.isFaceDown) return false;
+      if (typeof card.turnSet !== 'number' || card.turnSet >= this.matchState.currentTurn) return false;
+
+      const isTrapHoleCard =
+        card.data.id === '04206964' ||
+        card.data.id === '4206964' ||
+        card.data.name.toLowerCase().includes('trap hole') ||
+        card.data.effectDefinition?.action === 'TRAP_TRIGGER_ON_SUMMON' ||
+        card.data.effectDefinition?.action === 'DESTROY_SUMMONED_MONSTER';
+
+      return isTrapHoleCard;
+    });
+
+    if (trapZoneIndex === -1) {
+      return { canActivate: false, trapZoneIndex: -1 };
+    }
+
+    return { canActivate: true, trapZoneIndex };
+  }
+
+  /**
+   * Activates Trap Hole in response to a summoned monster:
+   * Sends the Trap Hole to the defender's GY, destroys the summoned monster sending it to the GY,
+   * and records everything in the duel log.
+   */
+  public activateTrapHole(
+    defenderPlayerId: string,
+    trapZoneIndex: number,
+    summonedMonsterZoneIndex: number
+  ): boolean {
+    if (this.matchState.isGameOver) return false;
+
+    const defender = this.player1.id === defenderPlayerId ? this.player1 : this.player2;
+    const attacker = this.player1.id === defenderPlayerId ? this.player2 : this.player1;
+
+    if (trapZoneIndex < 0 || trapZoneIndex > 4) {
+      this.log('Zona de Armadilha inválida.');
+      return false;
+    }
+
+    if (summonedMonsterZoneIndex < 0 || summonedMonsterZoneIndex > 4) {
+      this.log('Zona de monstro invocado inválida.');
+      return false;
+    }
+
+    const trapCard = defender.spellTrapZones[trapZoneIndex];
+    if (!trapCard) {
+      this.log('Nenhuma carta na Zona de Armadilha selecionada.');
+      return false;
+    }
+
+    const summonedMonster = attacker.monsterZones[summonedMonsterZoneIndex];
+    if (!summonedMonster) {
+      this.log('Nenhum monstro na zona indicada para ser destruído por Trap Hole.');
+      return false;
+    }
+
+    const { canActivate } = this.canActivateTrapHole(summonedMonster, defenderPlayerId);
+    if (!canActivate) {
+      this.log('Condições para ativação de Trap Hole não atendidas.');
+      return false;
+    }
+
+    // Send Trap Hole to defender's graveyard
+    defender.spellTrapZones[trapZoneIndex] = null;
+    trapCard.isFaceDown = false;
+    defender.graveyard.push(trapCard);
+
+    // Destroy the summoned monster and send to attacker's graveyard
+    attacker.monsterZones[summonedMonsterZoneIndex] = null;
+    attacker.graveyard.push(summonedMonster);
+
+    const trapName = trapCard.data.namePt || trapCard.data.name;
+    const monsterName = summonedMonster.data.namePt || summonedMonster.data.name;
+
+    this.log(`🪤 ARMADILHA ATIVADA! ${defender.nickname} ativou ${trapName}! O monstro recém-invocado ${monsterName} caiu no buraco e foi destruído!`);
+    return true;
+  }
+
+  /**
+   * Activates a set Trap card from the spell/trap zone in response to a game action.
+   * Enforces rules:
+   * - Cannot be activated on the same turn it was set.
+   * - Must be face-down in spell/trap zone.
+   * - For Trap Hole (DESTROY_SUMMONED_MONSTER):
+   *     - Target monster must be controlled by the opponent.
+   *     - Target monster must have been summoned this turn.
+   *     - Target monster must have effective ATK >= 1000.
+   * Sends the trap card to the graveyard upon successful activation.
+   */
+  public activateTrap(trapCardUid: string, targetMonsterUid?: string): boolean {
+    if (this.matchState.isGameOver) return false;
+
+    // Find the trap card across both players' spell/trap zones
+    let trapOwner: PlayerDuelState | null = null;
+    let trapZoneIndex = -1;
+
+    for (const player of [this.player1, this.player2]) {
+      const idx = player.spellTrapZones.findIndex((c) => c?.uid === trapCardUid);
+      if (idx !== -1) {
+        trapOwner = player;
+        trapZoneIndex = idx;
+        break;
+      }
+    }
+
+    if (!trapOwner || trapZoneIndex === -1) {
+      this.log('Carta Armadilha não encontrada nas zonas de Magia/Armadilha.');
+      return false;
+    }
+
+    const trapCard = trapOwner.spellTrapZones[trapZoneIndex]!;
+    const opponent = trapOwner.id === this.player1.id ? this.player2 : this.player1;
+
+    // Trap cards must be face-down when activated from spell/trap zone
+    if (!trapCard.isFaceDown) {
+      this.log('A Carta Armadilha já está ativada ou revelada.');
+      return false;
+    }
+
+    // Traps cannot be activated in the same turn they were set
+    if (trapCard.turnSet === this.matchState.currentTurn) {
+      this.log('⏳ Cartas Armadilha não podem ser ativadas no mesmo turno em que foram baixadas.');
+      return false;
+    }
+
+    const action = trapCard.data.effectDefinition?.action;
+
+    // Trap Hole reaction validation (supports TRAP_TRIGGER_ON_SUMMON and DESTROY_SUMMONED_MONSTER)
+    if (
+      action === 'TRAP_TRIGGER_ON_SUMMON' ||
+      action === 'DESTROY_SUMMONED_MONSTER' ||
+      trapCard.data.id === '04206964' ||
+      trapCard.data.name.toLowerCase().includes('trap hole')
+    ) {
+      if (!targetMonsterUid) {
+        this.log('Nenhum monstro alvo foi especificado para a Carta Armadilha.');
+        return false;
+      }
+
+      const targetMonster = opponent.monsterZones.find((m) => m?.uid === targetMonsterUid);
+      if (!targetMonster) {
+        this.log('O monstro alvo não se encontra no campo do oponente.');
+        return false;
+      }
+
+      // Check if summoned this turn
+      if (targetMonster.turnSummoned !== this.matchState.currentTurn) {
+        this.log('Trap Hole só pode ser ativada em resposta a um monstro invocado neste turno.');
+        return false;
+      }
+
+      // Calculate effective ATK: must be >= 1000 (or minAtk defined on effect)
+      const minAtk = trapCard.data.effectDefinition?.minAtk ?? 1000;
+      const effectiveAtk = this.getEffectiveAttack(targetMonster, opponent, trapOwner);
+      if (effectiveAtk < minAtk) {
+        this.log(`⚠️ Trap Hole não pode ser ativada contra ${targetMonster.data.namePt || targetMonster.data.name} pois seu ATK (${effectiveAtk}) é inferior a ${minAtk}!`);
+        return false;
+      }
+
+      // Execute trap effect
+      const result = ACTION_HANDLERS.DESTROY_SUMMONED_MONSTER({
+        cardInstance: trapCard,
+        player: trapOwner,
+        opponent,
+        targetUids: [targetMonsterUid],
+        logFn: (msg) => this.log(msg),
+      });
+
+      if (!result.destroyed) {
+        return false;
+      }
+    } else {
+      const cardName = trapCard.data.namePt || trapCard.data.name;
+      this.log(`🪤 ${trapOwner.nickname} ativou a Carta Armadilha ${cardName}!`);
+    }
+
+    // Send trap to owner's graveyard
+    trapOwner.spellTrapZones[trapZoneIndex] = null;
+    trapCard.isFaceDown = false;
+    trapOwner.graveyard.push(trapCard);
+
     return true;
   }
 

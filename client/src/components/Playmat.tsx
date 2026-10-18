@@ -33,6 +33,10 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     tributeIndices: number[];
     card: CardInstance;
   } | null>(null);
+  const [spellChoiceModal, setSpellChoiceModal] = useState<{
+    zoneIndex: number;
+    card: CardInstance;
+  } | null>(null);
   const [selectedAttackerZone, setSelectedAttackerZone] = useState<number | null>(null);
   const [inspectedCard, setInspectedCard] = useState<CardInstance | null>(null);
   const [languagePt, setLanguagePt] = useState<boolean>(true);
@@ -483,7 +487,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
   const handleSelectHandCard = (card: CardInstance) => {
     setInspectedCard(card);
-    if (!isPlayerTurn || match.phase !== 'MAIN1' || p1.hasNormalSummonedThisTurn) return;
+    if (!isPlayerTurn || (match.phase !== 'MAIN1' && match.phase !== 'MAIN2')) return;
+    const isMonster = !card.data.type.toLowerCase().includes('spell') &&
+                      !card.data.type.toLowerCase().includes('mágica') &&
+                      !card.data.type.toLowerCase().includes('trap') &&
+                      !card.data.type.toLowerCase().includes('armadilha');
+    if (isMonster && p1.hasNormalSummonedThisTurn) return;
     setSelectedHandCardUid(selectedHandCardUid === card.uid ? null : card.uid);
     setPendingSummonZone(null);
     setSelectedTributeZones([]);
@@ -730,6 +739,166 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       forceUpdate();
     } else {
       showNotification(languagePt ? '❌ Falha ao invocar monstro. Verifique as regras.' : '❌ Failed to summon monster. Check the rules.');
+    }
+  };
+
+  // Clique na Zona de Magias e Armadilhas do Jogador
+  const handlePlayerSpellTrapZoneClick = (zoneIndex: number) => {
+    if (!isPlayerTurn || match.isGameOver) return;
+    if (match.phase !== 'MAIN1' && match.phase !== 'MAIN2') {
+      showNotification(
+        languagePt
+          ? '⚠️ Cartas Mágicas e Armadilhas só podem ser baixadas ou ativadas nas Fases Principais!'
+          : '⚠️ Spell and Trap cards can only be set or activated during Main Phases!'
+      );
+      return;
+    }
+
+    const currentSlot = p1.spellTrapZones[zoneIndex];
+
+    // Se nenhuma carta da mão estiver selecionada e a zona tiver carta
+    if (!selectedHandCardUid) {
+      if (currentSlot) {
+        setInspectedCard(currentSlot);
+      }
+      return;
+    }
+
+    const selectedCard = p1.hand.find((c) => c.uid === selectedHandCardUid);
+    if (!selectedCard) return;
+
+    const typeLower = selectedCard.data.type.toLowerCase();
+    const isSpell = typeLower.includes('spell') || typeLower.includes('mágica');
+    const isTrap = typeLower.includes('trap') || typeLower.includes('armadilha');
+
+    if (!isSpell && !isTrap) {
+      showNotification(
+        languagePt
+          ? '⚠️ Apenas Cartas Mágicas ou Armadilhas podem ser colocadas nestas zonas!'
+          : '⚠️ Only Spell or Trap cards can be placed in these zones!'
+      );
+      return;
+    }
+
+    if (currentSlot !== null) {
+      showNotification(
+        languagePt
+          ? '⚠️ Esta zona já está ocupada por outra carta!'
+          : '⚠️ This zone is already occupied by another card!'
+      );
+      return;
+    }
+
+    // Se for Carta Mágica: exibe modal de escolha (Ativar Imediatamente ou Baixar Virada para Baixo)
+    if (isSpell) {
+      setSpellChoiceModal({
+        zoneIndex,
+        card: selectedCard,
+      });
+      return;
+    }
+
+    // Se for Carta Armadilha: baixa virada para baixo diretamente
+    if (isTrap) {
+      handleSetSpellTrap(selectedCard, zoneIndex);
+      return;
+    }
+  };
+
+  // Executa o Baixar de Magia ou Armadilha virada para baixo
+  const handleSetSpellTrap = (card: CardInstance, zoneIndex: number) => {
+    const success = session.setSpellTrap(card.uid, zoneIndex);
+    if (success) {
+      setSelectedHandCardUid(null);
+      setSpellChoiceModal(null);
+      soundFX.playPlaceCard();
+
+      const typeLower = card.data.type.toLowerCase();
+      const isTrap = typeLower.includes('trap') || typeLower.includes('armadilha');
+      const cardTypeLabel = isTrap ? (languagePt ? 'Armadilha' : 'Trap') : (languagePt ? 'Mágica' : 'Spell');
+
+      showNotification(
+        languagePt
+          ? `🎴 Carta ${cardTypeLabel} baixada virada para baixo na zona!`
+          : `🎴 ${cardTypeLabel} card set face-down in the zone!`
+      );
+      forceUpdate();
+    } else {
+      showNotification(languagePt ? '❌ Não foi possível baixar a carta.' : '❌ Failed to set card.');
+    }
+  };
+
+  // Executa a Ativação de Carta Mágica com VFX cinematográficos
+  const handleActivateSpell = (card: CardInstance, zoneIndex?: number) => {
+    const action = card.data.effectDefinition?.action;
+    const cardDisplayName = languagePt && card.data.namePt ? card.data.namePt : card.data.name;
+
+    // Efeito Dark Hole (Buraco Negro): Destrói todos os monstros em ambos os campos
+    if (action === 'DESTROY_ALL_MONSTERS') {
+      const allMonsterUids: string[] = [];
+      p1.monsterZones.forEach((m) => m && allMonsterUids.push(m.uid));
+      p2.monsterZones.forEach((m) => m && allMonsterUids.push(m.uid));
+
+      if (allMonsterUids.length > 0) {
+        setDestroyedCardUids((prev) => [...prev, ...allMonsterUids]);
+      }
+      soundFX.playDestruction();
+      setIsCameraShaking(true);
+      setTimeout(() => setIsCameraShaking(false), 800);
+
+      const success = session.activateSpell(card.uid, zoneIndex);
+      if (success) {
+        setSelectedHandCardUid(null);
+        setSpellChoiceModal(null);
+        showNotification(
+          languagePt
+            ? `🕳️ ${cardDisplayName} ativado! O campo foi aniquilado!`
+            : `🕳️ ${cardDisplayName} activated! The entire field was destroyed!`
+        );
+        forceUpdate();
+      }
+      return;
+    }
+
+    // Efeito Pot of Greed (Pote da Ganância): Compra 2 cartas
+    if (action === 'DRAW_CARDS') {
+      const currentHandUids = new Set(p1.hand.map((c) => c.uid));
+      const success = session.activateSpell(card.uid, zoneIndex);
+      if (success) {
+        setSelectedHandCardUid(null);
+        setSpellChoiceModal(null);
+        soundFX.playDrawCard();
+
+        const newlyDrawn = p1.hand.filter((c) => !currentHandUids.has(c.uid)).map((c) => c.uid);
+        if (newlyDrawn.length > 0) {
+          setRecentDrawnUids(newlyDrawn);
+          setTimeout(() => setRecentDrawnUids([]), 1200);
+        }
+
+        showNotification(
+          languagePt
+            ? `🏺 ${cardDisplayName} ativado! Você comprou 2 cartas!`
+            : `🏺 ${cardDisplayName} activated! You drew 2 cards!`
+        );
+        forceUpdate();
+      }
+      return;
+    }
+
+    // Outras cartas mágicas
+    const success = session.activateSpell(card.uid, zoneIndex);
+    if (success) {
+      setSelectedHandCardUid(null);
+      setSpellChoiceModal(null);
+      soundFX.playPlaceCard();
+      showNotification(
+        languagePt
+          ? `✨ ${cardDisplayName} ativado!`
+          : `✨ ${cardDisplayName} activated!`
+      );
+      forceUpdate();
+    } else {
+      showNotification(languagePt ? '❌ Falha ao ativar Carta Mágica.' : '❌ Failed to activate Spell card.');
     }
   };
 
@@ -1146,33 +1315,50 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           {/* Carta Inspecionada em Alta Definição */}
           {inspectedCard ? (
             (() => {
-              const isPlayerOwned = p1.monsterZones.some((m) => m?.uid === inspectedCard.uid) || p1.hand.some((c) => c.uid === inspectedCard.uid);
-              const isOpponentOwned = p2.monsterZones.some((m) => m?.uid === inspectedCard.uid);
+              const isPlayerOwned =
+                p1.monsterZones.some((m) => m?.uid === inspectedCard.uid) ||
+                p1.spellTrapZones.some((st) => st?.uid === inspectedCard.uid) ||
+                p1.hand.some((c) => c.uid === inspectedCard.uid);
+              const isOpponentOwned =
+                p2.monsterZones.some((m) => m?.uid === inspectedCard.uid) ||
+                p2.spellTrapZones.some((st) => st?.uid === inspectedCard.uid);
               const isFaceDown = inspectedCard.isFaceDown;
 
               // Se for carta virada para baixo do oponente, mantém o segredo
               if (isOpponentOwned && isFaceDown) {
+                const isSpellOrTrap = inspectedCard.data.type.toLowerCase().includes('spell') || inspectedCard.data.type.toLowerCase().includes('trap') || inspectedCard.data.type.toLowerCase().includes('mágic') || inspectedCard.data.type.toLowerCase().includes('armadilha');
+                const titleText = isSpellOrTrap
+                  ? (languagePt ? 'Carta Mágica/Armadilha Oculta 𓂀' : 'Hidden Spell/Trap Card 𓂀')
+                  : (languagePt ? 'Carta Oculta do Adversário 𓂀' : 'Opponent Hidden Card 𓂀');
+                const descText = isSpellOrTrap
+                  ? (languagePt
+                      ? 'Esta carta mágica ou armadilha está virada para baixo no campo do oponente. Seu efeito será ativado no momento oportuno!'
+                      : 'This spell or trap card is set face-down on the opponent field. Its effect will activate at the right moment!')
+                  : (languagePt
+                      ? 'Esta carta está virada para baixo no campo do oponente. Seus segredos só serão revelados quando for atacada ou virada!'
+                      : 'This card is set face-down on the opponent field. Its secrets will remain hidden until attacked or flipped!');
+
                 return (
                   <div className="flex flex-col items-center w-full animate-fadeIn">
                     <div className="relative group w-60 h-84 rounded-lg p-2 bg-gradient-to-br from-[#7a4e23] via-[#472c13] to-[#1a0f05] border-2 border-purple-500/80 shadow-[0_0_25px_rgba(147,51,234,0.4)]">
                       <img
                         src="/card-back.jpg"
-                        alt="Carta Oculta do Adversário"
+                        alt={titleText}
                         className="w-full h-full object-contain rounded drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]"
                       />
                     </div>
                     <div className="mt-2.5 w-full bg-[#120c22] border-2 border-purple-900/60 rounded-lg p-3 text-center shadow-md">
                       <div className="text-amber-400 font-serif font-black text-sm mb-1 tracking-wider">
-                        Carta Oculta do Adversário 𓂀
+                        {titleText}
                       </div>
                       <p className="text-[11px] text-purple-200/80 italic leading-relaxed">
-                        {languagePt
-                          ? 'Esta carta está virada para baixo no campo do oponente. Seus segredos só serão revelados quando for atacada ou virada!'
-                          : 'This card is set face-down on the opponent field. Its secrets will remain hidden until attacked or flipped!'}
+                        {descText}
                       </p>
-                      <div className="mt-2 text-xs font-mono font-bold text-slate-400 bg-black/40 py-1 rounded border border-purple-950">
-                        ATK ??? / DEF ???
-                      </div>
+                      {!isSpellOrTrap && (
+                        <div className="mt-2 text-xs font-mono font-bold text-slate-400 bg-black/40 py-1 rounded border border-purple-950">
+                          ATK ??? / DEF ???
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1350,13 +1536,13 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         </div>
 
         {/* CAMPO DO OPONENTE */}
-        <div className="flex flex-col space-y-2">
+        <div className="flex flex-col space-y-1.5">
           {/* Mão do Oponente (Verso Oficial Yu-Gi-Oh) */}
-          <div className="flex justify-center -space-x-5 h-20">
+          <div className="flex justify-center -space-x-5 h-16">
             {p2.hand.map((card, i) => (
               <div
                 key={card.uid || i}
-                className="w-14 h-20 rounded shadow-2xl transition-all duration-200 hover:-translate-y-2 hover:scale-110 hover:z-20 cursor-default"
+                className="w-12 h-16 rounded shadow-2xl transition-all duration-200 hover:-translate-y-2 hover:scale-110 hover:z-20 cursor-default"
               >
                 <img
                   src="/card-back.jpg"
@@ -1367,7 +1553,41 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             ))}
           </div>
 
-          {/* Fileira de Monstros do Oponente (Pura Imagem 3D, sem caixa preta e com detalhes apenas no hover) */}
+          {/* 5 Zonas de Magias e Armadilhas do Oponente */}
+          <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
+            {p2.spellTrapZones.map((slot, i) => (
+              <div
+                key={`p2-st-${i}`}
+                onMouseEnter={() => slot && setInspectedCard(slot)}
+                className={`h-28 rounded-lg border-2 border-dashed border-emerald-950/60 bg-emerald-950/10 flex items-center justify-center relative p-0.5 transition-all ${
+                  slot ? 'border-emerald-600/60 shadow-[0_0_12px_rgba(16,185,129,0.2)]' : 'hover:border-emerald-700/40'
+                }`}
+              >
+                {slot ? (
+                  <div className="w-full h-full relative rounded-lg flex items-center justify-center group">
+                    <img
+                      src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
+                      alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
+                      className="w-full h-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
+                    />
+                    {!slot.isFaceDown && (
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-1.5 pointer-events-none rounded-lg">
+                        <div className="text-[10px] font-black text-emerald-200 truncate drop-shadow text-center">
+                          {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-emerald-900/50 font-serif tracking-widest uppercase select-none">
+                    M / A
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Fileira de Monstros do Oponente (h-34) */}
           <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
             {p2.monsterZones.map((slot, i) => {
               const isTargetable = selectedAttackingMonster !== null && slot !== null;
@@ -1396,7 +1616,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                         } as React.CSSProperties)
                       : undefined
                   }
-                  className={`h-48 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
+                  className={`h-34 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
                     slot
                       ? `${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass}`
                       : 'border-2 border-dashed border-[#2d1c47] zone-empty hover:border-purple-500/60'
@@ -1584,8 +1804,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           </div>
         </div>
 
-        {/* CAMPO DO JOGADOR (ZONA DE MONSTROS 3D AMPLIADA COM VFX) */}
-        <div className="flex flex-col space-y-2">
+        {/* CAMPO DO JOGADOR (ZONA DE MONSTROS 3D E ZONAS DE MAGIAS/ARMADILHAS) */}
+        <div className="flex flex-col space-y-1.5">
+          {/* Fileira de Monstros do Jogador (h-34) */}
           <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
             {p1.monsterZones.map((slot, i) => {
               const selectedHandCard = selectedHandCardUid ? p1.hand.find((c) => c.uid === selectedHandCardUid) : null;
@@ -1617,7 +1838,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                         } as React.CSSProperties)
                       : undefined
                   }
-                  className={`h-48 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
+                  className={`h-34 rounded-lg flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
                     slot
                       ? `${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass}`
                       : (isValidSummonZone || isTributeTargetZone)
@@ -1734,25 +1955,80 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               );
             })}
           </div>
+
+          {/* 5 Zonas de Magias e Armadilhas do Jogador */}
+          <div className="grid grid-cols-5 gap-3 max-w-4xl mx-auto w-full px-2">
+            {p1.spellTrapZones.map((slot, i) => {
+              const selectedHandCard = selectedHandCardUid ? p1.hand.find((c) => c.uid === selectedHandCardUid) : null;
+              const cardTypeLower = selectedHandCard?.data.type.toLowerCase() || '';
+              const isSelectedSpell = cardTypeLower.includes('spell') || cardTypeLower.includes('mágica');
+              const isSelectedTrap = cardTypeLower.includes('trap') || cardTypeLower.includes('armadilha');
+              const isTargetableSpellZone = isSelectedSpell && slot === null;
+              const isTargetableTrapZone = isSelectedTrap && slot === null;
+
+              return (
+                <div
+                  key={`p1-st-${i}`}
+                  onClick={() => handlePlayerSpellTrapZoneClick(i)}
+                  onMouseEnter={() => slot && setInspectedCard(slot)}
+                  className={`h-28 rounded-lg border-2 border-dashed flex items-center justify-center relative cursor-pointer p-0.5 transition-all ${
+                    isTargetableSpellZone
+                      ? 'border-emerald-400 bg-emerald-950/40 ring-4 ring-emerald-400/90 shadow-[0_0_25px_rgba(52,211,153,0.8)] scale-102 animate-pulse'
+                      : isTargetableTrapZone
+                      ? 'border-fuchsia-400 bg-fuchsia-950/40 ring-4 ring-fuchsia-500/90 shadow-[0_0_25px_rgba(217,70,239,0.8)] scale-102 animate-pulse'
+                      : slot
+                      ? 'border-emerald-600/70 bg-emerald-950/20 shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:border-emerald-400'
+                      : 'border-emerald-950/60 bg-emerald-950/10 hover:border-emerald-500/50'
+                  }`}
+                >
+                  {slot ? (
+                    <div className="w-full h-full relative rounded-lg flex items-center justify-center group">
+                      <img
+                        src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
+                        alt={slot.data.name}
+                        className="w-full h-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
+                      />
+                      {slot.isFaceDown && (
+                        <div className="absolute top-1 right-1 bg-purple-950/80 border border-purple-400 text-purple-200 text-[8px] px-1 rounded pointer-events-none">
+                          👁️
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-1.5 pointer-events-none rounded-lg">
+                        <div className="text-[10px] font-black text-emerald-200 truncate drop-shadow text-center">
+                          {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className={`text-[10px] font-serif tracking-widest uppercase select-none ${
+                      isTargetableSpellZone ? 'text-emerald-300 font-bold' : isTargetableTrapZone ? 'text-fuchsia-300 font-bold' : 'text-emerald-900/50'
+                    }`}>
+                      {isTargetableSpellZone ? (languagePt ? 'Colocar Magia' : 'Place Spell') : isTargetableTrapZone ? (languagePt ? 'Baixar Armadilha' : 'Set Trap') : 'M / A'}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* RODAPÉ DO JOGADOR: MÃO AMPLIADA & STATUS (HUD AMPLIADO) */}
-        <div className="bg-[#0b0814]/95 border-2 border-[#412760] rounded-xl p-3 shadow-[0_-6px_30px_rgba(0,0,0,0.85)] flex items-center justify-between">
+        <div className="bg-[#0b0814]/95 border-2 border-[#412760] rounded-xl px-4 py-2 shadow-[0_-6px_30px_rgba(0,0,0,0.85)] flex items-center justify-between">
           
-          <div className="flex items-center space-x-4 w-60">
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 via-amber-700 to-purple-950 border-2 border-amber-400 flex items-center justify-center font-black text-amber-200 text-2xl shadow-[0_0_15px_rgba(245,158,11,0.6)] uppercase">
+          <div className="flex items-center space-x-3.5 w-56">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-500 via-amber-700 to-purple-950 border-2 border-amber-400 flex items-center justify-center font-black text-amber-200 text-xl shadow-[0_0_15px_rgba(245,158,11,0.6)] uppercase">
               {p1.nickname.charAt(0) || 'D'}
             </div>
             <div>
-              <h2 className="font-extrabold text-amber-300 text-base font-serif tracking-wide truncate max-w-[150px]">{p1.nickname}</h2>
-              <div ref={playerLpRef} className="bg-black/95 border-2 border-red-600 rounded-lg px-3.5 py-0.5 text-2xl font-mono font-black text-red-400 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider mt-0.5">
+              <h2 className="font-extrabold text-amber-300 text-sm font-serif tracking-wide truncate max-w-[140px]">{p1.nickname}</h2>
+              <div ref={playerLpRef} className="bg-black/95 border-2 border-red-600 rounded-lg px-3 py-0.5 text-xl font-mono font-black text-red-400 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider mt-0.5">
                 {p1.lifePoints} <span className="text-xs font-sans text-red-400 font-normal">LP</span>
               </div>
             </div>
           </div>
 
           {/* Mão do Jogador (Cartas 3D Ampliadas, Layout Dinâmico e Animação de Compra) */}
-          <div className="flex-1 flex justify-center -space-x-4 overflow-visible py-1">
+          <div className="flex-1 flex justify-center -space-x-4 overflow-visible py-0.5">
             {p1.hand.map((card, idx) => {
               const isSelected = selectedHandCardUid === card.uid;
               const isNewlyDrawn = recentDrawnUids.includes(card.uid);
@@ -1762,12 +2038,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   onClick={() => handleSelectHandCard(card)}
                   onMouseEnter={() => setInspectedCard(card)}
                   style={{ animationDelay: isNewlyDrawn ? `${idx * 140}ms` : '0ms' }}
-                  className={`card-3d group w-32 h-44 rounded-md cursor-pointer transition-all duration-200 relative flex items-center justify-center ${
+                  className={`card-3d group w-24 h-34 rounded-md cursor-pointer transition-all duration-200 relative flex items-center justify-center ${
                     isNewlyDrawn ? 'anim-draw-card' : ''
                   } ${
                     isSelected
-                      ? '-translate-y-6 ring-4 ring-amber-400/90 shadow-[0_0_35px_rgba(245,158,11,1)] scale-110 z-30'
-                      : 'hover:-translate-y-5 hover:scale-105 hover:z-20 hover:drop-shadow-[0_15px_25px_rgba(245,158,11,0.5)]'
+                      ? '-translate-y-5 ring-4 ring-amber-400/90 shadow-[0_0_35px_rgba(245,158,11,1)] scale-110 z-30'
+                      : 'hover:-translate-y-4 hover:scale-105 hover:z-20 hover:drop-shadow-[0_15px_25px_rgba(245,158,11,0.5)]'
                   }`}
                 >
                   {isSelected && (
@@ -1880,6 +2156,67 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
                 <button
                   onClick={() => setSummonChoiceModal(null)}
+                  className="w-full py-1.5 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
+                >
+                  {languagePt ? 'Cancelar' : 'Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ⚡ MODAL DE ESCOLHA DE CARTA MÁGICA: ATIVAR OU BAIXAR */}
+        {spellChoiceModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
+            <div className="bg-[#0e1a14] border-2 border-emerald-500 rounded-2xl p-6 text-center max-w-sm w-full mx-4 shadow-[0_0_40px_rgba(16,185,129,0.5)]">
+              <div className="w-24 h-34 mx-auto mb-3 rounded-lg overflow-hidden border-2 border-emerald-400 shadow-lg">
+                <img
+                  src={spellChoiceModal.card.data.imageUrl}
+                  alt={spellChoiceModal.card.data.name}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+
+              <h3 className="text-base font-serif font-black text-emerald-300 mb-1">
+                {languagePt && spellChoiceModal.card.data.namePt
+                  ? spellChoiceModal.card.data.namePt
+                  : spellChoiceModal.card.data.name}
+              </h3>
+              <p className="text-xs text-emerald-100/80 mb-5">
+                {languagePt
+                  ? 'Como deseja utilizar esta Carta Mágica?'
+                  : 'How would you like to play this Spell card?'}
+              </p>
+
+              <div className="flex flex-col space-y-2.5">
+                <button
+                  onClick={() =>
+                    handleActivateSpell(
+                      spellChoiceModal.card,
+                      spellChoiceModal.zoneIndex
+                    )
+                  }
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                >
+                  <span>⚡</span>
+                  <span>{languagePt ? 'Ativar Magia Imediatamente' : 'Activate Spell Immediately'}</span>
+                </button>
+
+                <button
+                  onClick={() =>
+                    handleSetSpellTrap(
+                      spellChoiceModal.card,
+                      spellChoiceModal.zoneIndex
+                    )
+                  }
+                  className="w-full py-2.5 px-4 bg-emerald-950/90 hover:bg-emerald-900 text-emerald-200 border border-emerald-500/60 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                >
+                  <span>👁️</span>
+                  <span>{languagePt ? 'Baixar na Zona (Virada para Baixo)' : 'Set in Zone (Face-Down)'}</span>
+                </button>
+
+                <button
+                  onClick={() => setSpellChoiceModal(null)}
                   className="w-full py-1.5 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
                 >
                   {languagePt ? 'Cancelar' : 'Cancel'}
