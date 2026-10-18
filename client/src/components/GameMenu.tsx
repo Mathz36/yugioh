@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { soundtrackManager } from '../utils/SoundtrackManager';
 
 interface GameMenuProps {
   userNickname: string;
@@ -7,6 +8,15 @@ interface GameMenuProps {
 }
 
 export const GameMenu: React.FC<GameMenuProps> = ({ userNickname, onPlayVsBot, onLogout }) => {
+  useEffect(() => {
+    soundtrackManager.playMenuMusic();
+  }, []);
+
+  const handleStartDuel = () => {
+    soundtrackManager.unlockAudioContext();
+    soundtrackManager.playMatchMusic();
+    onPlayVsBot();
+  };
   return (
     <div className="flex h-screen w-screen max-h-screen bg-[#07060a] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1b0e30] via-[#090710] to-[#030206] select-none text-slate-100 overflow-hidden font-sans items-center justify-center p-4">
       <div className="w-full max-w-xl bg-[#0e091a]/95 border-2 border-amber-500/70 rounded-3xl p-8 shadow-[0_0_60px_rgba(245,158,11,0.35)] flex flex-col items-center relative overflow-hidden backdrop-blur-md">
@@ -34,7 +44,7 @@ export const GameMenu: React.FC<GameMenuProps> = ({ userNickname, onPlayVsBot, o
           
           {/* Opção 1: Duelo Solo vs IA (Seto Kaiba Bot) */}
           <button
-            onClick={onPlayVsBot}
+            onClick={handleStartDuel}
             className="w-full p-4 rounded-2xl bg-gradient-to-r from-amber-950/60 via-purple-950/40 to-slate-900 border-2 border-amber-500/80 hover:border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.25)] hover:shadow-[0_0_30px_rgba(245,158,11,0.5)] transition-all group flex items-center justify-between text-left cursor-pointer transform hover:-translate-y-0.5"
           >
             <div className="flex items-center space-x-4">

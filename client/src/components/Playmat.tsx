@@ -4,6 +4,7 @@ import { createKaibaDeck, createYugiDeck } from '@duel/starter-decks';
 import { CardInstance, BattlePosition } from '@duel/duel-types';
 import { DuelBot } from '@duel/duel-bot';
 import { soundFX } from '../utils/soundFX';
+import { soundtrackManager } from '../utils/SoundtrackManager';
 
 export interface PlaymatProps {
   playerNickname?: string;
@@ -36,6 +37,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const [inspectedCard, setInspectedCard] = useState<CardInstance | null>(null);
   const [languagePt, setLanguagePt] = useState<boolean>(true);
   const [showSurrenderModal, setShowSurrenderModal] = useState<boolean>(false);
+  const [soundMuted, setSoundMuted] = useState<boolean>(false);
   const [, setRefreshKey] = useState(0);
 
   // Estados de Animação e VFX Dinâmicos
@@ -182,6 +184,31 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const p2 = session.player2; // Bot
   const match = session.matchState;
   const isPlayerTurn = match.activePlayerId === p1.id && countdown === null;
+
+  // Inicialização e Ciclo de Vida da Trilha Sonora da Partida
+  useEffect(() => {
+    soundtrackManager.playMatchMusic();
+
+    return () => {
+      soundtrackManager.stopCurrentMusic();
+    };
+  }, []);
+
+  // Disparo de Vitória / Derrota quando o duelo finaliza (exibição do modal)
+  useEffect(() => {
+    if (match.isGameOver) {
+      if (match.winnerPlayerId === p1.id) {
+        soundtrackManager.playVictory();
+      } else {
+        soundtrackManager.playDefeat();
+      }
+    }
+  }, [match.isGameOver, match.winnerPlayerId, p1.id]);
+
+  // Controle de Mute
+  useEffect(() => {
+    soundtrackManager.setMuted(soundMuted);
+  }, [soundMuted]);
 
   // Efeito da Contagem Regressiva de 5 segundos
   useEffect(() => {
@@ -912,6 +939,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   };
 
   const handleResetMatch = () => {
+    soundtrackManager.playMatchMusic();
     setSession(new DuelMatchSession(playerNickname, createYugiDeck(), 'Seto Kaiba (Bot)', createKaibaDeck()));
     setSelectedHandCardUid(null);
     setSelectedAttackerZone(null);
@@ -1040,7 +1068,15 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
       {/* 🔮 OVERLAY DE CONTAGEM REGRESSIVA INICIAL (5 SEGUNDOS) */}
       {countdown !== null && (
-        <div className="absolute inset-0 bg-black/95 z-50 flex flex-col items-center justify-center animate-fadeIn">
+        <div
+          onClick={() => {
+            soundtrackManager.unlockAudioContext();
+            if (soundtrackManager.getCurrentTrack() === 'NONE') {
+              soundtrackManager.playMatchMusic();
+            }
+          }}
+          className="absolute inset-0 bg-black/95 z-50 flex flex-col items-center justify-center animate-fadeIn cursor-pointer"
+        >
           <div className="text-6xl text-amber-400 drop-shadow-[0_0_20px_rgba(245,158,11,0.8)] mb-4 animate-pulse">
             𓂀
           </div>
@@ -1050,8 +1086,8 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           <div className="text-8xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-yellow-500 shadow-2xl scale-125 transition-transform duration-300">
             {countdown > 0 ? countdown : 'É HORA DO DUELO!'}
           </div>
-          <p className="text-xs text-slate-400 mt-8 uppercase tracking-widest font-mono">
-            {countdown > 0 ? 'Embaralhando decks clássicos...' : 'Que os Jogos das Sombras comecem!'}
+          <p className="text-xs text-amber-300/80 mt-8 uppercase tracking-widest font-mono">
+            {countdown > 0 ? 'Toque na tela para ativar o som • Embaralhando decks clássicos...' : 'Que os Jogos das Sombras comecem!'}
           </p>
         </div>
       )}
@@ -1070,6 +1106,25 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             </div>
             
             <div className="flex items-center space-x-1.5">
+              <button
+                onClick={() => {
+                  soundtrackManager.unlockAudioContext();
+                  const nextMuted = !soundMuted;
+                  setSoundMuted(nextMuted);
+                  if (!nextMuted) {
+                    soundtrackManager.playMatchMusic();
+                  }
+                }}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider border transition-colors ${
+                  soundMuted
+                    ? 'bg-slate-900 border-slate-700 text-slate-400'
+                    : 'bg-amber-950/80 border-amber-500/70 hover:border-amber-400 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.3)]'
+                }`}
+                title={soundMuted ? 'Desmutar Trilha Sonora' : 'Mutar Trilha Sonora'}
+              >
+                {soundMuted ? '🔇 Trilha' : '🎵 Trilha'}
+              </button>
+
               <button
                 onClick={() => setLanguagePt(!languagePt)}
                 className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-purple-950/80 border border-purple-500/50 hover:border-amber-400 text-amber-300 transition-colors"
@@ -1866,16 +1921,38 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         {/* MODAL DE FIM DE PARTIDA */}
         {match.isGameOver && (
           <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
-            <div className="bg-[#120c22] border-2 border-amber-400 rounded-2xl p-8 text-center max-w-md shadow-[0_0_50px_rgba(245,158,11,0.6)]">
-              <div className="text-4xl mb-2 text-amber-400">𓂀</div>
-              <h1 className="text-3xl font-black text-amber-400 mb-2 font-serif tracking-widest">
-                FIM DO DUELO!
+            <div
+              className={`border-2 rounded-2xl p-8 text-center max-w-md shadow-2xl ${
+                match.winnerPlayerId === p1.id
+                  ? 'bg-[#140e26] border-amber-400 shadow-[0_0_60px_rgba(245,158,11,0.7)]'
+                  : 'bg-[#180a14] border-red-500 shadow-[0_0_60px_rgba(239,68,68,0.7)]'
+              }`}
+            >
+              <div
+                className={`text-5xl mb-2 ${
+                  match.winnerPlayerId === p1.id ? 'text-amber-400 animate-bounce' : 'text-red-400 animate-pulse'
+                }`}
+              >
+                {match.winnerPlayerId === p1.id ? '👑 𓂀' : '💀 𓂀'}
+              </div>
+              <h1
+                className={`text-3xl font-black mb-2 font-serif tracking-widest ${
+                  match.winnerPlayerId === p1.id
+                    ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500'
+                    : 'text-red-500'
+                }`}
+              >
+                {match.winnerPlayerId === p1.id ? 'VITÓRIA!' : 'DERROTA!'}
               </h1>
-              <p className="text-slate-200 font-semibold mb-6">{match.winReason}</p>
+              <p className="text-slate-200 font-semibold mb-6 text-sm">{match.winReason}</p>
               <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
                 <button
                   onClick={handleResetMatch}
-                  className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 text-xs"
+                  className={`w-full sm:w-auto px-6 py-2.5 font-black uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 text-xs ${
+                    match.winnerPlayerId === p1.id
+                      ? 'bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950'
+                      : 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
+                  }`}
                 >
                   ⚔️ Novo Duelo
                 </button>
