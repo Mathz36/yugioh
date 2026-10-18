@@ -12,10 +12,10 @@ export type CardEffectType =
   | 'QUICK';
 
 export interface CardEffectDefinition {
-  trigger: CardEffectType;
+  trigger?: CardEffectType;
   action: string;
   value?: number;
-  condition?: Record<string, any>;
+  condition?: Record<string, any> | string;
   cost?: string;
   activation_timing?: string;
   target_count?: number;
@@ -39,6 +39,7 @@ export interface CardData {
   namePt?: string;
   descriptionPt?: string;
   imageUrl?: string;
+  race?: string;
   effectType?: CardEffectType;
   effectDefinition?: CardEffectDefinition;
 }
@@ -52,6 +53,7 @@ export interface CardInstance {
   turnSummoned: number;
   monstersDestroyedCount: number;
   hasAttackedDirectly: boolean;
+  hasUsedEffectThisTurn: boolean;
 }
 
 export interface PlayerDuelState {

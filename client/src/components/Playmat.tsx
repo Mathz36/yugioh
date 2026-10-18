@@ -47,6 +47,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   const [isCameraShaking, setIsCameraShaking] = useState<boolean>(false);
   const [recentDrawnUids, setRecentDrawnUids] = useState<string[]>([]);
   const [flippedZones, setFlippedZones] = useState<{ isPlayer: boolean; zoneIndex: number }[]>([]);
+  const [flipEffectBanner, setFlipEffectBanner] = useState<{ cardName: string; action: string } | null>(null);
 
   // Retorna a classe de chama da carta baseado em destruições e ataque direto
   const getCardFlameClass = (card: CardInstance | null): string => {
@@ -215,32 +216,71 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               // Ataque Direto nos LPs do Jogador!
               setTargetHitZone({ isPlayer: true, zoneIndex: null });
               setTimeout(() => setTargetHitZone(null), 500);
-              const dmg = attacker.card.data.attack;
+              const dmg = session.getEffectiveAttack(attacker.card, bot, opponent);
               setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: null });
               setTimeout(() => setFloatingDamage(null), 1200);
 
               session.declareAttack(attacker.index, null);
             } else {
-              // Encontra melhor alvo vulnerável
+              // Encontra melhor alvo vulnerável considerando ATK efetivo
               const target =
-                opponentMonsters.find(
-                  (t) =>
-                    (t.card.position === 'ATTACK' && attacker.card.data.attack > t.card.data.attack) ||
-                    (t.card.position === 'DEFENSE' && attacker.card.data.attack > t.card.data.defense)
-                ) || opponentMonsters[0];
+                opponentMonsters.find((t) => {
+                  const atkEff = session.getEffectiveAttack(attacker.card, bot, opponent);
+                  const defEff = session.getEffectiveAttack(t.card, opponent, bot);
+                  return (
+                    (t.card.position === 'ATTACK' && atkEff > defEff) ||
+                    (t.card.position === 'DEFENSE' && atkEff > t.card.data.defense)
+                  );
+                }) || opponentMonsters[0];
 
               setTargetHitZone({ isPlayer: true, zoneIndex: target.index });
               setTimeout(() => setTargetHitZone(null), 500);
 
-              if (target.card.position === 'ATTACK' && attacker.card.data.attack > target.card.data.attack) {
-                const dmg = attacker.card.data.attack - target.card.data.attack;
-                setDestroyedCardUids((prev) => [...prev, target.card.uid]);
-                soundFX.playDestruction();
-                setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: target.index });
-                setTimeout(() => setFloatingDamage(null), 1200);
-              } else if (target.card.position === 'DEFENSE' && attacker.card.data.attack > target.card.data.defense) {
-                setDestroyedCardUids((prev) => [...prev, target.card.uid]);
-                soundFX.playDestruction();
+              const attackerEffAtk = session.getEffectiveAttack(attacker.card, bot, opponent);
+              const defenderEffAtk = session.getEffectiveAttack(target.card, opponent, bot);
+
+              // Checa se o alvo em DEFENSE possui Efeito FLIP
+              if (target.card.position === 'DEFENSE' && target.card.data.effectType === 'FLIP') {
+                const flipName = (languagePt && target.card.data.namePt) ? target.card.data.namePt : target.card.data.name;
+                const action = target.card.data.effectDefinition?.action;
+                setFlipEffectBanner({ cardName: flipName, action: action || 'FLIP' });
+                setTimeout(() => setFlipEffectBanner(null), 2500);
+
+                if (action === 'DESTROY_MONSTER') {
+                  setDestroyedCardUids((prev) => [...prev, attacker.card.uid]);
+                  soundFX.playDestruction();
+                } else if (action === 'RETURN_TO_HAND') {
+                  soundFX.playReturnToHand();
+                }
+              }
+
+              if (target.card.position === 'ATTACK') {
+                if (attackerEffAtk > defenderEffAtk) {
+                  const dmg = attackerEffAtk - defenderEffAtk;
+                  setDestroyedCardUids((prev) => [...prev, target.card.uid]);
+                  soundFX.playDestruction();
+                  setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: target.index });
+                  setTimeout(() => setFloatingDamage(null), 1200);
+                } else if (attackerEffAtk < defenderEffAtk) {
+                  const dmg = defenderEffAtk - attackerEffAtk;
+                  setDestroyedCardUids((prev) => [...prev, attacker.card.uid]);
+                  soundFX.playDestruction();
+                  setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: attacker.index });
+                  setTimeout(() => setFloatingDamage(null), 1200);
+                } else {
+                  // Empate
+                  setDestroyedCardUids((prev) => [...prev, attacker.card.uid, target.card.uid]);
+                  soundFX.playDestruction();
+                }
+              } else if (target.card.position === 'DEFENSE') {
+                if (attackerEffAtk > target.card.data.defense) {
+                  setDestroyedCardUids((prev) => [...prev, target.card.uid]);
+                  soundFX.playDestruction();
+                } else if (attackerEffAtk < target.card.data.defense) {
+                  const dmg = target.card.data.defense - attackerEffAtk;
+                  setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: attacker.index });
+                  setTimeout(() => setFloatingDamage(null), 1200);
+                }
               }
 
               session.declareAttack(attacker.index, target.index);
@@ -437,22 +477,41 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       setTargetHitZone({ isPlayer: false, zoneIndex: targetZoneIndex });
       setTimeout(() => setTargetHitZone(null), 500);
 
-      // Calcular Dano e Destruição para Feedback Visual
+      // Calcular Dano e Destruição para Feedback Visual com ATK Efetivo
+      const attackerEffAtk = session.getEffectiveAttack(attackingCard, p1, p2);
+
       if (targetZoneIndex === null) {
         // Ataque Direto
-        const dmg = attackingCard.data.attack;
+        const dmg = attackerEffAtk;
         setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: null });
         setTimeout(() => setFloatingDamage(null), 1200);
       } else if (defendingCard) {
         // Monstro vs Monstro
+        const defenderEffAtk = session.getEffectiveAttack(defendingCard, p2, p1);
+
+        // Checa se o alvo em DEFENSE possui Efeito FLIP
+        if (defendingCard.position === 'DEFENSE' && defendingCard.data.effectType === 'FLIP') {
+          const flipName = (languagePt && defendingCard.data.namePt) ? defendingCard.data.namePt : defendingCard.data.name;
+          const action = defendingCard.data.effectDefinition?.action;
+          setFlipEffectBanner({ cardName: flipName, action: action || 'FLIP' });
+          setTimeout(() => setFlipEffectBanner(null), 2500);
+
+          if (action === 'DESTROY_MONSTER') {
+            setDestroyedCardUids((prev) => [...prev, attackingCard.uid]);
+            soundFX.playDestruction();
+          } else if (action === 'RETURN_TO_HAND') {
+            soundFX.playReturnToHand();
+          }
+        }
+
         let dmg = 0;
         if (defendingCard.position === 'ATTACK') {
-          if (attackingCard.data.attack > defendingCard.data.attack) {
-            dmg = attackingCard.data.attack - defendingCard.data.attack;
+          if (attackerEffAtk > defenderEffAtk) {
+            dmg = attackerEffAtk - defenderEffAtk;
             setDestroyedCardUids((prev) => [...prev, defendingCard.uid]);
             soundFX.playDestruction();
-          } else if (attackingCard.data.attack < defendingCard.data.attack) {
-            dmg = defendingCard.data.attack - attackingCard.data.attack;
+          } else if (attackerEffAtk < defenderEffAtk) {
+            dmg = defenderEffAtk - attackerEffAtk;
             setDestroyedCardUids((prev) => [...prev, attackingCard.uid]);
             soundFX.playDestruction();
           } else {
@@ -462,16 +521,16 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           }
         } else {
           // DEFENSE
-          if (attackingCard.data.attack > defendingCard.data.defense) {
+          if (attackerEffAtk > defendingCard.data.defense) {
             setDestroyedCardUids((prev) => [...prev, defendingCard.uid]);
             soundFX.playDestruction();
-          } else if (attackingCard.data.attack < defendingCard.data.defense) {
-            dmg = defendingCard.data.defense - attackingCard.data.attack;
+          } else if (attackerEffAtk < defendingCard.data.defense) {
+            dmg = defendingCard.data.defense - attackerEffAtk;
           }
         }
 
         if (dmg > 0) {
-          setFloatingDamage({ amount: dmg, isPlayer: attackingCard.data.attack < defendingCard.data.attack, zoneIndex: targetZoneIndex });
+          setFloatingDamage({ amount: dmg, isPlayer: attackerEffAtk < defenderEffAtk, zoneIndex: targetZoneIndex });
           setTimeout(() => setFloatingDamage(null), 1200);
         }
       }
@@ -516,6 +575,26 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           <div className="bg-[#180e2d]/95 border-2 border-amber-400 text-amber-200 px-6 py-2.5 rounded-full shadow-[0_0_30px_rgba(245,158,11,0.9)] backdrop-blur-md font-serif font-black text-sm tracking-wide flex items-center gap-2.5">
             <span className="text-lg text-amber-400">𓂀</span>
             <span>{toastMessage}</span>
+          </div>
+        </div>
+      )}
+
+      {/* 💥 BANNER DE EFEITO FLIP ATIVADO */}
+      {flipEffectBanner && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-bounce">
+          <div className="bg-gradient-to-r from-purple-950 via-amber-900 to-purple-950 border-2 border-amber-300 text-amber-200 px-8 py-3 rounded-2xl shadow-[0_0_50px_rgba(245,158,11,1)] backdrop-blur-md flex items-center gap-3">
+            <span className="text-3xl animate-spin">💥</span>
+            <div>
+              <div className="text-[10px] tracking-widest text-amber-300 font-mono uppercase font-black">
+                Efeito Especial de Virar
+              </div>
+              <div className="text-lg font-serif font-black text-white drop-shadow-[0_2px_8px_rgba(0,0,0,1)]">
+                EFEITO FLIP: {flipEffectBanner.cardName} foi ativado!
+              </div>
+            </div>
+            <span className="text-2xl">
+              {flipEffectBanner.action === 'DESTROY_MONSTER' ? '🪲' : '🐧'}
+            </span>
           </div>
         </div>
       )}
@@ -601,14 +680,30 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                   "{languagePt && inspectedCard.data.descriptionPt ? inspectedCard.data.descriptionPt : inspectedCard.data.description}"
                 </p>
 
-                <div className="flex justify-between font-mono font-black text-xs pt-1.5 mt-1 text-slate-200">
-                  <div className="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-600/60 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
-                    ATK ⚔️ {inspectedCard.data.attack}
-                  </div>
-                  <div className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-600/60 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]">
-                    DEF 🛡️ {inspectedCard.data.defense}
-                  </div>
-                </div>
+                {(() => {
+                  const isPlayerOwned = p1.monsterZones.some((m) => m?.uid === inspectedCard.uid) || p1.hand.some((c) => c.uid === inspectedCard.uid);
+                  const effectiveAtk = isPlayerOwned
+                    ? session.getEffectiveAttack(inspectedCard, p1, p2)
+                    : session.getEffectiveAttack(inspectedCard, p2, p1);
+                  const isBuffed = effectiveAtk > inspectedCard.data.attack;
+
+                  return (
+                    <div className="flex justify-between font-mono font-black text-xs pt-1.5 mt-1 text-slate-200">
+                      <div
+                        className={`px-2 py-0.5 rounded border flex items-center gap-1 transition-all ${
+                          isBuffed
+                            ? 'bg-emerald-950/90 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.7)] animate-pulse'
+                            : 'bg-amber-950/80 border-amber-600/60 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]'
+                        }`}
+                      >
+                        ATK ⚔️ {effectiveAtk} {isBuffed && <span className="text-[10px] font-sans text-yellow-300">▲</span>}
+                      </div>
+                      <div className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-600/60 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]">
+                        DEF 🛡️ {inspectedCard.data.defense}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           ) : (
@@ -774,7 +869,21 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                           {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
                         </div>
                         <div className="flex justify-between items-center text-[10px] font-mono font-black bg-black/80 px-2 py-1 rounded border border-purple-500/50">
-                          <span className="text-amber-400">⚔️ {slot.data.attack}</span>
+                          {(() => {
+                            const effectiveAtk = session.getEffectiveAttack(slot, p2, p1);
+                            const isBuffed = effectiveAtk > slot.data.attack;
+                            return (
+                              <span
+                                className={`flex items-center gap-0.5 ${
+                                  isBuffed
+                                    ? 'text-emerald-300 font-bold drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
+                                    : 'text-amber-400'
+                                }`}
+                              >
+                                ⚔️ {effectiveAtk} {isBuffed && <span className="text-[9px] text-yellow-300 font-sans">▲</span>}
+                              </span>
+                            );
+                          })()}
                           <span className="text-blue-400">🛡️ {slot.data.defense}</span>
                         </div>
                       </div>
@@ -941,7 +1050,21 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                           {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
                         </div>
                         <div className="flex justify-between items-center text-[10px] font-mono font-black bg-black/85 px-2 py-1 rounded border border-amber-500/50">
-                          <span className="text-amber-400">⚔️ {slot.data.attack}</span>
+                          {(() => {
+                            const effectiveAtk = session.getEffectiveAttack(slot, p1, p2);
+                            const isBuffed = effectiveAtk > slot.data.attack;
+                            return (
+                              <span
+                                className={`flex items-center gap-0.5 ${
+                                  isBuffed
+                                    ? 'text-emerald-300 font-bold drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
+                                    : 'text-amber-400'
+                                }`}
+                              >
+                                ⚔️ {effectiveAtk} {isBuffed && <span className="text-[9px] text-yellow-300 font-sans">▲</span>}
+                              </span>
+                            );
+                          })()}
                           <span className="text-blue-400">🛡️ {slot.data.defense}</span>
                           {slot.hasAttacked ? (
                             <span className="text-red-400 font-sans text-[9px]">Atacou</span>

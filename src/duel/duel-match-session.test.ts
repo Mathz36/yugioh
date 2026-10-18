@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { DuelMatchSession } from './duel-match-session.js';
 import { createKaibaDeck, createYugiDeck, CLASSIC_CARDS } from './starter-decks.js';
 import { DuelBot } from './duel-bot.js';
+import { CardInstance } from './duel-types.js';
 
 describe('DuelMatchSession & DuelBot Integration', () => {
   it('should initialize a match with 8000 LP, 5 cards in hand, and start directly in MAIN1', () => {
@@ -505,7 +506,7 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       },
       position: 'ATTACK',
       hasAttacked: false,
-      hasChangedPositionTherTurn: false as any,
+      hasChangedPositionThisTurn: false,
       turnSummoned: 1,
       monstersDestroyedCount: 0,
       hasAttackedDirectly: false,
@@ -772,6 +773,178 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       // Em batalha, Penguin Soldier (DEF 500) foi destruído pelo ATK 2500 do Summoned Skull
       expect(p2.monsterZones[0]).toBeNull();
       expect(p2.graveyard.some((c) => c.uid === 'penguin_soldier_p2')).toBe(true);
+    });
+
+    it('Teste 4: canActivateKuriboh e activateKuriboh descartam Kuriboh da mão para o cemitério e anulam dano', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+
+      // Limpa a mão e insere Kuriboh
+      p1.hand = [];
+      expect(session.canActivateKuriboh(p1.id)).toBe(false);
+
+      const kuribohCard: CardInstance = {
+        uid: 'kuriboh_hand_1',
+        data: CLASSIC_CARDS.KURIBOH,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+        hasUsedEffectThisTurn: false,
+      };
+      p1.hand.push(kuribohCard);
+
+      // Act 1: Verificar se pode ativar Kuriboh
+      expect(session.canActivateKuriboh(p1.id)).toBe(true);
+
+      // Act 2: Ativar Kuriboh
+      const activated = session.activateKuriboh(p1.id);
+
+      // Assert
+      expect(activated).toBe(true);
+      expect(p1.hand.some((c) => c.uid === 'kuriboh_hand_1')).toBe(false);
+      expect(p1.graveyard.some((c) => c.uid === 'kuriboh_hand_1')).toBe(true);
+      expect(session.canActivateKuriboh(p1.id)).toBe(false);
+    });
+
+    it('Teste 5: Time Wizard com resultado HEADS destrói todos os monstros do oponente', () => {
+      // Arrange
+      const session = new DuelMatchSession('Joey', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const joey = session.player1;
+      const kaiba = session.player2;
+
+      // Coloca Time Wizard no campo de Joey na zona 0
+      const timeWizard: CardInstance = {
+        uid: 'time_wizard_joey',
+        data: CLASSIC_CARDS.TIME_WIZARD,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+        hasUsedEffectThisTurn: false,
+      };
+      joey.monsterZones[0] = timeWizard;
+
+      // Coloca 2 monstros no campo de Kaiba (Blue-Eyes e Battle Ox)
+      kaiba.monsterZones[0] = {
+        uid: 'blue_eyes_kaiba',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+        hasUsedEffectThisTurn: false,
+      };
+      kaiba.monsterZones[1] = {
+        uid: 'battle_ox_kaiba',
+        data: CLASSIC_CARDS.BATTLE_OX,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+        hasUsedEffectThisTurn: false,
+      };
+
+      session.matchState.phase = 'MAIN1';
+      session.matchState.activePlayerId = joey.id;
+
+      // Mock de getRandomInt para garantir HEADS (0)
+      vi.spyOn(session as any, 'getRandomInt').mockReturnValue(0);
+
+      // Act
+      const result = session.activateTimeWizard(0);
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.outcome).toBe('HEADS');
+      expect(result.destroyedUids).toEqual(['blue_eyes_kaiba', 'battle_ox_kaiba']);
+      expect(result.burnDamage).toBe(0);
+
+      // Monstros do oponente devem ser destruídos e enviados ao cemitério
+      expect(kaiba.monsterZones[0]).toBeNull();
+      expect(kaiba.monsterZones[1]).toBeNull();
+      expect(kaiba.graveyard.some((c) => c.uid === 'blue_eyes_kaiba')).toBe(true);
+      expect(kaiba.graveyard.some((c) => c.uid === 'battle_ox_kaiba')).toBe(true);
+
+      // Joey ainda mantém seu Time Wizard e LP intactos
+      expect(joey.monsterZones[0]?.uid).toBe('time_wizard_joey');
+      expect(joey.monsterZones[0]?.hasUsedEffectThisTurn).toBe(true);
+      expect(joey.lifePoints).toBe(8000);
+
+      // Não pode ativar uma segunda vez no mesmo turno
+      const secondActivation = session.activateTimeWizard(0);
+      expect(secondActivation.success).toBe(false);
+
+      // Ao passar o turno e voltar para Joey, hasUsedEffectThisTurn reseta
+      session.endTurn(); // Kaiba turn
+      session.endTurn(); // Joey turn
+      expect(joey.monsterZones[0]?.hasUsedEffectThisTurn).toBe(false);
+    });
+
+    it('Teste 6: Time Wizard com resultado TAILS destrói os monstros do jogador e aplica metade do ATK como burn dano', () => {
+      // Arrange
+      const session = new DuelMatchSession('Joey', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const joey = session.player1;
+
+      // Coloca Time Wizard (ATK 500) e Summoned Skull (ATK 2500) no campo de Joey (Total ATK = 3000)
+      const timeWizard: CardInstance = {
+        uid: 'time_wizard_joey',
+        data: CLASSIC_CARDS.TIME_WIZARD,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+        hasUsedEffectThisTurn: false,
+      };
+      const summonedSkull: CardInstance = {
+        uid: 'skull_joey',
+        data: CLASSIC_CARDS.SUMMONED_SKULL,
+        position: 'ATTACK',
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+        hasUsedEffectThisTurn: false,
+      };
+      joey.monsterZones[0] = timeWizard;
+      joey.monsterZones[1] = summonedSkull;
+
+      session.matchState.phase = 'MAIN1';
+      session.matchState.activePlayerId = joey.id;
+
+      // Mock de getRandomInt para garantir TAILS (1)
+      vi.spyOn(session as any, 'getRandomInt').mockReturnValue(1);
+
+      // Act
+      const result = session.activateTimeWizard(0);
+
+      // Assert
+      expect(result.success).toBe(true);
+      expect(result.outcome).toBe('TAILS');
+      expect(result.destroyedUids).toEqual(['time_wizard_joey', 'skull_joey']);
+      // Dano = metade de 3000 = 1500
+      expect(result.burnDamage).toBe(1500);
+
+      // Monstros do próprio Joey devem ter sido destruídos e enviados ao cemitério
+      expect(joey.monsterZones[0]).toBeNull();
+      expect(joey.monsterZones[1]).toBeNull();
+      expect(joey.graveyard.some((c) => c.uid === 'time_wizard_joey')).toBe(true);
+      expect(joey.graveyard.some((c) => c.uid === 'skull_joey')).toBe(true);
+
+      // Joey sofre 1500 de dano: 8000 - 1500 = 6500 LP
+      expect(joey.lifePoints).toBe(6500);
     });
   });
 });

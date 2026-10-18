@@ -57,6 +57,7 @@ export class DuelMatchSession {
         turnSummoned: 0,
         monstersDestroyedCount: 0,
         hasAttackedDirectly: false,
+        hasUsedEffectThisTurn: false,
       }))
     );
 
@@ -220,6 +221,7 @@ export class DuelMatchSession {
     card.turnSummoned = this.matchState.currentTurn;
     card.hasAttacked = false;
     card.hasChangedPositionThisTurn = false;
+    card.hasUsedEffectThisTurn = false;
     player.monsterZones[targetZoneIndex] = card;
     player.hasNormalSummonedThisTurn = true;
 
@@ -297,6 +299,163 @@ export class DuelMatchSession {
     }
 
     return effectiveAtk;
+  }
+
+  /**
+   * Checks if the specified player has Kuriboh in their hand.
+   */
+  public canActivateKuriboh(playerId: string): boolean {
+    const player = this.player1.id === playerId ? this.player1 : this.player2;
+    return player.hand.some(
+      (c) =>
+        c.data.id === '40640057' ||
+        c.data.name.toLowerCase().includes('kuriboh') ||
+        (c.data.effectType === 'HAND_TRIGGER' && c.data.effectDefinition?.action === 'PREVENT_DAMAGE')
+    );
+  }
+
+  /**
+   * Discards Kuriboh from the player's hand to the GY and returns true (annulling pending battle damage), with duel log.
+   */
+  public activateKuriboh(playerId: string): boolean {
+    if (this.matchState.isGameOver) return false;
+
+    const player = this.player1.id === playerId ? this.player1 : this.player2;
+    const kuribohIndex = player.hand.findIndex(
+      (c) =>
+        c.data.id === '40640057' ||
+        c.data.name.toLowerCase().includes('kuriboh') ||
+        (c.data.effectType === 'HAND_TRIGGER' && c.data.effectDefinition?.action === 'PREVENT_DAMAGE')
+    );
+
+    if (kuribohIndex === -1) {
+      this.log(`${player.nickname} não possui Kuriboh na mão para ativar.`);
+      return false;
+    }
+
+    const [kuribohCard] = player.hand.splice(kuribohIndex, 1);
+    player.graveyard.push(kuribohCard);
+
+    this.log(`🤎 EFEITO ATIVADO DA MÃO! ${player.nickname} descartou Kuriboh para o Cemitério! O dano de batalha foi anulado!`);
+    return true;
+  }
+
+  /**
+   * Activates Time Wizard ignition effect:
+   * 50/50 Coin toss with high entropy (crypto.getRandomValues).
+   * HEADS: Destroys all opponent monsters, sending them to GY.
+   * TAILS: Destroys all user monsters and burns user LP equal to half total destroyed ATK.
+   */
+  public activateTimeWizard(
+    zoneIndex: number
+  ): {
+    success: boolean;
+    outcome: 'HEADS' | 'TAILS';
+    destroyedUids: string[];
+    burnDamage: number;
+  } {
+    const failureResult = {
+      success: false,
+      outcome: 'TAILS' as const,
+      destroyedUids: [],
+      burnDamage: 0,
+    };
+
+    if (this.matchState.isGameOver) {
+      return failureResult;
+    }
+
+    if (this.matchState.phase !== 'MAIN1' && this.matchState.phase !== 'MAIN2') {
+      this.log('O efeito de Time Wizard só pode ser ativado durante a Fase Principal.');
+      return failureResult;
+    }
+
+    if (zoneIndex < 0 || zoneIndex > 4) {
+      this.log('Zona de monstro inválida.');
+      return failureResult;
+    }
+
+    const player = this.getActivePlayer();
+    const opponent = this.getOpponentPlayer();
+
+    const timeWizardCard = player.monsterZones[zoneIndex];
+    if (!timeWizardCard) {
+      this.log('Nenhum monstro na zona para ativar o efeito.');
+      return failureResult;
+    }
+
+    const isTimeWizard =
+      timeWizardCard.data.id === '71625222' ||
+      timeWizardCard.data.name.toLowerCase().includes('time wizard') ||
+      (timeWizardCard.data.effectType === 'IGNITION' &&
+        timeWizardCard.data.effectDefinition?.action === 'COIN_TOSS_CLEAR');
+
+    if (!isTimeWizard) {
+      this.log('O monstro selecionado não é o Time Wizard.');
+      return failureResult;
+    }
+
+    if (timeWizardCard.hasUsedEffectThisTurn) {
+      this.log('Time Wizard só pode usar seu efeito uma vez por turno.');
+      return failureResult;
+    }
+
+    // Mark effect as used for this turn
+    timeWizardCard.hasUsedEffectThisTurn = true;
+
+    // Simulate high entropy 50/50 coin toss
+    const coinRoll = this.getRandomInt(2); // 0 or 1
+    const outcome: 'HEADS' | 'TAILS' = coinRoll === 0 ? 'HEADS' : 'TAILS';
+    const destroyedUids: string[] = [];
+    let burnDamage = 0;
+
+    const wizardName = timeWizardCard.data.namePt || timeWizardCard.data.name;
+    this.log(`⏰ EFEITO DE IGNIÇÃO! ${player.nickname} ativou a Roleta do Tempo de ${wizardName}! Girando a moeda...`);
+
+    if (outcome === 'HEADS') {
+      this.log(`🪙 RESULTADO: CARA (HEADS)! A magia do tempo teve sucesso absoluto!`);
+      // Destrói todos os monstros do oponente
+      for (let i = 0; i < opponent.monsterZones.length; i++) {
+        const monster = opponent.monsterZones[i];
+        if (monster) {
+          destroyedUids.push(monster.uid);
+          opponent.monsterZones[i] = null;
+          opponent.graveyard.push(monster);
+          const monName = monster.data.namePt || monster.data.name;
+          this.log(`💥 Monstro do oponente ${monName} foi destruído pelo efeito do tempo!`);
+        }
+      }
+    } else {
+      this.log(`🪙 RESULTADO: COROA (TAILS)! O feitiço do tempo voltou-se contra você!`);
+      // Destrói todos os monstros do próprio jogador e soma metade do ATK total
+      let totalDestroyedAtk = 0;
+      for (let i = 0; i < player.monsterZones.length; i++) {
+        const monster = player.monsterZones[i];
+        if (monster) {
+          destroyedUids.push(monster.uid);
+          totalDestroyedAtk += monster.data.attack;
+          player.monsterZones[i] = null;
+          player.graveyard.push(monster);
+          const monName = monster.data.namePt || monster.data.name;
+          this.log(`💥 Seu monstro ${monName} foi destruído pela explosão temporal!`);
+        }
+      }
+
+      burnDamage = Math.floor(totalDestroyedAtk / 2);
+      player.lifePoints = Math.max(0, player.lifePoints - burnDamage);
+      this.log(`🩸 ${player.nickname} sofreu ${burnDamage} de dano de efeito (metade do ATK total destruído)!`);
+
+      if (player.lifePoints <= 0) {
+        this.declareGameOver(opponent.id, `Os Pontos de Vida de ${player.nickname} chegaram a 0 pela explosão de Time Wizard!`);
+      }
+    }
+
+    return {
+      success: true,
+      outcome,
+      destroyedUids,
+      burnDamage,
+    };
   }
 
   public declareAttack(attackerZoneIndex: number, targetZoneIndex: number | null): boolean {
@@ -459,6 +618,7 @@ export class DuelMatchSession {
       if (m) {
         m.hasAttacked = false;
         m.hasChangedPositionThisTurn = false;
+        m.hasUsedEffectThisTurn = false;
       }
     });
 
