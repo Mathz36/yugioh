@@ -444,7 +444,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
       const requiredTributes = card.data.level <= 4 ? 0 : card.data.level <= 6 ? 1 : 2;
       const targetMonster = p1.monsterZones[zoneIndex];
 
-      // Caso com Sacrifício (Nível 5+)
+        // Caso com Sacrifício (Nível 5+)
       if (requiredTributes > 0) {
         // Se já selecionou os sacrifícios necessários:
         // Clicar em qualquer uma das zonas sacrificadas OU em uma zona vazia dispara a invocação imediata!
@@ -453,7 +453,11 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             executeSummon(zoneIndex, selectedTributeZones);
             return;
           }
-          showNotification(`⚠️ Você já selecionou os ${requiredTributes} sacrifício(s). Clique em uma das zonas liberadas ou vazias para invocar!`);
+          showNotification(
+            languagePt
+              ? `⚠️ Você já selecionou os ${requiredTributes} sacrifício(s). Clique em uma das zonas liberadas ou vazias para invocar!`
+              : `⚠️ You already selected ${requiredTributes} tribute(s). Click on one of the vacated or empty zones to summon!`
+          );
           return;
         }
 
@@ -468,14 +472,23 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             setSelectedTributeZones(nextTributes);
 
             if (nextTributes.length === requiredTributes) {
-              showNotification(`✨ ${requiredTributes} sacrifício(s) pronto(s)! Agora clique na zona onde deseja baixar ${card.data.namePt || card.data.name}!`);
+              const cardName = (languagePt && card.data.namePt) ? card.data.namePt : card.data.name;
+              showNotification(
+                languagePt
+                  ? `✨ ${requiredTributes} sacrifício(s) pronto(s)! Agora clique na zona onde deseja baixar ${cardName}!`
+                  : `✨ ${requiredTributes} tribute(s) ready! Now click on the zone to summon ${cardName}!`
+              );
             }
           }
           return;
         }
 
         // Clicou numa zona vazia antes de selecionar os sacrifícios
-        showNotification(`⚠️ Monstro Nível ${card.data.level} exige selecionar ${requiredTributes} monstro(s) no seu campo como sacrifício primeiro!`);
+        showNotification(
+          languagePt
+            ? `⚠️ Monstro Nível ${card.data.level} exige selecionar ${requiredTributes} monstro(s) no seu campo como sacrifício primeiro!`
+            : `⚠️ Level ${card.data.level} monster requires selecting ${requiredTributes} monster(s) on your field as tribute first!`
+        );
         return;
       }
 
@@ -511,12 +524,20 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
     if (match.phase === 'BATTLE') {
       if (currentMonster.position === 'ATTACK' && !currentMonster.hasAttacked) {
         if (currentMonster.turnSummoned === match.currentTurn) {
-          showNotification('⏳ Este monstro foi invocado neste turno e só poderá atacar no próximo turno!');
+          showNotification(
+            languagePt
+              ? '⏳ Este monstro foi invocado neste turno e só poderá atacar no próximo turno!'
+              : '⏳ This monster was summoned this turn and cannot attack until next turn!'
+          );
           return;
         }
         setSelectedAttackerZone(selectedAttackerZone === zoneIndex ? null : zoneIndex);
       } else if (currentMonster.position === 'DEFENSE') {
-        showNotification('🛡️ Monstros em Posição de Defesa não podem atacar!');
+        showNotification(
+          languagePt
+            ? '🛡️ Monstros em Posição de Defesa não podem atacar!'
+            : '🛡️ Monsters in Defense Position cannot attack!'
+        );
       }
     }
   };
@@ -645,13 +666,13 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
   // Ativação da Roleta do Tempo de Time Wizard
   const handleActivateTimeWizard = (zoneIndex: number) => {
     if (!isPlayerTurn || (match.phase !== 'MAIN1' && match.phase !== 'MAIN2')) {
-      showNotification('⏳ O efeito só pode ser ativado na Fase Principal!');
+      showNotification(languagePt ? '⏳ O efeito só pode ser ativado na Fase Principal!' : '⏳ Effect can only be activated during Main Phase!');
       return;
     }
 
     const card = p1.monsterZones[zoneIndex];
     if (!card || card.hasUsedEffectThisTurn) {
-      showNotification('⚠️ Time Wizard já usou o efeito neste turno!');
+      showNotification(languagePt ? '⚠️ Time Wizard já usou o efeito neste turno!' : '⚠️ Time Wizard already used its effect this turn!');
       return;
     }
 
@@ -670,7 +691,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         setTimeout(() => setIsCameraShaking(false), 350);
 
         setDestroyedCardUids((prev) => [...prev, ...result.destroyedUids]);
-        showNotification('⚡ TEMPO ACELERADO! O oponente teve seu campo destruído!');
+        showNotification(languagePt ? '⚡ TEMPO ACELERADO! O oponente teve seu campo destruído!' : '⚡ TIME ACCELERATED! Opponent field was destroyed!');
       } else {
         soundFX.playDestruction();
         setIsCameraShaking(true);
@@ -681,7 +702,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
           setFloatingDamage({ amount: result.burnDamage, isPlayer: true, zoneIndex: null });
           setTimeout(() => setFloatingDamage(null), 1400);
         }
-        showNotification('💥 FALHA TEMPORAL! Seus monstros foram destruídos!');
+        showNotification(languagePt ? '💥 FALHA TEMPORAL! Seus monstros foram destruídos!' : '💥 TIME BACKFIRE! Your monsters were destroyed!');
       }
 
       forceUpdate();
@@ -732,10 +753,12 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             <span className="text-3xl animate-spin">💥</span>
             <div>
               <div className="text-[10px] tracking-widest text-amber-300 font-mono uppercase font-black">
-                Efeito Especial de Virar
+                {languagePt ? 'Efeito Especial de Virar' : 'Flip Special Effect'}
               </div>
               <div className="text-lg font-serif font-black text-white drop-shadow-[0_2px_8px_rgba(0,0,0,1)]">
-                EFEITO FLIP: {flipEffectBanner.cardName} foi ativado!
+                {languagePt
+                  ? `EFEITO FLIP: ${flipEffectBanner.cardName} foi ativado!`
+                  : `FLIP EFFECT: ${flipEffectBanner.cardName} was activated!`}
               </div>
             </div>
             <span className="text-2xl">
@@ -753,23 +776,31 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               🤎
             </div>
             <h3 className="font-serif font-black text-amber-300 text-lg tracking-wider mb-1">
-              PROTEGER-SE COM KURIBOH?
+              {languagePt ? 'PROTEGER-SE COM KURIBOH?' : 'PROTECT WITH KURIBOH?'}
             </h3>
             <p className="text-xs text-slate-300 mb-4 leading-relaxed font-sans">
-              Você está prestes a receber <strong className="text-red-400 font-mono font-black">{kuribohPrompt.pendingDamage}</strong> de dano de batalha! Deseja descartar o <strong className="text-amber-300">Kuriboh</strong> da sua mão para absorver todo o dano?
+              {languagePt ? (
+                <>
+                  Você está prestes a receber <strong className="text-red-400 font-mono font-black">{kuribohPrompt.pendingDamage}</strong> de dano de batalha! Deseja descartar o <strong className="text-amber-300">Kuriboh</strong> da sua mão para absorver todo o dano?
+                </>
+              ) : (
+                <>
+                  You are about to take <strong className="text-red-400 font-mono font-black">{kuribohPrompt.pendingDamage}</strong> battle damage! Discard <strong className="text-amber-300">Kuriboh</strong> from your hand to prevent all damage?
+                </>
+              )}
             </p>
             <div className="flex space-x-3">
               <button
                 onClick={kuribohPrompt.onDecline}
                 className="flex-1 py-2 rounded-lg font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-600 font-serif"
               >
-                Receber Dano
+                {languagePt ? 'Receber Dano' : 'Take Damage'}
               </button>
               <button
                 onClick={kuribohPrompt.onAccept}
                 className="flex-1 py-2 rounded-lg font-black text-xs bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 transition-all shadow-[0_0_20px_rgba(245,158,11,0.8)] border border-yellow-200 font-serif animate-pulse flex items-center justify-center gap-1.5"
               >
-                <span>🛡️</span> Ativar Kuriboh!
+                <span>🛡️</span> {languagePt ? 'Ativar Kuriboh!' : 'Activate Kuriboh!'}
               </button>
             </div>
           </div>
@@ -781,7 +812,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
         <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-gradient-to-b from-[#1a102a] to-[#0a0512] border-2 border-yellow-400 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_0_60px_rgba(234,179,8,0.9)] flex flex-col items-center">
             <h3 className="font-serif font-black text-yellow-300 text-xl tracking-widest uppercase mb-4 drop-shadow">
-              Roleta do Tempo
+              {languagePt ? 'Roleta do Tempo' : 'Time Roulette'}
             </h3>
 
             {/* Moeda 3D Girando */}
@@ -794,24 +825,24 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
             <div className="mt-3">
               {timeWizardRoulette.isSpinning ? (
                 <p className="text-sm font-mono text-amber-200 tracking-wider animate-pulse">
-                  GIRANDO O FLUXO TEMPORAL...
+                  {languagePt ? 'GIRANDO O FLUXO TEMPORAL...' : 'SPINNING TIME FLOW...'}
                 </p>
               ) : timeWizardRoulette.outcome === 'HEADS' ? (
                 <div className="animate-bounce">
                   <span className="text-lg font-black text-emerald-400 font-serif tracking-wide block">
-                    ⚡ CARA (HEADS)!
+                    ⚡ {languagePt ? 'CARA (HEADS)!' : 'HEADS!'}
                   </span>
                   <span className="text-xs text-emerald-200/90 font-sans mt-1 block">
-                    O campo do adversário desintegrou-se!
+                    {languagePt ? 'O campo do adversário desintegrou-se!' : 'Opponent field disintegrated!'}
                   </span>
                 </div>
               ) : (
                 <div className="animate-bounce">
                   <span className="text-lg font-black text-red-500 font-serif tracking-wide block">
-                    💥 COROA (TAILS)!
+                    💥 {languagePt ? 'COROA (TAILS)!' : 'TAILS!'}
                   </span>
                   <span className="text-xs text-red-300/90 font-sans mt-1 block">
-                    A magia temporal explodiu contra você!
+                    {languagePt ? 'A magia temporal explodiu contra você!' : 'Time magic backfired against you!'}
                   </span>
                 </div>
               )}
@@ -1020,13 +1051,15 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               <div className="text-xs text-slate-300 flex items-center gap-2 mt-0.5">
                 <span>Deck: <strong className="text-amber-400 font-mono">{p2.deck.length}</strong></span>
                 <span>•</span>
-                <span>Cemitério: <strong className="text-purple-400 font-mono">{p2.graveyard.length}</strong></span>
+                <span>{languagePt ? 'Cemitério:' : 'Graveyard:'} <strong className="text-purple-400 font-mono">{p2.graveyard.length}</strong></span>
               </div>
             </div>
           </div>
 
           <div ref={opponentLpRef} className="flex items-center space-x-4">
-            <span className="text-xs uppercase font-serif tracking-widest text-slate-400 font-black">PONTOS DE VIDA</span>
+            <span className="text-xs uppercase font-serif tracking-widest text-slate-400 font-black">
+              {languagePt ? 'PONTOS DE VIDA' : 'LIFE POINTS'}
+            </span>
             <div className="bg-black/95 border-2 border-red-600 rounded-lg px-5 py-1 text-3xl font-mono font-black text-red-500 shadow-[0_0_22px_rgba(239,68,68,0.7)] tracking-wider">
               {p2.lifePoints} <span className="text-sm font-sans text-red-400 font-normal">LP</span>
             </div>
@@ -1106,7 +1139,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
 
                   {isTargetable && (
                     <div className="absolute -top-3 z-30 bg-red-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
-                      <span>🎯</span> ALVO
+                      <span>🎯</span> {languagePt ? 'ALVO' : 'TARGET'}
                     </div>
                   )}
 
@@ -1148,7 +1181,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     </div>
                   ) : (
                     <span className="text-[11px] text-purple-900/60 font-serif tracking-widest uppercase">
-                      Vazio
+                      {languagePt ? 'Vazio' : 'Empty'}
                     </span>
                   )}
                 </div>
@@ -1277,18 +1310,18 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                     <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-red-600 to-rose-700 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(239,68,68,0.9)] border border-yellow-300 animate-bounce flex items-center gap-1 uppercase tracking-wider">
                       {isTributeTargetZone ? (
                         <>
-                          <span>⚡</span> INVOCAR AQUI!
+                          <span>⚡</span> {languagePt ? 'INVOCAR AQUI!' : 'SUMMON HERE!'}
                         </>
                       ) : (
                         <>
-                          <span>🔥</span> SACRIFÍCIO
+                          <span>🔥</span> {languagePt ? 'SACRIFÍCIO' : 'TRIBUTE'}
                         </>
                       )}
                     </div>
                   ) : (
                     (isValidSummonZone || isTributeTargetZone) && (
                       <div className="absolute -top-3 z-30 bg-emerald-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
-                        <span>⬇️</span> INVOCAR
+                        <span>⬇️</span> {languagePt ? 'INVOCAR' : 'SUMMON'}
                       </div>
                     )
                   )}
@@ -1327,18 +1360,18 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                           })()}
                           <span className="text-blue-400">🛡️ {slot.data.defense}</span>
                           {slot.hasAttacked ? (
-                            <span className="text-red-400 font-sans text-[9px]">Atacou</span>
+                            <span className="text-red-400 font-sans text-[9px]">{languagePt ? 'Atacou' : 'Attacked'}</span>
                           ) : slot.turnSummoned === match.currentTurn ? (
-                            <span className="text-yellow-400 font-sans text-[9px]">Invocado ⏳</span>
+                            <span className="text-yellow-400 font-sans text-[9px]">{languagePt ? 'Invocado ⏳' : 'Summoned ⏳'}</span>
                           ) : match.phase === 'BATTLE' && !isDefense ? (
-                            <span className="text-emerald-400 font-sans text-[9px] animate-pulse">Pronto ⚔️</span>
+                            <span className="text-emerald-400 font-sans text-[9px] animate-pulse">{languagePt ? 'Pronto ⚔️' : 'Ready ⚔️'}</span>
                           ) : null}
                         </div>
                       </div>
                     </div>
                   ) : (
                     <span className="text-[11px] text-purple-900/60 font-serif tracking-widest uppercase">
-                      {isValidSummonZone ? 'Clique p/ Inserir' : 'Zona Monstro'}
+                      {isValidSummonZone ? (languagePt ? 'Clique p/ Inserir' : 'Click to Place') : (languagePt ? 'Zona Monstro' : 'Monster Zone')}
                     </span>
                   )}
                 </div>
@@ -1383,7 +1416,7 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
                 >
                   {isSelected && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-30 bg-amber-400 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow border border-white animate-bounce">
-                      ESCOLHIDA
+                      {languagePt ? 'ESCOLHIDA' : 'SELECTED'}
                     </div>
                   )}
 
@@ -1416,7 +1449,9 @@ export const Playmat: React.FC<PlaymatProps> = ({ playerNickname = 'Yugi Muto', 
               <div className="w-14 h-20 rounded border-2 border-purple-800 bg-purple-950/40 flex items-center justify-center text-xs font-mono font-bold text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.3)]">
                 {p1.graveyard.length}
               </div>
-              <span className="text-[9px] text-slate-400 uppercase font-serif tracking-wider">Cemitério</span>
+              <span className="text-[9px] text-slate-400 uppercase font-serif tracking-wider">
+                {languagePt ? 'Cemitério' : 'Graveyard'}
+              </span>
             </div>
 
             <div className="text-center">
