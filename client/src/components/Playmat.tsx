@@ -127,6 +127,20 @@ export const Playmat: React.FC<PlaymatProps> = ({
     isSpinning: boolean;
     outcome?: 'HEADS' | 'TAILS';
   } | null>(null);
+  const [raigekiActive, setRaigekiActive] = useState<boolean>(false);
+  const [mirrorForcePrompt, setMirrorForcePrompt] = useState<{
+    trapZoneIndex: number;
+    onAccept: () => void;
+    onDecline: () => void;
+  } | null>(null);
+  const [celebratoryBanner, setCelebratoryBanner] = useState<{
+    title: string;
+    icon?: string;
+  } | null>(null);
+  const [wabokuPrompt, setWabokuPrompt] = useState<{
+    zoneIndex: number;
+    card: CardInstance;
+  } | null>(null);
 
   // Metadados visuais e mensagens dinâmicas para ações táticas genéricas com alvo
   const getTacticalActionMeta = (action: string, isPt: boolean) => {
@@ -501,20 +515,280 @@ export const Playmat: React.FC<PlaymatProps> = ({
           const targetZoneIdx = target ? target.index : null;
           const { deltaX, deltaY } = calculateLungeDelta(false, attacker.index, targetZoneIdx);
 
-          // Animação de investida do Bot (Lunge) com vetor direcional exato
-          setLungingZone({ isPlayer: false, zoneIndex: attacker.index, deltaX, deltaY });
+          const proceedWithBotAttack = () => {
+            // Animação de investida do Bot (Lunge) com vetor direcional exato
+            setLungingZone({ isPlayer: false, zoneIndex: attacker.index, deltaX, deltaY });
 
-          scheduleTimer(() => {
-            soundFX.playAttackStrike();
-            setIsCameraShaking(true);
-            scheduleTimer(() => setIsCameraShaking(false), 280);
+            scheduleTimer(() => {
+              soundFX.playAttackStrike();
+              setIsCameraShaking(true);
+              scheduleTimer(() => setIsCameraShaking(false), 280);
 
-            const finishBotTurn = () => {
-              scheduleTimer(() => {
+              const finishBotTurn = () => {
+                scheduleTimer(() => {
+                  setLungingZone(null);
+                  forceUpdate();
+
+                  // 3. Fim do turno do Bot, retornando ao jogador
+                  scheduleTimer(() => {
+                    session.nextPhase(); // MAIN2
+                    session.nextPhase(); // END -> Turno do Jogador
+                    showNotification(`⚔️ É a vez de ${p1.nickname} duelar!`);
+                    forceUpdate();
+
+                    const lastCard = session.player1.hand[session.player1.hand.length - 1];
+                    if (lastCard) {
+                      soundFX.playDrawCard();
+                      setRecentDrawnUids([lastCard.uid]);
+                      scheduleTimer(() => setRecentDrawnUids([]), 900);
+                    }
+                  }, 600);
+                }, 540);
+              };
+
+              const executePlayerDamageOrKuriboh = (
+                dmgAmount: number,
+                onDamageConfirmed: () => void,
+                onShieldedAttack: () => void
+              ) => {
+                // Checa se Waboku está ativo para o jogador
+                if (session.isWabokuActiveForPlayerId === p1.id) {
+                  showNotification(
+                    languagePt
+                      ? '🕊️ O poder sagrado de Waboku protegeu seus monstros e anulou todo dano de batalha!'
+                      : '🕊️ Waboku sacred power protected your monsters and prevented all battle damage!'
+                  );
+                  onShieldedAttack();
+                  finishBotTurn();
+                  return;
+                }
+
+                if (dmgAmount > 0 && session.canActivateKuriboh(p1.id)) {
+                  setKuribohPrompt({
+                    pendingDamage: dmgAmount,
+                    onAccept: () => {
+                      session.activateKuriboh(p1.id);
+                      soundFX.playMagicShield();
+                      showNotification('🛡️ Kuriboh absorveu todo o dano do ataque!');
+                      setKuribohPrompt(null);
+                      // Executa o combate no motor (destruindo monstro se houver), com dano zerado pelo escudo do Kuriboh
+                      onShieldedAttack();
+                      finishBotTurn();
+                    },
+                    onDecline: () => {
+                      setKuribohPrompt(null);
+                      onDamageConfirmed();
+                      finishBotTurn();
+                    },
+                  });
+                } else {
+                  onDamageConfirmed();
+                  finishBotTurn();
+                }
+              };
+
+              if (opponentMonsters.length === 0) {
+                // Ataque Direto nos LPs do Jogador!
+                setTargetHitZone({ isPlayer: true, zoneIndex: null });
+                scheduleTimer(() => setTargetHitZone(null), 500);
+                const dmg = session.getEffectiveAttack(attacker.card, bot, opponent);
+
+                executePlayerDamageOrKuriboh(
+                  dmg,
+                  () => {
+                    setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: null });
+                    scheduleTimer(() => setFloatingDamage(null), 1200);
+                    session.declareAttack(attacker.index, null);
+                  },
+                  () => {
+                    session.declareAttack(attacker.index, null);
+                  }
+                );
+              } else {
+                // Encontra melhor alvo vulnerável considerando ATK efetivo
+                const target =
+                  opponentMonsters.find((t) => {
+                    const atkEff = session.getEffectiveAttack(attacker.card, bot, opponent);
+                    const defEff = session.getEffectiveAttack(t.card, opponent, bot);
+                    return (
+                      (t.card.position === 'ATTACK' && atkEff > defEff) ||
+                      (t.card.position === 'DEFENSE' && atkEff > t.card.data.defense)
+                    );
+                  }) || opponentMonsters[0];
+
+                setTargetHitZone({ isPlayer: true, zoneIndex: target.index });
+                scheduleTimer(() => setTargetHitZone(null), 500);
+
+                const attackerEffAtk = session.getEffectiveAttack(attacker.card, bot, opponent);
+                const defenderEffAtk = session.getEffectiveAttack(target.card, opponent, bot);
+
+                // Checa se a carta do jogador estava virada para baixo antes de revelar
+                const wasFaceDown = Boolean(target.card.isFaceDown);
+                if (wasFaceDown) {
+                  setFlippedZones((prev) => [...prev, { isPlayer: true, zoneIndex: target.index }]);
+                  scheduleTimer(() => {
+                    setFlippedZones((prev) => prev.filter((z) => !(z.isPlayer && z.zoneIndex === target.index)));
+                  }, 450);
+                }
+
+                const isTargetFlipDefense = wasFaceDown && target.card.position === 'DEFENSE' && target.card.data.effectType === 'FLIP';
+
+                // Checa se o alvo em DEFENSE possui Efeito FLIP (apenas se estava virado para baixo)
+                if (isTargetFlipDefense) {
+                  const flipName = (languagePt && target.card.data.namePt) ? target.card.data.namePt : target.card.data.name;
+                  const attackerName = (languagePt && attacker.card.data.namePt) ? attacker.card.data.namePt : attacker.card.data.name;
+                  const action = target.card.data.effectDefinition?.action;
+                  setFlipEffectBanner({ cardName: flipName, action: action || 'FLIP' });
+                  scheduleTimer(() => setFlipEffectBanner(null), 2500);
+
+                  if (action === 'DESTROY_MONSTER') {
+                    showNotification(
+                      languagePt
+                        ? `🪲 CONTRA-ATAQUE FLIP! ${flipName} destruiu ${attackerName}!`
+                        : `🪲 FLIP COUNTER-ATTACK! ${flipName} destroyed ${attackerName}!`
+                    );
+                    soundFX.playDestruction();
+                    setIsCameraShaking(true);
+                    scheduleTimer(() => setIsCameraShaking(false), 400);
+                    triggerCardDestruction(attacker.card.uid);
+
+                    scheduleTimer(() => {
+                      session.declareAttack(attacker.index, target.index);
+                      finishBotTurn();
+                      forceUpdate();
+                    }, 650);
+                    return;
+                  } else if (action === 'RETURN_TO_HAND') {
+                    showNotification(
+                      languagePt
+                        ? `🐧 CONTRA-ATAQUE FLIP! ${flipName} devolveu ${attackerName} para a mão!`
+                        : `🐧 FLIP COUNTER-ATTACK! ${flipName} returned ${attackerName} to hand!`
+                    );
+                    soundFX.playReturnToHand();
+                    scheduleTimer(() => {
+                      session.declareAttack(attacker.index, target.index);
+                      finishBotTurn();
+                      forceUpdate();
+                    }, 650);
+                    return;
+                  }
+
+                  // O efeito FLIP interrompe o ataque antes do cálculo de dano/destruição:
+                  // O monstro do jogador NÃO morre!
+                  session.declareAttack(attacker.index, target.index);
+                  finishBotTurn();
+                  forceUpdate();
+                  return;
+                }
+
+                const isPlayerWaboku = session.isWabokuActiveForPlayerId === p1.id;
+
+                if (target.card.position === 'ATTACK') {
+                  if (attackerEffAtk > defenderEffAtk) {
+                    const dmg = isPlayerWaboku ? 0 : attackerEffAtk - defenderEffAtk;
+                    if (!isPlayerWaboku) {
+                      triggerCardDestruction(target.card.uid);
+                      soundFX.playDestruction();
+                    } else {
+                      soundFX.playMagicShield();
+                    }
+
+                    executePlayerDamageOrKuriboh(
+                      dmg,
+                      () => {
+                        if (dmg > 0) {
+                          setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: target.index });
+                          scheduleTimer(() => setFloatingDamage(null), 1200);
+                        }
+                        session.declareAttack(attacker.index, target.index);
+                      },
+                      () => {
+                        session.declareAttack(attacker.index, target.index);
+                      }
+                    );
+                  } else if (attackerEffAtk < defenderEffAtk) {
+                    const dmg = defenderEffAtk - attackerEffAtk;
+                    triggerCardDestruction(attacker.card.uid);
+                    soundFX.playDestruction();
+                    setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: attacker.index });
+                    scheduleTimer(() => setFloatingDamage(null), 1200);
+                    session.declareAttack(attacker.index, target.index);
+                    finishBotTurn();
+                  } else {
+                    // Empate
+                    if (!isPlayerWaboku) {
+                      triggerCardDestruction([attacker.card.uid, target.card.uid]);
+                    } else {
+                      triggerCardDestruction(attacker.card.uid);
+                    }
+                    soundFX.playDestruction();
+                    session.declareAttack(attacker.index, target.index);
+                    finishBotTurn();
+                  }
+                } else if (target.card.position === 'DEFENSE') {
+                  if (attackerEffAtk > target.card.data.defense) {
+                    if (!isPlayerWaboku) {
+                      triggerCardDestruction(target.card.uid);
+                      soundFX.playDestruction();
+                    } else {
+                      soundFX.playMagicShield();
+                      showNotification(
+                        languagePt
+                          ? '🕊️ O monstro em defesa foi protegido pela aura sagrada de Waboku!'
+                          : '🕊️ Defense monster was protected by Waboku sacred aura!'
+                      );
+                    }
+                  } else if (attackerEffAtk < target.card.data.defense) {
+                    const dmg = target.card.data.defense - attackerEffAtk;
+                    setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: attacker.index });
+                    scheduleTimer(() => setFloatingDamage(null), 1200);
+                  }
+                  session.declareAttack(attacker.index, target.index);
+                  finishBotTurn();
+                }
+              }
+
+              forceUpdate();
+            }, 280);
+          };
+
+          // Reação de Armadilha do Jogador: Checa se o jogador possui Mirror Force baixada com turnSet < currentTurn
+          const playerMirrorCheck = session.canActivateMirrorForce(p1.id);
+          if (playerMirrorCheck.canActivate) {
+            setMirrorForcePrompt({
+              trapZoneIndex: playerMirrorCheck.trapZoneIndex,
+              onAccept: () => {
+                const botAttackersUids = bot.monsterZones
+                  .filter((m): m is CardInstance => m !== null && m.position === 'ATTACK')
+                  .map((m) => m.uid);
+
+                session.activateMirrorForce(p1.id, playerMirrorCheck.trapZoneIndex);
+                soundFX.playDestruction();
+                setIsCameraShaking(true);
+                scheduleTimer(() => setIsCameraShaking(false), 500);
+
+                if (botAttackersUids.length > 0) {
+                  triggerCardDestruction(botAttackersUids);
+                }
+
+                setCelebratoryBanner({
+                  title: languagePt
+                    ? '🪞 FORÇA ESPELHO ATIVADA! O ataque foi refletido e todos os monstros de ataque do adversário foram destruídos!'
+                    : '🪞 MIRROR FORCE ACTIVATED! The attack was reflected and all opponent attack position monsters were destroyed!',
+                  icon: '🪞',
+                });
+                scheduleTimer(() => setCelebratoryBanner(null), 3500);
+
+                showNotification(
+                  languagePt
+                    ? '🪞 FORÇA ESPELHO ATIVADA! O ataque foi refletido e todos os monstros de ataque do adversário foram destruídos!'
+                    : '🪞 MIRROR FORCE ACTIVATED!'
+                );
+
+                setMirrorForcePrompt(null);
                 setLungingZone(null);
                 forceUpdate();
 
-                // 3. Fim do turno do Bot, retornando ao jogador
                 scheduleTimer(() => {
                   session.nextPhase(); // MAIN2
                   session.nextPhase(); // END -> Turno do Jogador
@@ -527,181 +801,16 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     setRecentDrawnUids([lastCard.uid]);
                     scheduleTimer(() => setRecentDrawnUids([]), 900);
                   }
-                }, 600);
-              }, 540);
-            };
-
-            const executePlayerDamageOrKuriboh = (
-              dmgAmount: number,
-              onDamageConfirmed: () => void,
-              onShieldedAttack: () => void
-            ) => {
-              if (dmgAmount > 0 && session.canActivateKuriboh(p1.id)) {
-                setKuribohPrompt({
-                  pendingDamage: dmgAmount,
-                  onAccept: () => {
-                    session.activateKuriboh(p1.id);
-                    soundFX.playMagicShield();
-                    showNotification('🛡️ Kuriboh absorveu todo o dano do ataque!');
-                    setKuribohPrompt(null);
-                    // Executa o combate no motor (destruindo monstro se houver), com dano zerado pelo escudo do Kuriboh
-                    onShieldedAttack();
-                    finishBotTurn();
-                  },
-                  onDecline: () => {
-                    setKuribohPrompt(null);
-                    onDamageConfirmed();
-                    finishBotTurn();
-                  },
-                });
-              } else {
-                onDamageConfirmed();
-                finishBotTurn();
-              }
-            };
-
-            if (opponentMonsters.length === 0) {
-              // Ataque Direto nos LPs do Jogador!
-              setTargetHitZone({ isPlayer: true, zoneIndex: null });
-              scheduleTimer(() => setTargetHitZone(null), 500);
-              const dmg = session.getEffectiveAttack(attacker.card, bot, opponent);
-
-              executePlayerDamageOrKuriboh(
-                dmg,
-                () => {
-                  setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: null });
-                  scheduleTimer(() => setFloatingDamage(null), 1200);
-                  session.declareAttack(attacker.index, null);
-                },
-                () => {
-                  session.declareAttack(attacker.index, null);
-                }
-              );
-            } else {
-              // Encontra melhor alvo vulnerável considerando ATK efetivo
-              const target =
-                opponentMonsters.find((t) => {
-                  const atkEff = session.getEffectiveAttack(attacker.card, bot, opponent);
-                  const defEff = session.getEffectiveAttack(t.card, opponent, bot);
-                  return (
-                    (t.card.position === 'ATTACK' && atkEff > defEff) ||
-                    (t.card.position === 'DEFENSE' && atkEff > t.card.data.defense)
-                  );
-                }) || opponentMonsters[0];
-
-              setTargetHitZone({ isPlayer: true, zoneIndex: target.index });
-              scheduleTimer(() => setTargetHitZone(null), 500);
-
-              const attackerEffAtk = session.getEffectiveAttack(attacker.card, bot, opponent);
-              const defenderEffAtk = session.getEffectiveAttack(target.card, opponent, bot);
-
-              // Checa se a carta do jogador estava virada para baixo antes de revelar
-              const wasFaceDown = Boolean(target.card.isFaceDown);
-              if (wasFaceDown) {
-                setFlippedZones((prev) => [...prev, { isPlayer: true, zoneIndex: target.index }]);
-                scheduleTimer(() => {
-                  setFlippedZones((prev) => prev.filter((z) => !(z.isPlayer && z.zoneIndex === target.index)));
-                }, 450);
-              }
-
-              const isTargetFlipDefense = wasFaceDown && target.card.position === 'DEFENSE' && target.card.data.effectType === 'FLIP';
-
-              // Checa se o alvo em DEFENSE possui Efeito FLIP (apenas se estava virado para baixo)
-              if (isTargetFlipDefense) {
-                const flipName = (languagePt && target.card.data.namePt) ? target.card.data.namePt : target.card.data.name;
-                const attackerName = (languagePt && attacker.card.data.namePt) ? attacker.card.data.namePt : attacker.card.data.name;
-                const action = target.card.data.effectDefinition?.action;
-                setFlipEffectBanner({ cardName: flipName, action: action || 'FLIP' });
-                scheduleTimer(() => setFlipEffectBanner(null), 2500);
-
-                if (action === 'DESTROY_MONSTER') {
-                  showNotification(
-                    languagePt
-                      ? `🪲 CONTRA-ATAQUE FLIP! ${flipName} destruiu ${attackerName}!`
-                      : `🪲 FLIP COUNTER-ATTACK! ${flipName} destroyed ${attackerName}!`
-                  );
-                  soundFX.playDestruction();
-                  setIsCameraShaking(true);
-                  scheduleTimer(() => setIsCameraShaking(false), 400);
-                  triggerCardDestruction(attacker.card.uid);
-
-                  scheduleTimer(() => {
-                    session.declareAttack(attacker.index, target.index);
-                    finishBotTurn();
-                    forceUpdate();
-                  }, 650);
-                  return;
-                } else if (action === 'RETURN_TO_HAND') {
-                  showNotification(
-                    languagePt
-                      ? `🐧 CONTRA-ATAQUE FLIP! ${flipName} devolveu ${attackerName} para a mão!`
-                      : `🐧 FLIP COUNTER-ATTACK! ${flipName} returned ${attackerName} to hand!`
-                  );
-                  soundFX.playReturnToHand();
-                  scheduleTimer(() => {
-                    session.declareAttack(attacker.index, target.index);
-                    finishBotTurn();
-                    forceUpdate();
-                  }, 650);
-                  return;
-                }
-
-                // O efeito FLIP interrompe o ataque antes do cálculo de dano/destruição:
-                // O monstro do jogador NÃO morre!
-                session.declareAttack(attacker.index, target.index);
-                finishBotTurn();
-                forceUpdate();
-                return;
-              }
-
-              if (target.card.position === 'ATTACK') {
-                if (attackerEffAtk > defenderEffAtk) {
-                  const dmg = attackerEffAtk - defenderEffAtk;
-                  triggerCardDestruction(target.card.uid);
-                  soundFX.playDestruction();
-
-                  executePlayerDamageOrKuriboh(
-                    dmg,
-                    () => {
-                      setFloatingDamage({ amount: dmg, isPlayer: true, zoneIndex: target.index });
-                      scheduleTimer(() => setFloatingDamage(null), 1200);
-                      session.declareAttack(attacker.index, target.index);
-                    },
-                    () => {
-                      session.declareAttack(attacker.index, target.index);
-                    }
-                  );
-                } else if (attackerEffAtk < defenderEffAtk) {
-                  const dmg = defenderEffAtk - attackerEffAtk;
-                  triggerCardDestruction(attacker.card.uid);
-                  soundFX.playDestruction();
-                  setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: attacker.index });
-                  scheduleTimer(() => setFloatingDamage(null), 1200);
-                  session.declareAttack(attacker.index, target.index);
-                  finishBotTurn();
-                } else {
-                  // Empate
-                  triggerCardDestruction([attacker.card.uid, target.card.uid]);
-                  soundFX.playDestruction();
-                  session.declareAttack(attacker.index, target.index);
-                  finishBotTurn();
-                }
-              } else if (target.card.position === 'DEFENSE') {
-                if (attackerEffAtk > target.card.data.defense) {
-                  triggerCardDestruction(target.card.uid);
-                  soundFX.playDestruction();
-                } else if (attackerEffAtk < target.card.data.defense) {
-                  const dmg = target.card.data.defense - attackerEffAtk;
-                  setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: attacker.index });
-                  scheduleTimer(() => setFloatingDamage(null), 1200);
-                }
-                session.declareAttack(attacker.index, target.index);
-                finishBotTurn();
-              }
-            }
-
-            forceUpdate();
-          }, 280);
+                }, 1000);
+              },
+              onDecline: () => {
+                setMirrorForcePrompt(null);
+                proceedWithBotAttack();
+              },
+            });
+          } else {
+            proceedWithBotAttack();
+          }
         } else {
           // Sem ataques, passa o turno de volta
           scheduleTimer(() => {
@@ -1119,6 +1228,41 @@ export const Playmat: React.FC<PlaymatProps> = ({
             );
           }
         }
+
+        // Se for Carta Armadilha virada para baixo:
+        if (isTrapCard(currentSlot) && currentSlot.isFaceDown) {
+          if (typeof currentSlot.turnSet === 'number' && currentSlot.turnSet < match.currentTurn) {
+            const action = currentSlot.data.effectDefinition?.action;
+            const isWaboku =
+              action === 'WABOKU_SHIELD' ||
+              action === 'PREVENT_BATTLE_DAMAGE_TURN' ||
+              action === 'PREVENT_BATTLE_DAMAGE_AND_DESTRUCTION' ||
+              action === 'PREVENT_BATTLE_DAMAGE' ||
+              action === 'WABOKU' ||
+              currentSlot.data.id === '12607053' ||
+              currentSlot.data.name.toLowerCase() === 'waboku';
+
+            if (isWaboku) {
+              setWabokuPrompt({
+                zoneIndex,
+                card: currentSlot,
+              });
+              return;
+            } else {
+              showNotification(
+                languagePt
+                  ? '🪤 Esta armadilha é de ativação reativa e será disparada automaticamente em resposta às ações do adversário!'
+                  : '🪤 This trap is reactive and triggers automatically in response to opponent actions!'
+              );
+            }
+          } else {
+            showNotification(
+              languagePt
+                ? '⏳ Cartas Armadilha baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.'
+                : '⏳ Set Trap cards cannot be activated during the same turn they were placed on the field.'
+            );
+          }
+        }
       }
       return;
     }
@@ -1196,10 +1340,61 @@ export const Playmat: React.FC<PlaymatProps> = ({
     }
   };
 
+  // Executa a Ativação de Waboku pelo Jogador
+  const handleActivateWaboku = (zoneIndex: number) => {
+    const success = session.activateWaboku(p1.id, zoneIndex);
+    if (success) {
+      soundFX.playMagicShield();
+      showNotification(
+        languagePt
+          ? '🕊️ Waboku ativado! Uma aura sagrada azul e branca protege seus monstros contra destruição e anula todo dano de batalha neste turno!'
+          : '🕊️ Waboku activated! A sacred blue and white aura protects your monsters from destruction and prevents battle damage this turn!'
+      );
+      setWabokuPrompt(null);
+      forceUpdate();
+    }
+  };
+
   // Executa a Ativação de Carta Mágica com VFX cinematográficos
   const handleActivateSpell = (card: CardInstance, zoneIndex?: number) => {
     const action = card.data.effectDefinition?.action;
     const cardDisplayName = languagePt && card.data.namePt ? card.data.namePt : card.data.name;
+
+    // Efeito Raigeki: Destrói todos os monstros do oponente com animação de relâmpago e explosão
+    if (
+      action === 'DESTROY_ALL_OPPONENT_MONSTERS' ||
+      action === 'DESTROY_OPPONENT_MONSTERS' ||
+      action === 'RAIGEKI' ||
+      card.data.id === '12580477'
+    ) {
+      const oppMonsterUids: string[] = [];
+      p2.monsterZones.forEach((m) => m && oppMonsterUids.push(m.uid));
+
+      soundFX.playAttackStrike();
+      setIsCameraShaking(true);
+      setTimeout(() => setIsCameraShaking(false), 800);
+
+      setRaigekiActive(true);
+      setTimeout(() => setRaigekiActive(false), 900);
+
+      if (oppMonsterUids.length > 0) {
+        triggerCardDestruction(oppMonsterUids);
+        soundFX.playDestruction();
+      }
+
+      const success = session.activateSpell(card.uid, zoneIndex);
+      if (success) {
+        setSelectedHandCardUid(null);
+        setSpellChoiceModal(null);
+        showNotification(
+          languagePt
+            ? `⚡ ${cardDisplayName} ativado! Todos os monstros do oponente foram aniquilados pelo relâmpago!`
+            : `⚡ ${cardDisplayName} activated! All opponent monsters were destroyed by lightning!`
+        );
+        forceUpdate();
+      }
+      return;
+    }
 
     // Efeito Dark Hole (Buraco Negro): Destrói todos os monstros em ambos os campos
     if (action === 'DESTROY_ALL_MONSTERS') {
@@ -1372,6 +1567,36 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
     if (!attackingCard) return;
 
+    // Checa se o Bot possui Mirror Force baixada com turnSet < currentTurn
+    const botMirrorResult = DuelBot.tryActivateMirrorForceOnAttack(session, p2.id);
+    if (botMirrorResult.activated) {
+      soundFX.playDestruction();
+      setIsCameraShaking(true);
+      setTimeout(() => setIsCameraShaking(false), 500);
+
+      if (botMirrorResult.destroyedUids.length > 0) {
+        triggerCardDestruction(botMirrorResult.destroyedUids);
+      }
+
+      setCelebratoryBanner({
+        title: languagePt
+          ? '🪞 O ADVERSÁRIO ATIVOU FORÇA ESPELHO! Seu ataque foi refletido e todos os seus monstros de ataque foram destruídos!'
+          : '🪞 OPPONENT ACTIVATED MIRROR FORCE! Your attack was reflected and all your attack position monsters were destroyed!',
+        icon: '🪞',
+      });
+      setTimeout(() => setCelebratoryBanner(null), 3500);
+
+      showNotification(
+        languagePt
+          ? '🪞 O Bot ativou Força Espelho! Seus monstros em modo de ataque foram aniquilados!'
+          : '🪞 Opponent activated Mirror Force! Your attack position monsters were destroyed!'
+      );
+
+      setSelectedAttackerZone(null);
+      forceUpdate();
+      return;
+    }
+
     // 3. Efeitos de Ataque: Animação de Investida (Lunge) com vetor direcional exato
     const { deltaX, deltaY } = calculateLungeDelta(true, attackerZone, targetZoneIndex);
     setLungingZone({ isPlayer: true, zoneIndex: attackerZone, deltaX, deltaY });
@@ -1390,12 +1615,23 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
       // Calcular Dano e Destruição para Feedback Visual com ATK Efetivo
       const attackerEffAtk = session.getEffectiveAttack(attackingCard, p1, p2);
+      const isBotWaboku = session.isWabokuActiveForPlayerId === p2.id;
+      const isPlayerWaboku = session.isWabokuActiveForPlayerId === p1.id;
 
       if (targetZoneIndex === null) {
         // Ataque Direto
-        const dmg = attackerEffAtk;
-        setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: null });
-        setTimeout(() => setFloatingDamage(null), 1200);
+        const dmg = isBotWaboku ? 0 : attackerEffAtk;
+        if (isBotWaboku) {
+          soundFX.playMagicShield();
+          showNotification(
+            languagePt
+              ? '🕊️ O oponente está protegido pela aura sagrada de Waboku! O dano direto foi anulado!'
+              : '🕊️ Opponent is protected by Waboku! Direct damage was negated!'
+          );
+        } else {
+          setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: null });
+          setTimeout(() => setFloatingDamage(null), 1200);
+        }
       } else if (defendingCard) {
         // Monstro vs Monstro
         const defenderEffAtk = session.getEffectiveAttack(defendingCard, p2, p1);
@@ -1435,25 +1671,53 @@ export const Playmat: React.FC<PlaymatProps> = ({
         let dmg = 0;
         if (defendingCard.position === 'ATTACK') {
           if (attackerEffAtk > defenderEffAtk) {
-            dmg = attackerEffAtk - defenderEffAtk;
-            triggerCardDestruction(defendingCard.uid);
-            soundFX.playDestruction();
+            dmg = isBotWaboku ? 0 : attackerEffAtk - defenderEffAtk;
+            if (!isBotWaboku) {
+              triggerCardDestruction(defendingCard.uid);
+              soundFX.playDestruction();
+            } else {
+              soundFX.playMagicShield();
+              showNotification(
+                languagePt
+                  ? '🕊️ O monstro do oponente foi protegido pela aura sagrada de Waboku!'
+                  : '🕊️ Opponent monster was protected by Waboku!'
+              );
+            }
           } else if (attackerEffAtk < defenderEffAtk) {
-            dmg = defenderEffAtk - attackerEffAtk;
-            triggerCardDestruction(attackingCard.uid);
-            soundFX.playDestruction();
+            dmg = isPlayerWaboku ? 0 : defenderEffAtk - attackerEffAtk;
+            if (!isPlayerWaboku) {
+              triggerCardDestruction(attackingCard.uid);
+              soundFX.playDestruction();
+            } else {
+              soundFX.playMagicShield();
+            }
           } else {
             // Empate
-            triggerCardDestruction([attackingCard.uid, defendingCard.uid]);
+            if (!isBotWaboku && !isPlayerWaboku) {
+              triggerCardDestruction([attackingCard.uid, defendingCard.uid]);
+            } else if (!isBotWaboku) {
+              triggerCardDestruction(defendingCard.uid);
+            } else if (!isPlayerWaboku) {
+              triggerCardDestruction(attackingCard.uid);
+            }
             soundFX.playDestruction();
           }
         } else {
           // DEFENSE
           if (attackerEffAtk > defendingCard.data.defense) {
-            triggerCardDestruction(defendingCard.uid);
-            soundFX.playDestruction();
+            if (!isBotWaboku) {
+              triggerCardDestruction(defendingCard.uid);
+              soundFX.playDestruction();
+            } else {
+              soundFX.playMagicShield();
+              showNotification(
+                languagePt
+                  ? '🕊️ O monstro em defesa foi protegido pela aura sagrada de Waboku!'
+                  : '🕊️ Opponent defense monster was protected by Waboku!'
+              );
+            }
           } else if (attackerEffAtk < defendingCard.data.defense) {
-            dmg = defendingCard.data.defense - attackerEffAtk;
+            dmg = isPlayerWaboku ? 0 : defendingCard.data.defense - attackerEffAtk;
           }
         }
 
@@ -1560,6 +1824,10 @@ export const Playmat: React.FC<PlaymatProps> = ({
     setTargetHitZone(null);
     setFloatingDamage(null);
     setFloatingHeal(null);
+    setRaigekiActive(false);
+    setMirrorForcePrompt(null);
+    setCelebratoryBanner(null);
+    setWabokuPrompt(null);
     setCountdown(5);
     forceUpdate();
   };
@@ -1677,6 +1945,113 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   </span>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⚡ ANIMAÇÃO LENDÁRIA DE RAIGEKI: RELÂMPAGOS E DESTRUIÇÃO TOTAL */}
+      {raigekiActive && (
+        <div className="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-center animate-fadeIn bg-gradient-to-b from-sky-400/40 via-yellow-200/50 to-amber-500/30 backdrop-blur-[2px]">
+          <div className="absolute inset-0 bg-white/40 animate-ping"></div>
+          <div className="relative text-center p-6 rounded-3xl bg-black/85 border-4 border-yellow-300 shadow-[0_0_80px_rgba(250,204,21,1)]">
+            <div className="text-6xl sm:text-7xl mb-2 animate-bounce">⚡ 🌩️ ⚡</div>
+            <h2 className="text-3xl sm:text-4xl font-serif font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-200 to-yellow-500 drop-shadow-[0_0_20px_rgba(250,204,21,0.9)] uppercase">
+              {languagePt ? 'RAIGEKI !' : 'RAIGEKI !'}
+            </h2>
+            <p className="text-sm font-sans font-bold text-yellow-100 tracking-wider mt-2">
+              {languagePt
+                ? 'Relâmpagos celestiais aniquilam todas as forças do adversário!'
+                : 'Heavenly lightning annihilates all opponent monsters!'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 🪞 BANNER COMEMORATIVO DE FORÇA ESPELHO / CARTAS LENDÁRIAS */}
+      {celebratoryBanner && (
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-50 max-w-xl w-[90%] pointer-events-none animate-fadeIn">
+          <div className="bg-gradient-to-r from-purple-950/95 via-[#1a0e2e]/95 to-purple-950/95 border-2 border-cyan-400 rounded-2xl p-4 sm:p-5 text-center shadow-[0_0_50px_rgba(34,211,238,0.85)] flex items-center justify-center gap-3">
+            <span className="text-3xl sm:text-4xl animate-spin">{celebratoryBanner.icon || '🪞'}</span>
+            <div className="text-sm sm:text-base font-serif font-black text-cyan-200 tracking-wide drop-shadow-[0_0_12px_rgba(34,211,238,0.9)] leading-snug">
+              {celebratoryBanner.title}
+            </div>
+            <span className="text-3xl sm:text-4xl animate-spin">{celebratoryBanner.icon || '🪞'}</span>
+          </div>
+        </div>
+      )}
+
+      {/* 🪞 PROMPT DE REAÇÃO: ATIVAÇÃO DE FORÇA ESPELHO (MIRROR FORCE) */}
+      {mirrorForcePrompt && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-gradient-to-b from-[#1b153b] via-[#0f0b24] to-[#070512] border-2 border-cyan-400 p-6 rounded-2xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(34,211,238,0.9)]">
+            <div className="w-20 h-20 mx-auto mb-3 rounded-full border-2 border-cyan-300 bg-cyan-950/80 flex items-center justify-center text-4xl shadow-[0_0_25px_rgba(34,211,238,0.7)] animate-pulse">
+              🪞
+            </div>
+            <h3 className="font-serif font-black text-cyan-300 text-lg tracking-wider mb-2">
+              {languagePt ? 'REAÇÃO DE ARMADILHA' : 'TRAP REACTION'}
+            </h3>
+            <p className="text-xs text-slate-200 mb-5 leading-relaxed font-sans">
+              {languagePt
+                ? '⚡ Deseja ativar Força Espelho (Mirror Force) em resposta ao ataque?'
+                : '⚡ Do you wish to activate Mirror Force in response to the attack?'}
+            </p>
+            <div className="flex space-x-3">
+              <button
+                onClick={mirrorForcePrompt.onDecline}
+                className="flex-1 py-2.5 rounded-lg font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-600 font-serif"
+              >
+                {languagePt ? 'Não Ativar' : 'Do Not Activate'}
+              </button>
+              <button
+                onClick={mirrorForcePrompt.onAccept}
+                className="flex-1 py-2.5 rounded-lg font-black text-xs bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white transition-all shadow-[0_0_20px_rgba(34,211,238,0.8)] border border-cyan-300 font-serif animate-pulse flex items-center justify-center gap-1.5"
+              >
+                <span>🪞</span> {languagePt ? 'Ativar Força Espelho!' : 'Activate Mirror Force!'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🕊️ MODAL DE CONFIRMAÇÃO DE ATIVAÇÃO DE WABOKU */}
+      {wabokuPrompt && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
+          <div className="bg-[#0b1324] border-2 border-sky-400 rounded-2xl p-6 text-center max-w-sm w-full mx-4 shadow-[0_0_40px_rgba(56,189,248,0.7)]">
+            <div className="w-24 h-34 mx-auto mb-3 rounded-lg overflow-hidden border-2 border-sky-300 shadow-lg">
+              <img
+                src={wabokuPrompt.card.data.imageUrl}
+                alt={wabokuPrompt.card.data.name}
+                className="w-full h-full object-contain"
+              />
+            </div>
+
+            <h3 className="text-base font-serif font-black text-sky-300 mb-1">
+              {languagePt && wabokuPrompt.card.data.namePt
+                ? wabokuPrompt.card.data.namePt
+                : wabokuPrompt.card.data.name}
+            </h3>
+            <p className="text-xs text-sky-100/90 mb-5 leading-relaxed">
+              {languagePt
+                ? 'Deseja ativar Waboku agora? Uma aura sagrada envolverá seus monstros, impedindo sua destruição em batalha e reduzindo todo dano a 0 neste turno.'
+                : 'Do you want to activate Waboku now? A sacred aura will protect your monsters from battle destruction and reduce battle damage to 0 this turn.'}
+            </p>
+
+            <div className="flex flex-col space-y-2.5">
+              <button
+                onClick={() => handleActivateWaboku(wabokuPrompt.zoneIndex)}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 hover:from-sky-300 hover:to-blue-400 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-[0_0_20px_rgba(56,189,248,0.8)] transition-transform hover:scale-105 flex items-center justify-center gap-2"
+              >
+                <span>🕊️</span>
+                <span>{languagePt ? 'Ativar Waboku' : 'Activate Waboku'}</span>
+              </button>
+
+              <button
+                onClick={() => setWabokuPrompt(null)}
+                className="w-full py-1.5 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
+              >
+                {languagePt ? 'Cancelar' : 'Cancel'}
+              </button>
             </div>
           </div>
         </div>
@@ -2070,6 +2445,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
               const isTargetable = selectedAttackingMonster !== null && slot !== null;
               const isTacticalTargeting = Boolean(tacticalTargetSelection && slot !== null);
               const isTacticalSelected = Boolean(tacticalTargetSelection && slot && tacticalTargetSelection.selectedUids.includes(slot.uid));
+              const isWabokuProtected = Boolean(session.isWabokuActiveForPlayerId === p2.id && slot !== null);
               const isDefense = slot?.position === 'DEFENSE';
               const isSlamming = slamZone && !slamZone.isPlayer && slamZone.zoneIndex === i;
               const isHitTarget = targetHitZone && !targetHitZone.isPlayer && targetHitZone.zoneIndex === i;
@@ -2095,7 +2471,9 @@ export const Playmat: React.FC<PlaymatProps> = ({
                       : undefined
                   }
                   className={`h-24 sm:h-26 lg:h-28 rounded-lg border-2 border-dashed flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
-                    slot
+                    isWabokuProtected
+                      ? 'ring-4 ring-sky-300 shadow-[0_0_30px_rgba(186,230,254,0.9),inset_0_0_15px_rgba(255,255,255,0.8)] border-sky-300'
+                      : slot
                       ? 'border-purple-600/60 bg-purple-950/25 shadow-[0_0_15px_rgba(147,51,234,0.25)]'
                       : 'border-purple-950/70 bg-purple-950/15 hover:border-purple-600/50'
                   } ${
@@ -2129,6 +2507,14 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     <div className="absolute inset-0 rounded-full border-4 border-red-500 pointer-events-none anim-impact-ring z-40"></div>
                   )}
 
+                  {/* Badge de Aura Sagrada de Waboku */}
+                  {isWabokuProtected && (
+                    <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-sky-400 via-white to-blue-400 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow-[0_0_15px_rgba(186,230,254,0.9)] border border-white flex items-center gap-1 uppercase tracking-wider animate-pulse pointer-events-none">
+                      <span>🕊️</span>
+                      <span>{languagePt ? 'AURA SAGRADA' : 'SACRED AURA'}</span>
+                    </div>
+                  )}
+
                   {/* Indicador de Alvo de Ataque */}
                   {!isTacticalTargeting && isTargetable && (
                     <div className="absolute -top-3 z-30 bg-red-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
@@ -2159,6 +2545,11 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
                   {slot ? (
                     <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDefense ? 'card-defense-wrapper' : 'overflow-hidden'} ${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass} ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
+                      {/* Brilho Eéreo de Proteção de Waboku */}
+                      {isWabokuProtected && (
+                        <div className="absolute inset-0 bg-gradient-to-t from-sky-400/25 via-white/20 to-sky-300/30 rounded-lg pointer-events-none animate-pulse z-20 shadow-[inset_0_0_20px_rgba(255,255,255,0.6)]" />
+                      )}
+
                       {/* Imagem da Carta: Se virada para baixo, exibe verso */}
                       <img
                         src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
@@ -2335,6 +2726,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
               const isTributeTargetZone = isSelectedCardMonster && requiredTributes > 0 && selectedTributeZones.length === requiredTributes && (slot === null || isSelectedTribute);
               const isValidSummonZone = isSelectedCardMonster && requiredTributes === 0 && slot === null;
               const isSelectedAttacker = selectedAttackerZone === i;
+              const isWabokuProtected = Boolean(session.isWabokuActiveForPlayerId === p1.id && slot !== null);
               const isDefense = slot?.position === 'DEFENSE';
               const isSlamming = slamZone && slamZone.isPlayer && slamZone.zoneIndex === i;
               const isLunging = lungingZone && lungingZone.isPlayer && lungingZone.zoneIndex === i;
@@ -2359,7 +2751,9 @@ export const Playmat: React.FC<PlaymatProps> = ({
                       : undefined
                   }
                   className={`h-24 sm:h-26 lg:h-28 rounded-lg border-2 border-dashed flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
-                    (isValidSummonZone || isTributeTargetZone)
+                    isWabokuProtected
+                      ? 'ring-4 ring-sky-300 shadow-[0_0_30px_rgba(186,230,254,0.9),inset_0_0_15px_rgba(255,255,255,0.8)] border-sky-300'
+                      : (isValidSummonZone || isTributeTargetZone)
                       ? 'border-emerald-400 bg-emerald-950/40 ring-4 ring-emerald-400/80 shadow-[0_0_25px_rgba(16,185,129,0.8)] scale-102 animate-pulse'
                       : slot
                       ? 'border-purple-600/60 bg-purple-950/25 shadow-[0_0_15px_rgba(147,51,234,0.25)]'
@@ -2395,6 +2789,14 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     <div className="absolute inset-0 rounded-full border-4 border-red-500 pointer-events-none anim-impact-ring z-40"></div>
                   )}
 
+                  {/* Badge de Aura Sagrada de Waboku */}
+                  {isWabokuProtected && (
+                    <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-sky-400 via-white to-blue-400 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow-[0_0_15px_rgba(186,230,254,0.9)] border border-white flex items-center gap-1 uppercase tracking-wider animate-pulse pointer-events-none">
+                      <span>🕊️</span>
+                      <span>{languagePt ? 'AURA SAGRADA' : 'SACRED AURA'}</span>
+                    </div>
+                  )}
+
                   {/* Badge de Sacrifício Selecionado / Zona Pronta para Invocação por Tributo */}
                   {isSelectedTribute ? (
                     <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-red-600 to-rose-700 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(239,68,68,0.9)] border border-yellow-300 animate-bounce flex items-center gap-1 uppercase tracking-wider">
@@ -2418,6 +2820,11 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
                   {slot ? (
                     <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDefense ? 'card-defense-wrapper' : 'overflow-hidden'} ${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass} ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
+                      {/* Brilho Eéreo de Proteção de Waboku */}
+                      {isWabokuProtected && (
+                        <div className="absolute inset-0 bg-gradient-to-t from-sky-400/25 via-white/20 to-sky-300/30 rounded-lg pointer-events-none animate-pulse z-20 shadow-[inset_0_0_20px_rgba(255,255,255,0.6)]" />
+                      )}
+
                       {/* Imagem da Carta Original ou Verso se estiver Virada para Baixo */}
                       <img
                         src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}

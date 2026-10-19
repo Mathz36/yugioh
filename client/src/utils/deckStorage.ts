@@ -47,11 +47,36 @@ export const getPrebuiltDecksList = (): DeckModel[] => {
   ];
 };
 
-export const getAllCatalogCards = (): CardData[] => {
-  if (Array.isArray(duelistKingdomCatalog) && duelistKingdomCatalog.length > 0) {
-    return duelistKingdomCatalog as unknown as CardData[];
+export const sanitizeCatalogCards = (cards: CardData[]): CardData[] => {
+  const mapById = new Map<string, CardData>();
+  const seenNames = new Set<string>();
+
+  for (const card of cards) {
+    if (!card || !card.id || !card.name) continue;
+    const cleanId = String(card.id).trim();
+    const cleanName = card.name.toLowerCase().trim();
+
+    // Prevent duplicate IDs and duplicate card names
+    if (mapById.has(cleanId) || seenNames.has(cleanName)) {
+      continue;
+    }
+
+    mapById.set(cleanId, card);
+    seenNames.add(cleanName);
   }
-  return Object.values(CLASSIC_CARDS);
+
+  const result = Array.from(mapById.values());
+  result.sort((a, b) => a.name.localeCompare(b.name));
+  return result;
+};
+
+export const getAllCatalogCards = (): CardData[] => {
+  const rawCards: CardData[] =
+    Array.isArray(duelistKingdomCatalog) && duelistKingdomCatalog.length > 0
+      ? (duelistKingdomCatalog as unknown as CardData[])
+      : Object.values(CLASSIC_CARDS);
+
+  return sanitizeCatalogCards(rawCards);
 };
 
 export type CardFilterType = 'ALL' | 'MONSTER' | 'SPELL' | 'TRAP';

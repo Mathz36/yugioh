@@ -19,6 +19,7 @@ export class DuelMatchSession {
   public player2: PlayerDuelState;
   private instanceCounter = 0;
   private pendingDamageShieldForPlayerId: string | null = null;
+  public isWabokuActiveForPlayerId: string | null = null;
 
   constructor(
     p1Name: string,
@@ -395,6 +396,18 @@ export class DuelMatchSession {
         targetUids: selectedTargetUids,
         logFn: (msg) => this.log(msg),
       });
+    } else if (
+      action === 'DESTROY_OPPONENT_MONSTERS' ||
+      action === 'DESTROY_ALL_OPPONENT_MONSTERS' ||
+      action === 'RAIGEKI' ||
+      cardInstance.data.id === '12580477'
+    ) {
+      ACTION_HANDLERS.DESTROY_OPPONENT_MONSTERS({
+        cardInstance,
+        player,
+        opponent,
+        logFn: (msg) => this.log(msg),
+      });
     } else {
       const cardName = cardInstance.data.namePt || cardInstance.data.name;
       this.log(`✨ ${player.nickname} ativou a Carta Mágica ${cardName}!`);
@@ -541,6 +554,179 @@ export class DuelMatchSession {
   }
 
   /**
+   * Checks whether the defender has a set Mirror Force ready to trigger:
+   * - Must have a face-down trap with action TRIGGER_ON_ATTACK_MIRROR_FORCE, TRIGGER_MIRROR_FORCE or MIRROR_FORCE.
+   * - Trap must have been set in a previous turn (turnSet < currentTurn).
+   * - Attacker must have at least one monster in ATTACK position.
+   */
+  public canActivateMirrorForce(
+    defenderPlayerId: string
+  ): { canActivate: boolean; trapZoneIndex: number } {
+    if (this.matchState.isGameOver) return { canActivate: false, trapZoneIndex: -1 };
+
+    const defender = this.player1.id === defenderPlayerId ? this.player1 : this.player2;
+    const attacker = this.player1.id === defenderPlayerId ? this.player2 : this.player1;
+
+    const hasAttackingMonsters = attacker.monsterZones.some(
+      (m) => m !== null && m.position === 'ATTACK'
+    );
+    if (!hasAttackingMonsters) {
+      return { canActivate: false, trapZoneIndex: -1 };
+    }
+
+    const trapZoneIndex = defender.spellTrapZones.findIndex((card) => {
+      if (!card || !card.isFaceDown) return false;
+      if (typeof card.turnSet !== 'number' || card.turnSet >= this.matchState.currentTurn) return false;
+
+      const action = card.data.effectDefinition?.action;
+      return (
+        action === 'TRIGGER_ON_ATTACK_MIRROR_FORCE' ||
+        action === 'TRIGGER_MIRROR_FORCE' ||
+        action === 'MIRROR_FORCE' ||
+        action === 'DESTROY_ALL_ATTACK_POSITION_MONSTERS' ||
+        action === 'DESTROY_ATTACK_POSITION_MONSTERS' ||
+        card.data.id === '44095762'
+      );
+    });
+
+    if (trapZoneIndex === -1) {
+      return { canActivate: false, trapZoneIndex: -1 };
+    }
+
+    return { canActivate: true, trapZoneIndex };
+  }
+
+  /**
+   * Activates Mirror Force from the defender's spell/trap zone:
+   * Sends the Trap to the defender's GY, destroys all opponent monsters in ATTACK position,
+   * and records everything in the duel log.
+   */
+  public activateMirrorForce(
+    defenderPlayerId: string,
+    trapZoneIndex: number
+  ): boolean {
+    if (this.matchState.isGameOver) return false;
+
+    const defender = this.player1.id === defenderPlayerId ? this.player1 : this.player2;
+    const attacker = this.player1.id === defenderPlayerId ? this.player2 : this.player1;
+
+    if (trapZoneIndex < 0 || trapZoneIndex > 4) {
+      this.log('Zona de Armadilha inválida.');
+      return false;
+    }
+
+    const trapCard = defender.spellTrapZones[trapZoneIndex];
+    if (!trapCard) {
+      this.log('Nenhuma carta na Zona de Armadilha selecionada.');
+      return false;
+    }
+
+    const { canActivate } = this.canActivateMirrorForce(defenderPlayerId);
+    if (!canActivate) {
+      this.log('Condições para ativação de Força do Espelho não atendidas.');
+      return false;
+    }
+
+    // Send Trap to defender's graveyard
+    defender.spellTrapZones[trapZoneIndex] = null;
+    trapCard.isFaceDown = false;
+    defender.graveyard.push(trapCard);
+
+    // Destroy all opponent's attack position monsters via declarative handler
+    ACTION_HANDLERS.TRIGGER_MIRROR_FORCE({
+      cardInstance: trapCard,
+      player: defender,
+      opponent: attacker,
+      logFn: (msg) => this.log(msg),
+    });
+
+    return true;
+  }
+
+  /**
+   * Checks whether the specified player has a set Waboku ready to activate:
+   * - Must have a face-down trap with action WABOKU_SHIELD, PREVENT_BATTLE_DAMAGE_TURN or WABOKU.
+   * - Trap must have been set in a previous turn (turnSet < currentTurn).
+   */
+  public canActivateWaboku(
+    playerId: string
+  ): { canActivate: boolean; trapZoneIndex: number } {
+    if (this.matchState.isGameOver) return { canActivate: false, trapZoneIndex: -1 };
+
+    const player = this.player1.id === playerId ? this.player1 : this.player2;
+
+    const trapZoneIndex = player.spellTrapZones.findIndex((card) => {
+      if (!card || !card.isFaceDown) return false;
+      if (typeof card.turnSet !== 'number' || card.turnSet >= this.matchState.currentTurn) return false;
+
+      const action = card.data.effectDefinition?.action;
+      return (
+        action === 'WABOKU_SHIELD' ||
+        action === 'PREVENT_BATTLE_DAMAGE_TURN' ||
+        action === 'PREVENT_BATTLE_DAMAGE_AND_DESTRUCTION' ||
+        action === 'PREVENT_BATTLE_DAMAGE' ||
+        action === 'WABOKU' ||
+        card.data.id === '12607053' ||
+        card.data.name.toLowerCase() === 'waboku'
+      );
+    });
+
+    if (trapZoneIndex === -1) {
+      return { canActivate: false, trapZoneIndex: -1 };
+    }
+
+    return { canActivate: true, trapZoneIndex };
+  }
+
+  /**
+   * Activates Waboku from the player's spell/trap zone:
+   * Sends the Trap to the player's GY, activates the battle damage & destruction immunity shield
+   * for the player until end of turn, and records everything in the duel log.
+   */
+  public activateWaboku(
+    playerId: string,
+    trapZoneIndex: number
+  ): boolean {
+    if (this.matchState.isGameOver) return false;
+
+    const player = this.player1.id === playerId ? this.player1 : this.player2;
+    const opponent = this.player1.id === playerId ? this.player2 : this.player1;
+
+    if (trapZoneIndex < 0 || trapZoneIndex > 4) {
+      this.log('Zona de Armadilha inválida.');
+      return false;
+    }
+
+    const trapCard = player.spellTrapZones[trapZoneIndex];
+    if (!trapCard) {
+      this.log('Nenhuma carta na Zona de Armadilha selecionada.');
+      return false;
+    }
+
+    const { canActivate } = this.canActivateWaboku(playerId);
+    if (!canActivate) {
+      this.log('Condições para ativação de Waboku não atendidas.');
+      return false;
+    }
+
+    // Send Trap to player's graveyard
+    player.spellTrapZones[trapZoneIndex] = null;
+    trapCard.isFaceDown = false;
+    player.graveyard.push(trapCard);
+
+    // Activate Waboku shield via declarative handler
+    ACTION_HANDLERS.WABOKU_SHIELD({
+      cardInstance: trapCard,
+      player,
+      opponent,
+      session: this,
+      logFn: (msg) => this.log(msg),
+    });
+
+    return true;
+  }
+
+  /**
    * Activates a set Trap card from the spell/trap zone in response to a game action.
    * Enforces rules:
    * - Cannot be activated on the same turn it was set.
@@ -646,6 +832,52 @@ export class DuelMatchSession {
       }
     } else if (action === 'DESTROY_SPELL_TRAP') {
       ACTION_HANDLERS.DESTROY_SPELL_TRAP({
+        cardInstance: trapCard,
+        player: trapOwner,
+        opponent,
+        targetUids: targetMonsterUid ? [targetMonsterUid] : undefined,
+        logFn: (msg) => this.log(msg),
+      });
+    } else if (
+      action === 'TRIGGER_MIRROR_FORCE' ||
+      action === 'TRIGGER_ON_ATTACK_MIRROR_FORCE' ||
+      action === 'MIRROR_FORCE'
+    ) {
+      ACTION_HANDLERS.TRIGGER_MIRROR_FORCE({
+        cardInstance: trapCard,
+        player: trapOwner,
+        opponent,
+        logFn: (msg) => this.log(msg),
+      });
+    } else if (
+      action === 'WABOKU_SHIELD' ||
+      action === 'PREVENT_BATTLE_DAMAGE_TURN' ||
+      action === 'WABOKU'
+    ) {
+      ACTION_HANDLERS.WABOKU_SHIELD({
+        cardInstance: trapCard,
+        player: trapOwner,
+        opponent,
+        session: this,
+        logFn: (msg) => this.log(msg),
+      });
+    } else if (action === 'DESTROY_OPPONENT_MONSTERS') {
+      ACTION_HANDLERS.DESTROY_OPPONENT_MONSTERS({
+        cardInstance: trapCard,
+        player: trapOwner,
+        opponent,
+        logFn: (msg) => this.log(msg),
+      });
+    } else if (action === 'BOOST_ATK_TRAP') {
+      ACTION_HANDLERS.BOOST_ATK_TRAP({
+        cardInstance: trapCard,
+        player: trapOwner,
+        opponent,
+        targetUids: targetMonsterUid ? [targetMonsterUid] : undefined,
+        logFn: (msg) => this.log(msg),
+      });
+    } else if (action === 'BOOST_DEF_TRAP') {
+      ACTION_HANDLERS.BOOST_DEF_TRAP({
         cardInstance: trapCard,
         player: trapOwner,
         opponent,
@@ -957,7 +1189,8 @@ export class DuelMatchSession {
   public declareAttack(
     attackerZoneIndex: number,
     targetZoneIndex: number | null,
-    selectedDefenderTargetUids?: string[]
+    selectedDefenderTargetUids?: string[],
+    triggerMirrorForceTrapIndex?: number
   ): boolean {
     if (this.matchState.isGameOver) return false;
     if (this.matchState.phase !== 'BATTLE') {
@@ -995,6 +1228,23 @@ export class DuelMatchSession {
     // Cálculo dinâmico do ATK do atacante
     const attackerEffectiveAtk = this.getEffectiveAttack(attackingCard, attackerPlayer, defenderPlayer);
 
+    // Ativação reativa opcional de Mirror Force pelo defensor
+    if (typeof triggerMirrorForceTrapIndex === 'number' && triggerMirrorForceTrapIndex >= 0) {
+      const { canActivate } = this.canActivateMirrorForce(defenderPlayer.id);
+      if (canActivate) {
+        this.activateMirrorForce(defenderPlayer.id, triggerMirrorForceTrapIndex);
+      }
+    }
+
+    // Se o monstro atacante foi destruído (ex: por Mirror Force):
+    // Interrompe o combate imediatamente, preservando o defensor intacto
+    if (!attackerPlayer.monsterZones.some((m) => m?.uid === attackingCard.uid)) {
+      this.pendingDamageShieldForPlayerId = null;
+      attackingCard.hasAttacked = true;
+      this.log(`⚔️ O ataque de ${attackerName} foi interrompido porque o monstro foi destruído!`);
+      return true;
+    }
+
     // Ataque direto
     if (targetZoneIndex === null) {
       if (opponentMonsters.length > 0) {
@@ -1002,18 +1252,21 @@ export class DuelMatchSession {
         return false;
       }
 
-      const isShielded = this.pendingDamageShieldForPlayerId === defenderPlayer.id;
-      if (isShielded) {
+      const isWabokuShielded = this.isWabokuActiveForPlayerId === defenderPlayer.id;
+      const isKuribohShielded = this.pendingDamageShieldForPlayerId === defenderPlayer.id;
+      if (isKuribohShielded) {
         this.pendingDamageShieldForPlayerId = null;
       }
 
-      const damage = isShielded ? 0 : attackerEffectiveAtk;
+      const damage = (isWabokuShielded || isKuribohShielded) ? 0 : attackerEffectiveAtk;
       if (damage > 0) {
         defenderPlayer.lifePoints = Math.max(0, defenderPlayer.lifePoints - damage);
       }
       attackingCard.hasAttacked = true;
       attackingCard.hasAttackedDirectly = true;
-      if (isShielded) {
+      if (isWabokuShielded) {
+        this.log(`⚔️ ATAQUE DIRETO! ${attackerName} atacou diretamente, mas o dano de batalha foi reduzido a 0 pelo escudo de Waboku!`);
+      } else if (isKuribohShielded) {
         this.log(`⚔️ ATAQUE DIRETO! ${attackerName} atacou diretamente, mas o dano de batalha foi reduzido a 0 por Kuriboh!`);
       } else {
         this.log(`⚔️ ATAQUE DIRETO! ${attackerName} atacou diretamente causando ${damage} de dano!`);
@@ -1152,21 +1405,33 @@ export class DuelMatchSession {
 
     const result = DuelRuleEngine.calculateBattle(attackerDomain, defenderDomain);
 
-    if (result.attackerDestroyed) {
+    const isAttackerWaboku = this.isWabokuActiveForPlayerId === attackerPlayer.id;
+    const isDefenderWaboku = this.isWabokuActiveForPlayerId === defenderPlayer.id;
+
+    const shouldDestroyAttacker = result.attackerDestroyed && !isAttackerWaboku;
+    const shouldDestroyDefender = result.defenderDestroyed && !isDefenderWaboku;
+
+    if (shouldDestroyAttacker) {
       attackerPlayer.monsterZones[attackerZoneIndex] = null;
       attackerPlayer.graveyard.push(attackingCard);
       this.log(`💥 ${attackerName} foi destruído e enviado ao Cemitério!`);
+    } else if (result.attackerDestroyed && isAttackerWaboku) {
+      this.log(`🛡️ ${attackerName} foi protegido da destruição em batalha pelo escudo de Waboku!`);
     }
 
-    if (result.defenderDestroyed) {
+    if (shouldDestroyDefender) {
       defenderPlayer.monsterZones[targetZoneIndex] = null;
       defenderPlayer.graveyard.push(defendingCard);
       attackingCard.monstersDestroyedCount = (attackingCard.monstersDestroyedCount || 0) + 1;
       this.log(`💥 ${defenderName} foi destruído e enviado ao Cemitério! (${attackerName} já destruiu ${attackingCard.monstersDestroyedCount} monstros)`);
+    } else if (result.defenderDestroyed && isDefenderWaboku) {
+      this.log(`🛡️ ${defenderName} foi protegido da destruição em batalha pelo escudo de Waboku!`);
     }
 
     if (result.attackerDamageTaken > 0) {
-      if (this.pendingDamageShieldForPlayerId === attackerPlayer.id) {
+      if (isAttackerWaboku) {
+        this.log(`🛡️ O dano de batalha contra ${attackerPlayer.nickname} foi reduzido a 0 pelo escudo de Waboku!`);
+      } else if (this.pendingDamageShieldForPlayerId === attackerPlayer.id) {
         this.pendingDamageShieldForPlayerId = null;
         this.log(`🛡️ O dano de batalha contra ${attackerPlayer.nickname} foi reduzido a 0 por Kuriboh!`);
       } else {
@@ -1176,7 +1441,9 @@ export class DuelMatchSession {
     }
 
     if (result.defenderDamageTaken > 0) {
-      if (this.pendingDamageShieldForPlayerId === defenderPlayer.id) {
+      if (isDefenderWaboku) {
+        this.log(`🛡️ O dano de batalha contra ${defenderPlayer.nickname} foi reduzido a 0 pelo escudo de Waboku!`);
+      } else if (this.pendingDamageShieldForPlayerId === defenderPlayer.id) {
         this.pendingDamageShieldForPlayerId = null;
         this.log(`🛡️ O dano de batalha contra ${defenderPlayer.nickname} foi reduzido a 0 por Kuriboh!`);
       } else {
@@ -1206,6 +1473,7 @@ export class DuelMatchSession {
   public endTurn(): void {
     if (this.matchState.isGameOver) return;
     this.pendingDamageShieldForPlayerId = null;
+    this.isWabokuActiveForPlayerId = null;
 
     // Reset flags de turno
     const player = this.getActivePlayer();

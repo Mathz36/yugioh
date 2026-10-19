@@ -4322,6 +4322,491 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       expect(player.graveyard.some((c) => c.uid === dianKeto.uid)).toBe(true);
     });
   });
+
+  describe('Legendary Cards Suite - Group A: Raigeki, Mirror Force, and Waboku (AAA Pattern)', () => {
+    it('1. Teste de Raigeki (DESTROY_OPPONENT_MONSTERS): destrói todos os monstros do oponente e preserva os do jogador', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+      const opponent = session.player2;
+
+      // Coloque 2 monstros no campo do jogador
+      const pMonster1: CardInstance = {
+        uid: 'player_mon_1_dark_magician',
+        data: CLASSIC_CARDS.DARK_MAGICIAN,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const pMonster2: CardInstance = {
+        uid: 'player_mon_2_celtic_guardian',
+        data: CLASSIC_CARDS.CELTIC_GUARDIAN,
+        position: 'DEFENSE',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.monsterZones[0] = pMonster1;
+      player.monsterZones[1] = pMonster2;
+
+      // Coloque 3 monstros no campo do oponente (zonas 0, 1 e 2)
+      const oppMonster1: CardInstance = {
+        uid: 'opp_mon_1_blue_eyes',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const oppMonster2: CardInstance = {
+        uid: 'opp_mon_2_battle_ox',
+        data: CLASSIC_CARDS.BATTLE_OX,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const oppMonster3: CardInstance = {
+        uid: 'opp_mon_3_la_jinn',
+        data: CLASSIC_CARDS.LA_JINN,
+        position: 'DEFENSE',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      opponent.monsterZones[0] = oppMonster1;
+      opponent.monsterZones[1] = oppMonster2;
+      opponent.monsterZones[2] = oppMonster3;
+
+      // Adicione Raigeki (effectDefinition: { action: 'DESTROY_OPPONENT_MONSTERS' }) na mão do jogador
+      const raigeki: CardInstance = {
+        uid: 'raigeki_legendary_uid',
+        data: {
+          id: '12580477',
+          name: 'Raigeki',
+          namePt: 'Raigeki',
+          type: 'Spell Card',
+          level: 0,
+          attack: 0,
+          defense: 0,
+          description: 'Destroy all monsters your opponent controls.',
+          effectDefinition: {
+            action: 'DESTROY_OPPONENT_MONSTERS',
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.hand.push(raigeki);
+
+      // Act
+      const activated = session.activateSpell(raigeki.uid);
+
+      // Assert
+      expect(activated).toBe(true);
+
+      // TODOS os monstros do oponente vão para o cemitério dele
+      expect(opponent.monsterZones[0]).toBeNull();
+      expect(opponent.monsterZones[1]).toBeNull();
+      expect(opponent.monsterZones[2]).toBeNull();
+      expect(opponent.graveyard.some((c) => c.uid === oppMonster1.uid)).toBe(true);
+      expect(opponent.graveyard.some((c) => c.uid === oppMonster2.uid)).toBe(true);
+      expect(opponent.graveyard.some((c) => c.uid === oppMonster3.uid)).toBe(true);
+
+      // Monstros do jogador permanecem intactos no campo
+      expect(player.monsterZones[0]).not.toBeNull();
+      expect(player.monsterZones[0]?.uid).toBe(pMonster1.uid);
+      expect(player.monsterZones[1]).not.toBeNull();
+      expect(player.monsterZones[1]?.uid).toBe(pMonster2.uid);
+      expect(player.graveyard.some((c) => c.uid === pMonster1.uid)).toBe(false);
+      expect(player.graveyard.some((c) => c.uid === pMonster2.uid)).toBe(false);
+
+      // Raigeki vai para o cemitério do jogador
+      expect(player.hand.some((c) => c.uid === raigeki.uid)).toBe(false);
+      expect(player.graveyard.some((c) => c.uid === raigeki.uid)).toBe(true);
+    });
+
+    it('2. Teste de Mirror Force (Força Espelho - Reação ao Ataque): destrói atacantes em ATTACK, poupa DEFENSE e interrompe o ataque', () => {
+      // Arrange
+      const session = new DuelMatchSession('Kaiba', createKaibaDeck(), 'Yugi', createYugiDeck());
+      const attacker = session.player1;
+      const defender = session.player2;
+
+      // Coloque 2 monstros do atacante em Posição de Ataque e 1 em Posição de Defesa
+      const atkMon1: CardInstance = {
+        uid: 'attacker_mon_1_blue_eyes',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const atkMon2: CardInstance = {
+        uid: 'attacker_mon_2_battle_ox',
+        data: CLASSIC_CARDS.BATTLE_OX,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      const defMon3: CardInstance = {
+        uid: 'attacker_mon_3_kaiser_def',
+        data: CLASSIC_CARDS.RUDE_KAISER,
+        position: 'DEFENSE',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      attacker.monsterZones[0] = atkMon1;
+      attacker.monsterZones[1] = atkMon2;
+      attacker.monsterZones[2] = defMon3;
+
+      // O defensor possui Mirror Force baixada virada para baixo em turno anterior
+      const mirrorForce: CardInstance = {
+        uid: 'mirror_force_trap_uid',
+        data: {
+          id: '44095762',
+          name: 'Mirror Force',
+          namePt: 'Força Espelho',
+          type: 'Trap Card',
+          level: 0,
+          attack: 0,
+          defense: 0,
+          description: "When an opponent's monster declares an attack: Destroy all your opponent's Attack Position monsters.",
+          effectDefinition: {
+            action: 'DESTROY_ATTACK_POSITION_MONSTERS',
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      defender.spellTrapZones[0] = mirrorForce;
+
+      // Avança para o turno 3 do atacante na fase de Batalha (BATTLE)
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = attacker.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act 1: Valide canActivateMirrorForce(defenderId)
+      const mirrorCheck = session.canActivateMirrorForce(defender.id);
+      expect(mirrorCheck.canActivate).toBe(true);
+      expect(mirrorCheck.trapZoneIndex).toBe(0);
+
+      // Act 2: Ao ativar activateMirrorForce(defenderId, trapZoneIndex) em resposta à declaração de ataque
+      const activated = session.activateMirrorForce(defender.id, mirrorCheck.trapZoneIndex);
+
+      // Assert
+      expect(activated).toBe(true);
+
+      // a) A Mirror Force vai para o cemitério do defensor
+      expect(defender.spellTrapZones[0]).toBeNull();
+      expect(defender.graveyard.some((c) => c.uid === mirrorForce.uid)).toBe(true);
+
+      // b) Todos os monstros do oponente que estavam em 'ATTACK' são destruídos e vão para o cemitério
+      expect(attacker.monsterZones[0]).toBeNull();
+      expect(attacker.monsterZones[1]).toBeNull();
+      expect(attacker.graveyard.some((c) => c.uid === atkMon1.uid)).toBe(true);
+      expect(attacker.graveyard.some((c) => c.uid === atkMon2.uid)).toBe(true);
+
+      // c) O monstro que estava em 'DEFENSE' permanece vivo
+      expect(attacker.monsterZones[2]).not.toBeNull();
+      expect(attacker.monsterZones[2]?.uid).toBe(defMon3.uid);
+      expect(attacker.graveyard.some((c) => c.uid === defMon3.uid)).toBe(false);
+
+      // d) O ataque é interrompido imediatamente sem causar dano
+      expect(defender.lifePoints).toBe(8000);
+      const attackAttempt = session.declareAttack(0, 0);
+      expect(attackAttempt).toBe(false);
+      expect(defender.lifePoints).toBe(8000);
+    });
+
+    it('3. Teste de Waboku (Prevenção Total de Dano de Batalha): monstro defensor não é destruído e dano aos LPs é 0', () => {
+      // Arrange
+      const session = new DuelMatchSession('Kaiba', createKaibaDeck(), 'Yugi', createYugiDeck());
+      const attacker = session.player1;
+      const defender = session.player2;
+
+      // Atacante com 3000 ATK (Blue-Eyes White Dragon) em Modo de Ataque
+      const attackerMonster: CardInstance = {
+        uid: 'kaiba_blue_eyes_3000_atk',
+        data: CLASSIC_CARDS.BLUE_EYES, // 3000 ATK
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      attacker.monsterZones[0] = attackerMonster;
+
+      // Monstro defensor de 1000 ATK em Posição de Ataque
+      const defenderMonster: CardInstance = {
+        uid: 'yugi_mon_1000_atk_pos',
+        data: {
+          id: 'mock_defender_1000_atk',
+          name: 'Kuriboh Fighter',
+          type: 'Normal Monster',
+          level: 3,
+          attack: 1000,
+          defense: 800,
+          description: 'A 1000 ATK monster.',
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      defender.monsterZones[0] = defenderMonster;
+
+      // Defensor possui Waboku baixada virada para baixo em turno anterior
+      const waboku: CardInstance = {
+        uid: 'waboku_trap_legendary_uid',
+        data: {
+          id: '12607053',
+          name: 'Waboku',
+          namePt: 'Waboku',
+          type: 'Trap Card',
+          level: 0,
+          attack: 0,
+          defense: 0,
+          description: 'You take no battle damage this turn. Your monsters cannot be destroyed by battle this turn.',
+          effectDefinition: {
+            action: 'PREVENT_BATTLE_DAMAGE_TURN',
+          },
+        },
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      defender.spellTrapZones[0] = waboku;
+
+      // Configura turno 3 de Batalha do atacante
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = attacker.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act 1: Defensor ativa Waboku
+      const wabokuCheck = session.canActivateWaboku(defender.id);
+      expect(wabokuCheck.canActivate).toBe(true);
+      const activated = session.activateWaboku(defender.id, wabokuCheck.trapZoneIndex);
+      expect(activated).toBe(true);
+      expect(session.isWabokuActiveForPlayerId).toBe(defender.id);
+
+      // Act 2: Atacante com 3000 ATK ataca monstro de 1000 ATK em ataque
+      const attackSuccess = session.declareAttack(0, 0);
+
+      // Assert
+      expect(attackSuccess).toBe(true);
+
+      // Assegure que o monstro defensor NÃO seja destruído
+      expect(defender.monsterZones[0]).not.toBeNull();
+      expect(defender.monsterZones[0]?.uid).toBe(defenderMonster.uid);
+      expect(defender.graveyard.some((c) => c.uid === defenderMonster.uid)).toBe(false);
+
+      // Assegure que o jogador defensor sofra 0 de dano aos seus Pontos de Vida (8000 LP intactos)
+      expect(defender.lifePoints).toBe(8000);
+    });
+
+    it('4. Teste de Mirror Force integrada via parâmetro triggerMirrorForceTrapIndex em declareAttack', () => {
+      // Arrange
+      const session = new DuelMatchSession('Kaiba', createKaibaDeck(), 'Yugi', createYugiDeck());
+      const attacker = session.player1;
+      const defender = session.player2;
+
+      // Atacante com Blue-Eyes em ATTACK
+      const blueEyes: CardInstance = {
+        uid: 'kaiba_be_integrated_atk',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      attacker.monsterZones[0] = blueEyes;
+
+      // Defensor com monstro em DEFENSE
+      const celticGuardian: CardInstance = {
+        uid: 'yugi_celtic_def',
+        data: CLASSIC_CARDS.CELTIC_GUARDIAN,
+        position: 'DEFENSE',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      defender.monsterZones[0] = celticGuardian;
+
+      // Defensor possui Mirror Force setada na zona 0 em turno anterior
+      const mirrorForce: CardInstance = {
+        uid: 'trap_mf_integrated',
+        data: CLASSIC_CARDS.MIRROR_FORCE,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      defender.spellTrapZones[0] = mirrorForce;
+
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = attacker.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Act: Kaiba declara ataque passando o trap index 0 do defensor para ativar Mirror Force
+      const attackRes = session.declareAttack(0, 0, undefined, 0);
+
+      // Assert
+      expect(attackRes).toBe(true);
+      // Mirror Force vai para o cemitério
+      expect(defender.spellTrapZones[0]).toBeNull();
+      expect(defender.graveyard.some((c) => c.uid === 'trap_mf_integrated')).toBe(true);
+
+      // Atacante (Blue-Eyes) foi destruído pela Mirror Force
+      expect(attacker.monsterZones[0]).toBeNull();
+      expect(attacker.graveyard.some((c) => c.uid === 'kaiba_be_integrated_atk')).toBe(true);
+
+      // Defensor (Celtic Guardian) permaneceu intacto no campo
+      expect(defender.monsterZones[0]?.uid).toBe('yugi_celtic_def');
+      expect(defender.graveyard.some((c) => c.uid === 'yugi_celtic_def')).toBe(false);
+      expect(defender.lifePoints).toBe(8000);
+    });
+
+    it('5. Teste de Waboku: o escudo expira ao fim do turno (endTurn)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      session.isWabokuActiveForPlayerId = session.player1.id;
+
+      expect(session.isWabokuActiveForPlayerId).toBe(session.player1.id);
+
+      // Act
+      session.endTurn();
+
+      // Assert: a imunidade deve ser limpa
+      expect(session.isWabokuActiveForPlayerId).toBeNull();
+    });
+
+    it('6. Teste de Reinforcements (+500 ATK) e Castle Walls (+500 DEF)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const p1 = session.player1;
+
+      // Monstro de teste no campo (Celtic Guardian: 1400 ATK / 1200 DEF)
+      const monster: CardInstance = {
+        uid: 'target_celtic_guardian',
+        data: { ...CLASSIC_CARDS.CELTIC_GUARDIAN },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      p1.monsterZones[0] = monster;
+
+      // Reinforcements setado
+      const reinforcements: CardInstance = {
+        uid: 'trap_reinf_uid',
+        data: CLASSIC_CARDS.REINFORCEMENTS,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      p1.spellTrapZones[0] = reinforcements;
+
+      // Castle Walls setado
+      const castleWalls: CardInstance = {
+        uid: 'trap_cw_uid',
+        data: CLASSIC_CARDS.CASTLE_WALLS,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      p1.spellTrapZones[1] = castleWalls;
+
+      session.matchState.currentTurn = 3;
+      session.matchState.activePlayerId = p1.id;
+
+      // Act 1: Ativar Reinforcements (+500 ATK)
+      const reinfSuccess = session.activateTrap(reinforcements.uid, monster.uid);
+      expect(reinfSuccess).toBe(true);
+      expect(monster.data.attack).toBe(1900);
+      expect(p1.spellTrapZones[0]).toBeNull();
+      expect(p1.graveyard.some((c) => c.uid === reinforcements.uid)).toBe(true);
+
+      // Act 2: Ativar Castle Walls (+500 DEF)
+      const cwSuccess = session.activateTrap(castleWalls.uid, monster.uid);
+      expect(cwSuccess).toBe(true);
+      expect(monster.data.defense).toBe(1700);
+      expect(p1.spellTrapZones[1]).toBeNull();
+      expect(p1.graveyard.some((c) => c.uid === castleWalls.uid)).toBe(true);
+    });
+  });
 });
+
 
 

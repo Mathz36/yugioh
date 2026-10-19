@@ -294,6 +294,26 @@
     }
   },
   {
+    "id": "44209392",
+    "name": "Castle Walls",
+    "type": "Trap Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "Increase the DEF of 1 face-up monster on the field by 500 points until the end of this turn.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/44209392.jpg",
+    "race": "Normal",
+    "namePt": "Muralhas do Castelo",
+    "descriptionPt": "Escolha 1 monstro com a face para cima no campo; ele ganha 500 de DEF até o fim deste turno.",
+    "effectType": "TRIGGER",
+    "effectDefinition": {
+      "trigger": "TRIGGER",
+      "action": "BOOST_DEF_TRAP",
+      "value": 500,
+      "description_pt": "Aumente a DEF de 1 monstro virado para cima no campo em 500 pontos até o fim deste turno."
+    }
+  },
+  {
     "id": "91152256",
     "name": "Celtic Guardian",
     "type": "Normal Monster",
@@ -1571,6 +1591,25 @@
     "attribute": "WATER"
   },
   {
+    "id": "44095762",
+    "name": "Mirror Force",
+    "type": "Trap Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "When an opponent's monster declares an attack: Destroy all your opponent's Attack Position monsters.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/44095762.jpg",
+    "race": "Normal",
+    "namePt": "Força do Espelho",
+    "descriptionPt": "Quando um monstro do oponente declarar um ataque: Destrua todos os monstros em Posição de Ataque do seu oponente.",
+    "effectType": "TRIGGER",
+    "effectDefinition": {
+      "trigger": "TRIGGER",
+      "action": "TRIGGER_ON_ATTACK_MIRROR_FORCE",
+      "description_pt": "Quando um monstro do oponente declarar um ataque: Destrua todos os monstros em Posição de Ataque do seu oponente."
+    }
+  },
+  {
     "id": "33178416",
     "name": "Misairuzame",
     "type": "Normal Monster",
@@ -1963,6 +2002,24 @@
     "attribute": "WIND"
   },
   {
+    "id": "12580477",
+    "name": "Raigeki",
+    "type": "Spell Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "Destroy all monsters your opponent controls.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/12580477.jpg",
+    "race": "Normal",
+    "namePt": "Raigeki",
+    "descriptionPt": "Destrua todos os monstros que seu oponente controla.",
+    "effectType": "NORMAL",
+    "effectDefinition": {
+      "action": "DESTROY_OPPONENT_MONSTERS",
+      "description_pt": "Destrua todos os monstros que seu oponente controla."
+    }
+  },
+  {
     "id": "56260110",
     "name": "Raimei",
     "type": "Spell Card",
@@ -2015,6 +2072,26 @@
     "imageUrl": "https://images.ygoprodeck.com/images/cards/74677422.jpg",
     "race": "Dragon",
     "attribute": "DARK"
+  },
+  {
+    "id": "17814387",
+    "name": "Reinforcements",
+    "type": "Trap Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "Target 1 face-up monster on the field; it gains 500 ATK until the end of this turn.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/17814387.jpg",
+    "race": "Normal",
+    "namePt": "Reforços",
+    "descriptionPt": "Escolha 1 monstro com a face para cima no campo; ele ganha 500 de ATK até o fim deste turno.",
+    "effectType": "TRIGGER",
+    "effectDefinition": {
+      "trigger": "TRIGGER",
+      "action": "BOOST_ATK_TRAP",
+      "value": 500,
+      "description_pt": "Aumente o ATK de 1 monstro virado para cima no campo em 500 pontos até o fim deste turno."
+    }
   },
   {
     "id": "68846917",
@@ -2704,6 +2781,25 @@
     "attribute": "DARK",
     "namePt": "Saqueador Vorse",
     "descriptionPt": "Esta Besta-Guerreira perversa faz todas as coisas horríveis imagináveis e adora! Seu machado traz as marcas de suas incontáveis vítimas."
+  },
+  {
+    "id": "12607053",
+    "name": "Waboku",
+    "type": "Trap Card",
+    "level": 0,
+    "attack": 0,
+    "defense": 0,
+    "description": "You take no battle damage from your opponent's monsters this turn. Your monsters cannot be destroyed by battle this turn.",
+    "imageUrl": "https://images.ygoprodeck.com/images/cards/12607053.jpg",
+    "race": "Normal",
+    "namePt": "Waboku",
+    "descriptionPt": "Você não sofre dano de batalha neste turno. Seus monstros não podem ser destruídos em batalha neste turno.",
+    "effectType": "TRIGGER",
+    "effectDefinition": {
+      "trigger": "TRIGGER",
+      "action": "PREVENT_BATTLE_DAMAGE_TURN",
+      "description_pt": "Você não sofre dano de batalha neste turno. Seus monstros não podem ser destruídos em batalha neste turno."
+    }
   },
   {
     "id": "2483611",

@@ -7,6 +7,10 @@ export interface ActionExecutionContext {
   targetUids?: string[];
   randomIntFn?: (maxExclusive: number) => number;
   logFn?: (message: string) => void;
+  session?: {
+    isWabokuActiveForPlayerId: string | null;
+    [key: string]: any;
+  };
 }
 
 export interface BoostAtkResult {
@@ -48,6 +52,35 @@ export interface DestroySpellTrapResult {
   destroyedNames: string[];
 }
 
+export interface DestroyAttackPositionResult {
+  destroyedCardUids: string[];
+  destroyedNames: string[];
+}
+
+export interface PreventBattleDamageResult {
+  protected: boolean;
+}
+
+export interface DestroyOpponentMonstersResult {
+  destroyedCardUids: string[];
+  destroyedNames: string[];
+}
+
+export interface TriggerMirrorForceResult {
+  destroyedCardUids: string[];
+  destroyedNames: string[];
+}
+
+export interface WabokuShieldResult {
+  activated: boolean;
+  protectedPlayerId: string;
+}
+
+export interface BoostTrapResult {
+  targetMonsterUid?: string;
+  boost: number;
+}
+
 export type ActionHandlerResult =
   | BoostAtkResult
   | DestroyMonsterResult
@@ -56,7 +89,13 @@ export type ActionHandlerResult =
   | CoinTossClearResult
   | GainLpResult
   | InflictDamageResult
-  | DestroySpellTrapResult;
+  | DestroySpellTrapResult
+  | DestroyAttackPositionResult
+  | PreventBattleDamageResult
+  | DestroyOpponentMonstersResult
+  | TriggerMirrorForceResult
+  | WabokuShieldResult
+  | BoostTrapResult;
 
 /**
  * Checks whether a monster card matches the given race condition (e.g. race === 'Dragon').
@@ -370,6 +409,41 @@ export const ACTION_HANDLERS = {
   },
 
   /**
+   * DESTROY_OPPONENT_MONSTERS: Destroys all monsters on the opponent's field and sends them to the GY (e.g. Raigeki).
+   * Player's own monsters remain intact.
+   */
+  DESTROY_OPPONENT_MONSTERS(context: ActionExecutionContext): DestroyOpponentMonstersResult {
+    const { cardInstance, opponent, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const destroyedCardUids: string[] = [];
+    const destroyedNames: string[] = [];
+
+    for (let i = 0; i < opponent.monsterZones.length; i++) {
+      const monster = opponent.monsterZones[i];
+      if (monster) {
+        opponent.monsterZones[i] = null;
+        monster.isFaceDown = false;
+        opponent.graveyard.push(monster);
+        destroyedCardUids.push(monster.uid);
+        const name = monster.data.namePt || monster.data.name;
+        destroyedNames.push(name);
+      }
+    }
+
+    if (destroyedCardUids.length > 0) {
+      logFn?.(`⚡ DESTRUIÇÃO TOTAL! ${cardName} destruiu todos os monstros do oponente (${destroyedNames.join(', ')})!`);
+    } else {
+      logFn?.(`⚡ ${cardName} foi ativado, mas o oponente não controlava monstros no campo.`);
+    }
+
+    return { destroyedCardUids, destroyedNames };
+  },
+
+  DESTROY_ALL_OPPONENT_MONSTERS(context: ActionExecutionContext): DestroyOpponentMonstersResult {
+    return this.DESTROY_OPPONENT_MONSTERS(context);
+  },
+
+  /**
    * DESTROY_LOWEST_ATK_MONSTER: Destroys the opponent's face-up monster with the lowest ATK (e.g. Fissure).
    */
   DESTROY_LOWEST_ATK_MONSTER(
@@ -510,6 +584,134 @@ export const ACTION_HANDLERS = {
     }
 
     return { destroyedCardUids, destroyedNames };
+  },
+
+  /**
+   * TRIGGER_MIRROR_FORCE: Destroys all opponent monsters currently in ATTACK position (e.g. Mirror Force).
+   * Monsters in DEFENSE position are preserved.
+   */
+  TRIGGER_MIRROR_FORCE(context: ActionExecutionContext): TriggerMirrorForceResult {
+    const { cardInstance, opponent, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const destroyedCardUids: string[] = [];
+    const destroyedNames: string[] = [];
+
+    for (let i = 0; i < opponent.monsterZones.length; i++) {
+      const monster = opponent.monsterZones[i];
+      if (monster && monster.position === 'ATTACK') {
+        opponent.monsterZones[i] = null;
+        monster.isFaceDown = false;
+        opponent.graveyard.push(monster);
+        destroyedCardUids.push(monster.uid);
+        const name = monster.data.namePt || monster.data.name;
+        destroyedNames.push(name);
+        logFn?.(`💥 ${name} em Modo de Ataque foi destruído por ${cardName}!`);
+      }
+    }
+
+    if (destroyedCardUids.length > 0) {
+      logFn?.(`🪤 FORÇA DO ESPELHO! ${cardName} refletiu o ataque e destruiu todos os monstros em Posição de Ataque do oponente!`);
+    } else {
+      logFn?.(`🪤 ${cardName} foi ativado, mas não havia monstros em Posição de Ataque para destruir.`);
+    }
+
+    return { destroyedCardUids, destroyedNames };
+  },
+
+  TRIGGER_ON_ATTACK_MIRROR_FORCE(context: ActionExecutionContext): TriggerMirrorForceResult {
+    return this.TRIGGER_MIRROR_FORCE(context);
+  },
+
+  DESTROY_ATTACK_POSITION_MONSTERS(context: ActionExecutionContext): DestroyAttackPositionResult {
+    return this.TRIGGER_MIRROR_FORCE(context);
+  },
+
+  DESTROY_ALL_ATTACK_POSITION_MONSTERS(context: ActionExecutionContext): DestroyAttackPositionResult {
+    return this.TRIGGER_MIRROR_FORCE(context);
+  },
+
+  MIRROR_FORCE(context: ActionExecutionContext): DestroyAttackPositionResult {
+    return this.TRIGGER_MIRROR_FORCE(context);
+  },
+
+  /**
+   * WABOKU_SHIELD: Activates the session immunity flag (isWabokuActiveForPlayerId)
+   * to protect all player's monsters from battle destruction and make battle damage 0 until end of turn.
+   */
+  WABOKU_SHIELD(context: ActionExecutionContext): WabokuShieldResult {
+    const { cardInstance, player, session, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+
+    if (session) {
+      session.isWabokuActiveForPlayerId = player.id;
+    }
+
+    logFn?.(`🛡️ WABOKU ATIVADO! ${cardName} criou um escudo sagrado! Os monstros e Pontos de Vida de ${player.nickname} não sofrerão dano de batalha nem serão destruídos em combate até o fim do turno!`);
+
+    return { activated: true, protectedPlayerId: player.id };
+  },
+
+  PREVENT_BATTLE_DAMAGE_TURN(context: ActionExecutionContext): WabokuShieldResult {
+    return this.WABOKU_SHIELD(context);
+  },
+
+  PREVENT_BATTLE_DAMAGE_AND_DESTRUCTION(context: ActionExecutionContext): WabokuShieldResult {
+    return this.WABOKU_SHIELD(context);
+  },
+
+  PREVENT_BATTLE_DAMAGE(context: ActionExecutionContext): PreventBattleDamageResult {
+    this.WABOKU_SHIELD(context);
+    return { protected: true };
+  },
+
+  WABOKU(context: ActionExecutionContext): PreventBattleDamageResult {
+    return this.PREVENT_BATTLE_DAMAGE(context);
+  },
+
+  /**
+   * BOOST_ATK_TRAP: Reinforcements (+500 ATK to target monster).
+   */
+  BOOST_ATK_TRAP(context: ActionExecutionContext): BoostTrapResult {
+    const { cardInstance, player, targetUids, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const boost = Number(cardInstance.data.effectDefinition?.value ?? 500);
+
+    const target = targetUids && targetUids.length > 0
+      ? player.monsterZones.find((m) => m?.uid === targetUids[0])
+      : player.monsterZones.find((m) => m !== null);
+
+    if (target) {
+      target.data.attack = (target.data.attack || 0) + boost;
+      const targetName = target.data.namePt || target.data.name;
+      logFn?.(`🪤 ${cardName} aumentou o ATK de ${targetName} em +${boost}! Novo ATK: ${target.data.attack}.`);
+      return { targetMonsterUid: target.uid, boost };
+    }
+
+    logFn?.(`🪤 ${cardName} foi ativado, mas não há monstros válidos para receber o bônus.`);
+    return { boost: 0 };
+  },
+
+  /**
+   * BOOST_DEF_TRAP: Castle Walls (+500 DEF to target monster).
+   */
+  BOOST_DEF_TRAP(context: ActionExecutionContext): BoostTrapResult {
+    const { cardInstance, player, targetUids, logFn } = context;
+    const cardName = cardInstance.data.namePt || cardInstance.data.name;
+    const boost = Number(cardInstance.data.effectDefinition?.value ?? 500);
+
+    const target = targetUids && targetUids.length > 0
+      ? player.monsterZones.find((m) => m?.uid === targetUids[0])
+      : player.monsterZones.find((m) => m !== null);
+
+    if (target) {
+      target.data.defense = (target.data.defense || 0) + boost;
+      const targetName = target.data.namePt || target.data.name;
+      logFn?.(`🪤 ${cardName} aumentou a DEF de ${targetName} em +${boost}! Nova DEF: ${target.data.defense}.`);
+      return { targetMonsterUid: target.uid, boost };
+    }
+
+    logFn?.(`🪤 ${cardName} foi ativado, mas não há monstros válidos para receber o bônus.`);
+    return { boost: 0 };
   },
 };
 

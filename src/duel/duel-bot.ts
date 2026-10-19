@@ -107,11 +107,29 @@ export class DuelBot {
       }
     }
 
-    // 4. Set Trap cards (e.g., Trap Hole) in any available Spell/Trap Zone
+    // 4. Check Raigeki (DESTROY_ALL_OPPONENT_MONSTERS): use whenever opponent controls any monster
+    const raigekiCard = bot.hand.find(
+      (c) =>
+        c.data.effectDefinition?.action === 'DESTROY_ALL_OPPONENT_MONSTERS' ||
+        c.data.effectDefinition?.action === 'DESTROY_OPPONENT_MONSTERS' ||
+        c.data.id === '12580477'
+    );
+    if (raigekiCard) {
+      const oppMonsters = opponent.monsterZones.filter((m) => m !== null);
+      if (oppMonsters.length > 0) {
+        session.activateSpell(raigekiCard.uid);
+      }
+    }
+
+    // 5. Set Trap cards (e.g., Trap Hole, Mirror Force, Waboku) in any available Spell/Trap Zone
     const trapCards = bot.hand.filter((c) => {
       const typeLower = (c.data.type || '').toLowerCase();
       return (
         c.data.effectDefinition?.action === 'TRAP_TRIGGER_ON_SUMMON' ||
+        c.data.effectDefinition?.action === 'TRIGGER_MIRROR_FORCE' ||
+        c.data.effectDefinition?.action === 'MIRROR_FORCE' ||
+        c.data.effectDefinition?.action === 'WABOKU_SHIELD' ||
+        c.data.effectDefinition?.action === 'WABOKU' ||
         typeLower.includes('trap') ||
         typeLower.includes('armadilha')
       );
@@ -143,6 +161,28 @@ export class DuelBot {
       return session.activateTrapHole(defenderPlayerId, check.trapZoneIndex, summonedZoneIndex);
     }
     return false;
+  }
+
+  /**
+   * Checks if the defending player has a ready Mirror Force when an attack is declared,
+   * and activates it automatically if the defender is the Bot (or when invoked by the engine/UI).
+   */
+  public static tryActivateMirrorForceOnAttack(
+    session: DuelMatchSession,
+    defenderPlayerId: string
+  ): { activated: boolean; destroyedUids: string[] } {
+    const check = session.canActivateMirrorForce(defenderPlayerId);
+    if (check.canActivate && check.trapZoneIndex !== -1) {
+      const attacker = defenderPlayerId === session.player1.id ? session.player2 : session.player1;
+      const attackMonsters = attacker.monsterZones.filter(
+        (m): m is CardInstance => m !== null && m.position === 'ATTACK'
+      );
+      const destroyedUids = attackMonsters.map((m) => m.uid);
+
+      const success = session.activateMirrorForce(defenderPlayerId, check.trapZoneIndex);
+      return { activated: success, destroyedUids };
+    }
+    return { activated: false, destroyedUids: [] };
   }
 
   public static evaluateAndSummon(session: DuelMatchSession): { summonedCard: CardInstance; zoneIndex: number } | null {

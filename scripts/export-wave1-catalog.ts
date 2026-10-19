@@ -103,7 +103,61 @@ export const SUB_WAVE_2A_METADATA: Record<string, { effectType: CardEffectType; 
       },
     },
   },
+  // --- Grupo A ---
+  // Raigeki (12580477)
+  '12580477': {
+    namePt: 'Raigeki',
+    effectType: 'NORMAL',
+    effectDefinition: {
+      action: 'DESTROY_OPPONENT_MONSTERS',
+      description_pt: 'Destrua todos os monstros que seu oponente controla.',
+    },
+  },
+  // Mirror Force (44095762)
+  '44095762': {
+    namePt: 'Força do Espelho',
+    effectType: 'TRIGGER',
+    effectDefinition: {
+      trigger: 'TRIGGER',
+      action: 'TRIGGER_ON_ATTACK_MIRROR_FORCE',
+      description_pt: 'Quando um monstro do oponente declarar um ataque: Destrua todos os monstros em Posição de Ataque do seu oponente.',
+    },
+  },
+  // Waboku (12607053)
+  '12607053': {
+    namePt: 'Waboku',
+    effectType: 'TRIGGER',
+    effectDefinition: {
+      trigger: 'TRIGGER',
+      action: 'PREVENT_BATTLE_DAMAGE_TURN',
+      description_pt: 'Você não sofre dano de batalha neste turno. Seus monstros não podem ser destruídos em batalha neste turno.',
+    },
+  },
+  // Reinforcements (17814387)
+  '17814387': {
+    namePt: 'Reforços',
+    effectType: 'TRIGGER',
+    effectDefinition: {
+      trigger: 'TRIGGER',
+      action: 'BOOST_ATK_TRAP',
+      value: 500,
+      description_pt: 'Aumente o ATK de 1 monstro virado para cima no campo em 500 pontos até o fim deste turno.',
+    },
+  },
+  // Castle Walls (44209392)
+  '44209392': {
+    namePt: 'Muralhas do Castelo',
+    effectType: 'TRIGGER',
+    effectDefinition: {
+      trigger: 'TRIGGER',
+      action: 'BOOST_DEF_TRAP',
+      value: 500,
+      description_pt: 'Aumente a DEF de 1 monstro virado para cima no campo em 500 pontos até o fim deste turno.',
+    },
+  },
 };
+
+export const GROUP_A_METADATA = SUB_WAVE_2A_METADATA;
 
 export class Wave1CatalogExporter {
   private readonly supabase: SupabaseClient;

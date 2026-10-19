@@ -11,6 +11,7 @@ import {
   isSpellType,
   isTrapType,
   filterCatalogByType,
+  sanitizeCatalogCards,
 } from './deckStorage';
 import { CLASSIC_CARDS } from '@duel/starter-decks';
 
@@ -204,4 +205,134 @@ describe('Wave 1 Expanded Catalog Integrity & Filtering Suite', () => {
     expect(trapCards.some((c) => c.name === 'Trap Hole')).toBe(true);
   });
 });
+
+describe('Regression Suite: Zero Duplicates & Image URL / ID Integrity (AAA Pattern)', () => {
+  it('Teste 1: should guarantee 0 duplicate IDs and 0 duplicate names in catalog', () => {
+    // Arrange
+    const catalog = getAllCatalogCards();
+
+    // Act
+    const seenIds = new Set<string>();
+    const duplicateIds: string[] = [];
+    const seenNames = new Set<string>();
+    const duplicateNames: string[] = [];
+
+    for (const card of catalog) {
+      const normalizedId = String(card.id).trim();
+      if (seenIds.has(normalizedId)) {
+        duplicateIds.push(`${card.name} (id: ${normalizedId})`);
+      } else {
+        seenIds.add(normalizedId);
+      }
+
+      const normalizedName = card.name.toLowerCase().trim();
+      if (seenNames.has(normalizedName)) {
+        duplicateNames.push(`${card.name} (id: ${normalizedId})`);
+      } else {
+        seenNames.add(normalizedName);
+      }
+    }
+
+    // Assert
+    expect(duplicateIds).toEqual([]);
+    expect(duplicateNames).toEqual([]);
+    expect(seenIds.size).toBe(catalog.length);
+    expect(seenNames.size).toBe(catalog.length);
+  });
+
+  it('Teste 2: should ensure every card image URL strictly matches its official card ID (preventing Gate Guardian image on Waboku)', () => {
+    // Arrange
+    const catalog = getAllCatalogCards();
+
+    // Act & Assert
+    const mismatches: string[] = [];
+
+    for (const card of catalog) {
+      const urlMatch = card.imageUrl && card.imageUrl.match(/\/(\d+)\.(jpg|png)/);
+      if (!urlMatch) {
+        mismatches.push(`${card.name}: Missing valid numeric ID in imageUrl (${card.imageUrl})`);
+        continue;
+      }
+      const imgIdNum = parseInt(urlMatch[1], 10);
+      const cardIdNum = parseInt(card.id, 10);
+
+      if (imgIdNum !== cardIdNum) {
+        mismatches.push(`${card.name}: Card ID (${card.id}) != Image URL ID (${urlMatch[1]})`);
+      }
+    }
+
+    expect(mismatches).toEqual([]);
+
+    // Specific regression validations for reported bugs:
+    // 1. Waboku must be ID 12607053 with 12607053.jpg (NEVER 25833572 which is Gate Guardian)
+    const waboku = catalog.find((c) => c.name.toLowerCase() === 'waboku');
+    expect(waboku).toBeDefined();
+    expect(waboku?.id).toBe('12607053');
+    expect(waboku?.imageUrl).toContain('12607053.jpg');
+    expect(waboku?.imageUrl).not.toContain('25833572');
+
+    // 2. Gate Guardian passcode (25833572) must never be assigned to a Trap card or named Waboku
+    const fakeTrap = catalog.find((c) => String(c.id) === '25833572' || c.imageUrl.includes('25833572'));
+    if (fakeTrap) {
+      expect(fakeTrap.type).not.toContain('Trap');
+      expect(fakeTrap.name.toLowerCase()).not.toBe('waboku');
+    }
+
+    // 3. Castle Walls must be official passcode 44209392 with 44209392.jpg
+    const castleWalls = catalog.find((c) => c.name.toLowerCase() === 'castle walls');
+    expect(castleWalls).toBeDefined();
+    expect(castleWalls?.id).toBe('44209392');
+    expect(castleWalls?.imageUrl).toContain('44209392.jpg');
+  });
+
+  it('Teste 3: should guarantee 0 cross-contamination between Monsters and Spells/Traps', () => {
+    // Arrange
+    const catalog = getAllCatalogCards();
+
+    // Act
+    const monsters = filterCatalogByType(catalog, 'MONSTER');
+    const spells = filterCatalogByType(catalog, 'SPELL');
+    const traps = filterCatalogByType(catalog, 'TRAP');
+
+    // Assert: No Spells or Traps leak into Monsters filter
+    const spellsInMonsters = monsters.filter((c) => isSpellType(c.type) || isTrapType(c.type));
+    expect(spellsInMonsters).toHaveLength(0);
+
+    // No Raigeki or Mirror Force in monsters
+    expect(monsters.some((c) => c.name === 'Raigeki')).toBe(false);
+    expect(monsters.some((c) => c.name === 'Mirror Force')).toBe(false);
+    expect(monsters.some((c) => c.name === 'Waboku')).toBe(false);
+
+    // No Monsters in Spells or Traps
+    expect(spells.some((c) => isMonsterType(c.type))).toBe(false);
+    expect(traps.some((c) => isMonsterType(c.type))).toBe(false);
+
+    // Exactly one copy of Raigeki, Mirror Force, Waboku in catalog
+    expect(catalog.filter((c) => c.name === 'Raigeki')).toHaveLength(1);
+    expect(catalog.filter((c) => c.name === 'Mirror Force')).toHaveLength(1);
+    expect(catalog.filter((c) => c.name === 'Waboku')).toHaveLength(1);
+  });
+
+  it('Teste 4: should automatically deduplicate and sanitize corrupted raw lists maintaining alphabetical sort', () => {
+    // Arrange: Simulate dirty list with duplicate IDs, duplicate names, and corrupted entries
+    const dirtyList = [
+      { id: '1001', name: 'Zombies', type: 'Normal Monster', level: 3, attack: 1000, defense: 1000, description: '', imageUrl: 'https://images.ygoprodeck.com/images/cards/1001.jpg' },
+      { id: '1001', name: 'Zombies Duplicate', type: 'Normal Monster', level: 3, attack: 1000, defense: 1000, description: '', imageUrl: 'https://images.ygoprodeck.com/images/cards/1001.jpg' },
+      { id: '1002', name: 'Alpha Warrior', type: 'Normal Monster', level: 4, attack: 1400, defense: 1200, description: '', imageUrl: 'https://images.ygoprodeck.com/images/cards/1002.jpg' },
+      { id: '1003', name: 'Alpha Warrior', type: 'Normal Monster', level: 4, attack: 1400, defense: 1200, description: '', imageUrl: 'https://images.ygoprodeck.com/images/cards/1003.jpg' },
+      { id: '1004', name: 'Beta Beetle', type: 'Normal Monster', level: 2, attack: 500, defense: 500, description: '', imageUrl: 'https://images.ygoprodeck.com/images/cards/1004.jpg' },
+    ];
+
+    // Act
+    const cleaned = sanitizeCatalogCards(dirtyList);
+
+    // Assert
+    expect(cleaned).toHaveLength(3);
+    // Deduplicated by ID (1001 kept once) and by Name ('Alpha Warrior' kept once)
+    expect(cleaned.map((c) => c.id)).toEqual(['1002', '1004', '1001']);
+    // Sorted alphabetically
+    expect(cleaned.map((c) => c.name)).toEqual(['Alpha Warrior', 'Beta Beetle', 'Zombies']);
+  });
+});
+
 
