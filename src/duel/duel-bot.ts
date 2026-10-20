@@ -144,15 +144,20 @@ export class DuelBot {
 
   /**
    * Checks if the defending player has a ready Trap Hole when a monster is Normal Summoned face-up,
-   * and activates it automatically if the defender is the Bot (or when invoked by the engine/UI).
+   * and activates it automatically ONLY if the defender is the AI Bot (player2).
+   * For the human player, DuelBot must NEVER auto-activate actions.
    */
   public static tryActivateTrapHoleOnSummon(
     session: DuelMatchSession,
     defenderPlayerId: string,
     summonedZoneIndex: number
   ): boolean {
-    const attackerPlayer =
-      defenderPlayerId === session.player1.id ? session.player2 : session.player1;
+    // Only auto-execute for the AI Bot. Never auto-execute for human players.
+    if (defenderPlayerId !== session.player2.id) {
+      return false;
+    }
+
+    const attackerPlayer = session.player1;
     const summonedMonster = attackerPlayer.monsterZones[summonedZoneIndex];
     if (!summonedMonster || summonedMonster.isFaceDown) return false;
 
@@ -164,16 +169,55 @@ export class DuelBot {
   }
 
   /**
+   * Clean query method to check if a player has any valid Trap reaction (e.g. Trap Hole)
+   * in response to an opponent's face-up Normal Summon.
+   * Purely returns query status; does NOT execute the trap automatically.
+   */
+  public static checkPlayerReactionOnSummon(
+    session: DuelMatchSession,
+    playerId: string,
+    summonedMonsterZoneIndex: number
+  ): { canActivate: boolean; trapZoneIndex: number; card?: CardInstance | null } {
+    const reactingPlayer = session.player1.id === playerId ? session.player1 : session.player2;
+    const opponentPlayer = session.player1.id === playerId ? session.player2 : session.player1;
+
+    if (summonedMonsterZoneIndex < 0 || summonedMonsterZoneIndex >= opponentPlayer.monsterZones.length) {
+      return { canActivate: false, trapZoneIndex: -1 };
+    }
+
+    const summonedMonster = opponentPlayer.monsterZones[summonedMonsterZoneIndex];
+    if (!summonedMonster || summonedMonster.isFaceDown) {
+      return { canActivate: false, trapZoneIndex: -1 };
+    }
+
+    const check = session.canActivateTrapHole(summonedMonster, playerId);
+    if (check.canActivate && check.trapZoneIndex !== -1) {
+      return {
+        canActivate: true,
+        trapZoneIndex: check.trapZoneIndex,
+        card: reactingPlayer.spellTrapZones[check.trapZoneIndex] ?? null,
+      };
+    }
+
+    return { canActivate: false, trapZoneIndex: -1 };
+  }
+
+  /**
    * Checks if the defending player has a ready Mirror Force when an attack is declared,
-   * and activates it automatically if the defender is the Bot (or when invoked by the engine/UI).
+   * and activates it automatically ONLY if the defender is the AI Bot (player2).
    */
   public static tryActivateMirrorForceOnAttack(
     session: DuelMatchSession,
     defenderPlayerId: string
   ): { activated: boolean; destroyedUids: string[] } {
+    // Only auto-execute for the AI Bot. Never auto-execute for human players.
+    if (defenderPlayerId !== session.player2.id) {
+      return { activated: false, destroyedUids: [] };
+    }
+
     const check = session.canActivateMirrorForce(defenderPlayerId);
     if (check.canActivate && check.trapZoneIndex !== -1) {
-      const attacker = defenderPlayerId === session.player1.id ? session.player2 : session.player1;
+      const attacker = session.player1;
       const attackMonsters = attacker.monsterZones.filter(
         (m): m is CardInstance => m !== null && m.position === 'ATTACK'
       );

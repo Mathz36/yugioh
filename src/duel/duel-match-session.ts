@@ -680,8 +680,12 @@ export class DuelMatchSession {
 
   /**
    * Activates Waboku from the player's spell/trap zone:
-   * Sends the Trap to the player's GY, activates the battle damage & destruction immunity shield
-   * for the player until end of turn, and records everything in the duel log.
+   * - Validates that the card is Waboku.
+   * - Validates that the card is face-down.
+   * - Validates that the card was set in a previous turn (turnSet < currentTurn).
+   * - Activates this.isWabokuActiveForPlayerId = playerId.
+   * - Sends the Waboku to the player's graveyard.
+   * - Records everything in the duel log.
    */
   public activateWaboku(
     playerId: string,
@@ -703,18 +707,44 @@ export class DuelMatchSession {
       return false;
     }
 
-    const { canActivate } = this.canActivateWaboku(playerId);
-    if (!canActivate) {
-      this.log('Condições para ativação de Waboku não atendidas.');
+    // Valida se está face-down
+    if (!trapCard.isFaceDown) {
+      this.log('A Carta Armadilha Waboku deve estar virada para baixo para ser ativada.');
       return false;
     }
 
-    // Send Trap to player's graveyard
+    // Valida se turnSet < currentTurn
+    if (typeof trapCard.turnSet !== 'number' || trapCard.turnSet >= this.matchState.currentTurn) {
+      this.log('⏳ Cartas Armadilha baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.');
+      return false;
+    }
+
+    // Valida se a carta é Waboku
+    const action = trapCard.data.effectDefinition?.action;
+    const isWaboku =
+      action === 'WABOKU_SHIELD' ||
+      action === 'PREVENT_BATTLE_DAMAGE_TURN' ||
+      action === 'PREVENT_BATTLE_DAMAGE_AND_DESTRUCTION' ||
+      action === 'PREVENT_BATTLE_DAMAGE' ||
+      action === 'WABOKU' ||
+      trapCard.data.id === '12607053' ||
+      trapCard.data.id === '25833572' ||
+      trapCard.data.name.toLowerCase() === 'waboku';
+
+    if (!isWaboku) {
+      this.log('A carta selecionada não é Waboku.');
+      return false;
+    }
+
+    // Envia o Waboku ao cemitério do jogador
     player.spellTrapZones[trapZoneIndex] = null;
     trapCard.isFaceDown = false;
     player.graveyard.push(trapCard);
 
-    // Activate Waboku shield via declarative handler
+    // Ativa this.isWabokuActiveForPlayerId = playerId
+    this.isWabokuActiveForPlayerId = playerId;
+
+    // Registra no log de duelo via declarative handler
     ACTION_HANDLERS.WABOKU_SHIELD({
       cardInstance: trapCard,
       player,
@@ -764,8 +794,8 @@ export class DuelMatchSession {
       return false;
     }
 
-    // Traps cannot be activated in the same turn they were set
-    if (trapCard.turnSet === this.matchState.currentTurn) {
+    // Traps cannot be activated in the same turn they were set (turnSet < currentTurn required)
+    if (typeof trapCard.turnSet !== 'number' || trapCard.turnSet >= this.matchState.currentTurn) {
       this.log('⏳ Cartas Armadilha não podem ser ativadas no mesmo turno em que foram baixadas.');
       return false;
     }
@@ -852,8 +882,14 @@ export class DuelMatchSession {
     } else if (
       action === 'WABOKU_SHIELD' ||
       action === 'PREVENT_BATTLE_DAMAGE_TURN' ||
-      action === 'WABOKU'
+      action === 'PREVENT_BATTLE_DAMAGE_AND_DESTRUCTION' ||
+      action === 'PREVENT_BATTLE_DAMAGE' ||
+      action === 'WABOKU' ||
+      trapCard.data.id === '12607053' ||
+      trapCard.data.id === '25833572' ||
+      trapCard.data.name.toLowerCase() === 'waboku'
     ) {
+      this.isWabokuActiveForPlayerId = trapOwner.id;
       ACTION_HANDLERS.WABOKU_SHIELD({
         cardInstance: trapCard,
         player: trapOwner,

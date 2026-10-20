@@ -16,6 +16,22 @@ export interface PlaymatProps {
   onExitToMenu?: () => void;
 }
 
+export interface PriorityPrompt {
+  type: 'TRAP_HOLE' | 'MIRROR_FORCE' | 'KURIBOH' | 'WABOKU';
+  badge: string;
+  badgeIcon?: string;
+  title: string;
+  cardName: string;
+  cardImage?: string;
+  cardType?: string;
+  message: React.ReactNode;
+  confirmText: string;
+  declineText: string;
+  accentColor?: 'amber' | 'cyan' | 'purple' | 'sky';
+  onConfirm: () => void;
+  onDecline: () => void;
+}
+
 export const Playmat: React.FC<PlaymatProps> = ({
   playerNickname = 'Yugi Muto',
   playerDeck,
@@ -118,28 +134,15 @@ export const Playmat: React.FC<PlaymatProps> = ({
     cardUid?: string;
     isSpell?: boolean;
   } | null>(null);
-  const [kuribohPrompt, setKuribohPrompt] = useState<{
-    pendingDamage: number;
-    onAccept: () => void;
-    onDecline: () => void;
-  } | null>(null);
+  const [priorityPrompt, setPriorityPrompt] = useState<PriorityPrompt | null>(null);
   const [timeWizardRoulette, setTimeWizardRoulette] = useState<{
     isSpinning: boolean;
     outcome?: 'HEADS' | 'TAILS';
   } | null>(null);
   const [raigekiActive, setRaigekiActive] = useState<boolean>(false);
-  const [mirrorForcePrompt, setMirrorForcePrompt] = useState<{
-    trapZoneIndex: number;
-    onAccept: () => void;
-    onDecline: () => void;
-  } | null>(null);
   const [celebratoryBanner, setCelebratoryBanner] = useState<{
     title: string;
     icon?: string;
-  } | null>(null);
-  const [wabokuPrompt, setWabokuPrompt] = useState<{
-    zoneIndex: number;
-    card: CardInstance;
   } | null>(null);
 
   // Metadados visuais e mensagens dinâmicas para ações táticas genéricas com alvo
@@ -441,47 +444,17 @@ export const Playmat: React.FC<PlaymatProps> = ({
       forceUpdate();
       if (session.matchState.isGameOver) return;
 
-      // 1b. Bot Summon com animação de Slam
-      if (!bot.hasNormalSummonedThisTurn) {
-        const summonResult = DuelBot.evaluateAndSummon(session);
-        if (summonResult) {
-          soundFX.playPlaceCard();
-          setSlamZone({ isPlayer: false, zoneIndex: summonResult.zoneIndex });
-          scheduleTimer(() => setSlamZone(null), 500);
+      // Helper para prosseguir com a Main Phase pós-invocação e transição para Battle Phase
+      const proceedWithBotTurnAfterSummon = () => {
+        if (session.matchState.isGameOver) return;
 
-          // Verifica se o Jogador possui Trap Hole (Buraco Armadilha) armada contra a invocação do Bot
-          if (!summonResult.summonedCard.isFaceDown) {
-            const summonedUid = summonResult.summonedCard.uid;
-            const summonedName =
-              languagePt && summonResult.summonedCard.data.namePt
-                ? summonResult.summonedCard.data.namePt
-                : summonResult.summonedCard.data.name;
-            const trapTriggered = DuelBot.tryActivateTrapHoleOnSummon(
-              session,
-              p1.id,
-              summonResult.zoneIndex
-            );
-            if (trapTriggered) {
-              soundFX.playDestruction();
-              triggerCardDestruction(summonedUid);
-              showNotification(
-                languagePt
-                  ? `🕳️ Buraco Armadilha ativado! ${summonedName} foi destruído!`
-                  : `🕳️ Trap Hole activated! ${summonedName} was destroyed!`
-              );
-            }
-          }
-          forceUpdate();
-        }
-      }
+        // 1c. Reavalia Magias/Armadilhas pós-invocação
+        DuelBot.evaluateAndPlaySpellsAndTraps(session);
+        forceUpdate();
+        if (session.matchState.isGameOver) return;
 
-      // 1c. Reavalia Magias/Armadilhas pós-invocação
-      DuelBot.evaluateAndPlaySpellsAndTraps(session);
-      forceUpdate();
-      if (session.matchState.isGameOver) return;
-
-      // 2. Transição para Battle Phase
-      scheduleTimer(() => {
+        // 2. Transição para Battle Phase
+        scheduleTimer(() => {
         session.nextPhase(); // Move to BATTLE
         forceUpdate();
 
@@ -564,19 +537,50 @@ export const Playmat: React.FC<PlaymatProps> = ({
                 }
 
                 if (dmgAmount > 0 && session.canActivateKuriboh(p1.id)) {
-                  setKuribohPrompt({
-                    pendingDamage: dmgAmount,
-                    onAccept: () => {
+                  const kuribohCard = p1.hand.find(
+                    (c) =>
+                      c.data.id === '40640057' ||
+                      c.data.name.toLowerCase() === 'kuriboh' ||
+                      c.data.effectDefinition?.action === 'PREVENT_BATTLE_DAMAGE' ||
+                      c.data.effectDefinition?.action === 'KURIBOH_DISCARD'
+                  );
+                  const kuribohName =
+                    languagePt && kuribohCard?.data.namePt ? kuribohCard.data.namePt : 'Kuriboh';
+
+                  setPriorityPrompt({
+                    type: 'KURIBOH',
+                    badge: languagePt ? 'EFEITO RÁPIDO DA MÃO' : 'HAND QUICK EFFECT',
+                    badgeIcon: '🤎',
+                    title: languagePt ? 'JANELA DE PRIORIDADE' : 'PRIORITY WINDOW',
+                    cardName: kuribohName,
+                    cardImage: kuribohCard?.data.imageUrl,
+                    cardType: 'MONSTER',
+                    accentColor: 'amber',
+                    message: languagePt ? (
+                      <>
+                        Você está prestes a receber <strong className="text-red-400 font-mono font-black text-sm">{dmgAmount}</strong> de dano de batalha! Deseja descartar <strong className="text-amber-300">{kuribohName}</strong> da sua mão para absorver todo o dano?
+                      </>
+                    ) : (
+                      <>
+                        You are about to take <strong className="text-red-400 font-mono font-black text-sm">{dmgAmount}</strong> battle damage! Discard <strong className="text-amber-300">{kuribohName}</strong> from your hand to prevent all damage?
+                      </>
+                    ),
+                    confirmText: languagePt ? 'Ativar Kuriboh ⚡' : 'Activate Kuriboh ⚡',
+                    declineText: languagePt ? 'Receber Dano ❌' : 'Take Damage ❌',
+                    onConfirm: () => {
+                      setPriorityPrompt(null);
                       session.activateKuriboh(p1.id);
                       soundFX.playMagicShield();
-                      showNotification('🛡️ Kuriboh absorveu todo o dano do ataque!');
-                      setKuribohPrompt(null);
-                      // Executa o combate no motor (destruindo monstro se houver), com dano zerado pelo escudo do Kuriboh
+                      showNotification(
+                        languagePt
+                          ? '🛡️ Kuriboh absorveu todo o dano do ataque!'
+                          : '🛡️ Kuriboh absorbed all battle damage!'
+                      );
                       onShieldedAttack();
                       finishBotTurn();
                     },
                     onDecline: () => {
-                      setKuribohPrompt(null);
+                      setPriorityPrompt(null);
                       onDamageConfirmed();
                       finishBotTurn();
                     },
@@ -755,9 +759,28 @@ export const Playmat: React.FC<PlaymatProps> = ({
           // Reação de Armadilha do Jogador: Checa se o jogador possui Mirror Force baixada com turnSet < currentTurn
           const playerMirrorCheck = session.canActivateMirrorForce(p1.id);
           if (playerMirrorCheck.canActivate) {
-            setMirrorForcePrompt({
-              trapZoneIndex: playerMirrorCheck.trapZoneIndex,
-              onAccept: () => {
+            const trapCard = p1.spellTrapZones[playerMirrorCheck.trapZoneIndex];
+            const trapName =
+              languagePt && trapCard?.data.namePt
+                ? trapCard.data.namePt
+                : (trapCard?.data.name || 'Força Espelho');
+
+            setPriorityPrompt({
+              type: 'MIRROR_FORCE',
+              badge: languagePt ? 'RESPOSTA DE ATAQUE' : 'ATTACK REACTION',
+              badgeIcon: '🪞',
+              title: languagePt ? 'JANELA DE PRIORIDADE' : 'PRIORITY WINDOW',
+              cardName: trapName,
+              cardImage: trapCard?.data.imageUrl,
+              cardType: 'TRAP',
+              accentColor: 'cyan',
+              message: languagePt
+                ? '⚡ Deseja ativar Força Espelho (Mirror Force) em resposta ao ataque?'
+                : '⚡ Do you wish to activate Mirror Force in response to the attack?',
+              confirmText: languagePt ? 'Ativar Força Espelho ⚡' : 'Activate Mirror Force ⚡',
+              declineText: languagePt ? 'Guardar / Passar ❌' : 'Keep / Pass ❌',
+              onConfirm: () => {
+                setPriorityPrompt(null);
                 const botAttackersUids = bot.monsterZones
                   .filter((m): m is CardInstance => m !== null && m.position === 'ATTACK')
                   .map((m) => m.uid);
@@ -785,7 +808,6 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     : '🪞 MIRROR FORCE ACTIVATED!'
                 );
 
-                setMirrorForcePrompt(null);
                 setLungingZone(null);
                 forceUpdate();
 
@@ -804,7 +826,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                 }, 1000);
               },
               onDecline: () => {
-                setMirrorForcePrompt(null);
+                setPriorityPrompt(null);
                 proceedWithBotAttack();
               },
             });
@@ -828,8 +850,97 @@ export const Playmat: React.FC<PlaymatProps> = ({
           }, 600);
         }
       }, 950);
-    }, 950);
-  };
+    };
+
+    let hasPausedForReaction = false;
+
+    // 1b. Bot Summon com animação de Slam e Janela de Prioridade para Trap Hole
+    if (!bot.hasNormalSummonedThisTurn) {
+      const summonResult = DuelBot.evaluateAndSummon(session);
+      if (summonResult) {
+        soundFX.playPlaceCard();
+        setSlamZone({ isPlayer: false, zoneIndex: summonResult.zoneIndex });
+        scheduleTimer(() => setSlamZone(null), 500);
+
+        // Verifica se o Jogador possui Trap Hole (Buraco Armadilha) armada contra a invocação do Bot
+        if (!summonResult.summonedCard.isFaceDown) {
+          const summonedMonster = summonResult.summonedCard;
+          const summonedUid = summonedMonster.uid;
+          const summonedName =
+            languagePt && summonedMonster.data.namePt
+              ? summonedMonster.data.namePt
+              : summonedMonster.data.name;
+          const summonedAtk = summonedMonster.data.attack;
+
+          const reaction = DuelBot.checkPlayerReactionOnSummon(
+            session,
+            p1.id,
+            summonResult.zoneIndex
+          );
+
+          if (reaction.canActivate && reaction.trapZoneIndex !== -1) {
+            hasPausedForReaction = true;
+            const trapCard = reaction.card || p1.spellTrapZones[reaction.trapZoneIndex];
+            const trapName =
+              languagePt && trapCard?.data.namePt
+                ? trapCard.data.namePt
+                : (trapCard?.data.name || 'Buraco Armadilha');
+
+            setPriorityPrompt({
+              type: 'TRAP_HOLE',
+              badge: languagePt ? 'RESPOSTA DE INVOCAÇÃO' : 'SUMMON REACTION',
+              badgeIcon: '🕳️',
+              title: languagePt ? 'JANELA DE PRIORIDADE' : 'PRIORITY WINDOW',
+              cardName: trapName,
+              cardImage: trapCard?.data.imageUrl,
+              cardType: 'TRAP',
+              accentColor: 'purple',
+              message: languagePt
+                ? `🕳️ O oponente invocou ${summonedName} (ATK ${summonedAtk}). Deseja ativar sua carta armadilha ${trapName}?`
+                : `🕳️ Opponent summoned ${summonedName} (ATK ${summonedAtk}). Do you wish to activate your trap card ${trapName}?`,
+              confirmText: languagePt ? 'Ativar Armadilha ⚡' : 'Activate Trap ⚡',
+              declineText: languagePt ? 'Guardar / Passar ❌' : 'Keep / Pass ❌',
+              onConfirm: () => {
+                setPriorityPrompt(null);
+                const success = session.activateTrapHole(
+                  p1.id,
+                  reaction.trapZoneIndex,
+                  summonResult.zoneIndex
+                );
+                if (success) {
+                  soundFX.playDestruction();
+                  setIsCameraShaking(true);
+                  scheduleTimer(() => setIsCameraShaking(false), 400);
+                  triggerCardDestruction(summonedUid);
+                  showNotification(
+                    languagePt
+                      ? `🕳️ Buraco Armadilha ativado! ${summonedName} foi destruído e enviado ao cemitério!`
+                      : `🕳️ Trap Hole activated! ${summonedName} was destroyed and sent to the graveyard!`
+                  );
+                  forceUpdate();
+                }
+                scheduleTimer(() => {
+                  proceedWithBotTurnAfterSummon();
+                }, 700);
+              },
+              onDecline: () => {
+                setPriorityPrompt(null);
+                proceedWithBotTurnAfterSummon();
+              },
+            });
+          }
+        }
+        forceUpdate();
+      }
+    }
+
+    if (!hasPausedForReaction) {
+      scheduleTimer(() => {
+        proceedWithBotTurnAfterSummon();
+      }, 400);
+    }
+  }, 950);
+};
 
   const handleSelectHandCard = (card: CardInstance) => {
     setInspectedCard(card);
@@ -1195,7 +1306,81 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
   // Clique na Zona de Magias e Armadilhas do Jogador
   const handlePlayerSpellTrapZoneClick = (zoneIndex: number) => {
-    if (!isPlayerTurn || match.isGameOver) return;
+    if (match.isGameOver) return;
+
+    const currentSlot = p1.spellTrapZones[zoneIndex];
+
+    // Se estiver no turno do oponente: permite inspecionar e ativar armadilhas livres (ex: Waboku)
+    if (!isPlayerTurn) {
+      if (currentSlot) {
+        setInspectedCard(currentSlot);
+
+        if (isTrapCard(currentSlot) && currentSlot.isFaceDown) {
+          if (typeof currentSlot.turnSet === 'number' && currentSlot.turnSet < match.currentTurn) {
+            const action = currentSlot.data.effectDefinition?.action;
+            const isWaboku =
+              action === 'WABOKU_SHIELD' ||
+              action === 'PREVENT_BATTLE_DAMAGE_TURN' ||
+              action === 'PREVENT_BATTLE_DAMAGE_AND_DESTRUCTION' ||
+              action === 'PREVENT_BATTLE_DAMAGE' ||
+              action === 'WABOKU' ||
+              currentSlot.data.id === '12607053' ||
+              currentSlot.data.name.toLowerCase() === 'waboku';
+
+            if (isWaboku) {
+              const cardName =
+                languagePt && currentSlot.data.namePt ? currentSlot.data.namePt : currentSlot.data.name;
+              setPriorityPrompt({
+                type: 'WABOKU',
+                badge: languagePt ? 'ARMADILHA NORMAL' : 'NORMAL TRAP',
+                badgeIcon: '🕊️',
+                title: languagePt ? '⚡ ATIVAÇÃO DE ARMADILHA' : '⚡ TRAP ACTIVATION',
+                cardName,
+                cardImage: currentSlot.data.imageUrl,
+                cardType: 'TRAP',
+                accentColor: 'sky',
+                message: languagePt
+                  ? `⚡ Ativar ${cardName} agora? Uma aura sagrada envolverá seus monstros, impedindo sua destruição em batalha e reduzindo todo dano de batalha a 0 neste turno.`
+                  : `⚡ Activate ${cardName} now? A sacred aura will protect your monsters from battle destruction and reduce battle damage to 0 this turn.`,
+                confirmText: languagePt ? 'Ativar Armadilha ⚡' : 'Activate Trap ⚡',
+                declineText: languagePt ? 'Guardar / Passar ❌' : 'Keep / Cancel ❌',
+                onConfirm: () => {
+                  setPriorityPrompt(null);
+                  handleActivateWaboku(zoneIndex);
+                },
+                onDecline: () => {
+                  setPriorityPrompt(null);
+                },
+              });
+              return;
+            } else {
+              showNotification(
+                languagePt
+                  ? '🪤 Esta armadilha é de ativação reativa (ex: Força Espelho, Buraco Armadilha) e responderá a ações específicas do oponente!'
+                  : '🪤 This trap triggers in response to specific opponent actions!'
+              );
+              return;
+            }
+          } else {
+            showNotification(
+              languagePt
+                ? '⏳ Armadilhas baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.'
+                : '⏳ Set traps cannot be activated during the same turn they were placed.'
+            );
+            return;
+          }
+        } else {
+          showNotification(
+            languagePt
+              ? '⚠️ Você não pode ativar cartas mágicas normais durante o turno do oponente!'
+              : '⚠️ You cannot activate normal spells during opponent turn!'
+          );
+          return;
+        }
+      }
+      return;
+    }
+
     if (match.phase !== 'MAIN1' && match.phase !== 'MAIN2') {
       showNotification(
         languagePt
@@ -1204,8 +1389,6 @@ export const Playmat: React.FC<PlaymatProps> = ({
       );
       return;
     }
-
-    const currentSlot = p1.spellTrapZones[zoneIndex];
 
     // Se nenhuma carta da mão estiver selecionada e a zona tiver carta
     if (!selectedHandCardUid) {
@@ -1243,9 +1426,29 @@ export const Playmat: React.FC<PlaymatProps> = ({
               currentSlot.data.name.toLowerCase() === 'waboku';
 
             if (isWaboku) {
-              setWabokuPrompt({
-                zoneIndex,
-                card: currentSlot,
+              const cardName =
+                languagePt && currentSlot.data.namePt ? currentSlot.data.namePt : currentSlot.data.name;
+              setPriorityPrompt({
+                type: 'WABOKU',
+                badge: languagePt ? 'ARMADILHA NORMAL' : 'NORMAL TRAP',
+                badgeIcon: '🕊️',
+                title: languagePt ? '⚡ ATIVAÇÃO DE ARMADILHA' : '⚡ TRAP ACTIVATION',
+                cardName,
+                cardImage: currentSlot.data.imageUrl,
+                cardType: 'TRAP',
+                accentColor: 'sky',
+                message: languagePt
+                  ? `⚡ Ativar ${cardName} agora? Uma aura sagrada envolverá seus monstros, impedindo sua destruição em batalha e reduzindo todo dano de batalha a 0 neste turno.`
+                  : `⚡ Activate ${cardName} now? A sacred aura will protect your monsters from battle destruction and reduce battle damage to 0 this turn.`,
+                confirmText: languagePt ? 'Ativar Armadilha ⚡' : 'Activate Trap ⚡',
+                declineText: languagePt ? 'Guardar / Passar ❌' : 'Keep / Cancel ❌',
+                onConfirm: () => {
+                  setPriorityPrompt(null);
+                  handleActivateWaboku(zoneIndex);
+                },
+                onDecline: () => {
+                  setPriorityPrompt(null);
+                },
               });
               return;
             } else {
@@ -1350,7 +1553,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           ? '🕊️ Waboku ativado! Uma aura sagrada azul e branca protege seus monstros contra destruição e anula todo dano de batalha neste turno!'
           : '🕊️ Waboku activated! A sacred blue and white aura protects your monsters from destruction and prevents battle damage this turn!'
       );
-      setWabokuPrompt(null);
+      setPriorityPrompt(null);
       forceUpdate();
     }
   };
@@ -1818,16 +2021,14 @@ export const Playmat: React.FC<PlaymatProps> = ({
     setSelectedTributeZones([]);
     setSummonChoiceModal(null);
     setSpellChoiceModal(null);
-    setKuribohPrompt(null);
+    setPriorityPrompt(null);
     setLungingZone(null);
     setSlamZone(null);
     setTargetHitZone(null);
     setFloatingDamage(null);
     setFloatingHeal(null);
     setRaigekiActive(false);
-    setMirrorForcePrompt(null);
     setCelebratoryBanner(null);
-    setWabokuPrompt(null);
     setCountdown(5);
     forceUpdate();
   };
@@ -1867,44 +2068,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
         </div>
       )}
 
-      {/* 🛡️ PROMPT DE REAÇÃO: EFEITO DO KURIBOH */}
-      {kuribohPrompt && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-gradient-to-b from-[#2e1a47] to-[#120a1f] border-2 border-amber-400 p-6 rounded-2xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(245,158,11,0.9)] animate-bounce">
-            <div className="w-20 h-20 mx-auto mb-3 rounded-full border-2 border-amber-300 bg-amber-950/80 flex items-center justify-center text-4xl shadow-[0_0_20px_rgba(245,158,11,0.6)]">
-              🤎
-            </div>
-            <h3 className="font-serif font-black text-amber-300 text-lg tracking-wider mb-1">
-              {languagePt ? 'PROTEGER-SE COM KURIBOH?' : 'PROTECT WITH KURIBOH?'}
-            </h3>
-            <p className="text-xs text-slate-300 mb-4 leading-relaxed font-sans">
-              {languagePt ? (
-                <>
-                  Você está prestes a receber <strong className="text-red-400 font-mono font-black">{kuribohPrompt.pendingDamage}</strong> de dano de batalha! Deseja descartar o <strong className="text-amber-300">Kuriboh</strong> da sua mão para absorver todo o dano?
-                </>
-              ) : (
-                <>
-                  You are about to take <strong className="text-red-400 font-mono font-black">{kuribohPrompt.pendingDamage}</strong> battle damage! Discard <strong className="text-amber-300">Kuriboh</strong> from your hand to prevent all damage?
-                </>
-              )}
-            </p>
-            <div className="flex space-x-3">
-              <button
-                onClick={kuribohPrompt.onDecline}
-                className="flex-1 py-2 rounded-lg font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-600 font-serif"
-              >
-                {languagePt ? 'Receber Dano' : 'Take Damage'}
-              </button>
-              <button
-                onClick={kuribohPrompt.onAccept}
-                className="flex-1 py-2 rounded-lg font-black text-xs bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 transition-all shadow-[0_0_20px_rgba(245,158,11,0.8)] border border-yellow-200 font-serif animate-pulse flex items-center justify-center gap-1.5"
-              >
-                <span>🛡️</span> {languagePt ? 'Ativar Kuriboh!' : 'Activate Kuriboh!'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* ⏳ MODAL / ROLETA DO TEMPO DE TIME WIZARD */}
       {timeWizardRoulette && (
@@ -1981,76 +2145,87 @@ export const Playmat: React.FC<PlaymatProps> = ({
         </div>
       )}
 
-      {/* 🪞 PROMPT DE REAÇÃO: ATIVAÇÃO DE FORÇA ESPELHO (MIRROR FORCE) */}
-      {mirrorForcePrompt && (
-        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-gradient-to-b from-[#1b153b] via-[#0f0b24] to-[#070512] border-2 border-cyan-400 p-6 rounded-2xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(34,211,238,0.9)]">
-            <div className="w-20 h-20 mx-auto mb-3 rounded-full border-2 border-cyan-300 bg-cyan-950/80 flex items-center justify-center text-4xl shadow-[0_0_25px_rgba(34,211,238,0.7)] animate-pulse">
-              🪞
+      {/* ⚔️ JANELA DE PRIORIDADE E RESPOSTA MASTER DUEL (UNIFIED PRIORITY PROMPT) */}
+      {priorityPrompt && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div
+            className={`bg-gradient-to-b from-[#150f2e] via-[#090616] to-[#040209] rounded-3xl p-6 sm:p-7 max-w-sm w-full relative overflow-hidden border-2 text-center transition-all ${
+              priorityPrompt.accentColor === 'cyan'
+                ? 'border-cyan-400 shadow-[0_0_50px_rgba(34,211,238,0.7)]'
+                : priorityPrompt.accentColor === 'amber'
+                ? 'border-amber-400 shadow-[0_0_50px_rgba(245,158,11,0.7)]'
+                : priorityPrompt.accentColor === 'sky'
+                ? 'border-sky-400 shadow-[0_0_50px_rgba(56,189,248,0.7)]'
+                : 'border-fuchsia-500 shadow-[0_0_50px_rgba(217,70,239,0.7)]'
+            }`}
+          >
+            {/* Header Badge */}
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-black tracking-widest uppercase border bg-black/60 shadow-inner text-slate-200 border-slate-700">
+                <span className="animate-pulse">{priorityPrompt.badgeIcon || '⚡'}</span>
+                <span>{priorityPrompt.badge}</span>
+              </span>
             </div>
-            <h3 className="font-serif font-black text-cyan-300 text-lg tracking-wider mb-2">
-              {languagePt ? 'REAÇÃO DE ARMADILHA' : 'TRAP REACTION'}
+
+            {/* Window Title */}
+            <h3
+              className={`text-lg sm:text-xl font-serif font-black tracking-widest mb-3 uppercase drop-shadow-md ${
+                priorityPrompt.accentColor === 'cyan'
+                  ? 'text-cyan-300'
+                  : priorityPrompt.accentColor === 'amber'
+                  ? 'text-amber-300'
+                  : priorityPrompt.accentColor === 'sky'
+                  ? 'text-sky-300'
+                  : 'text-fuchsia-300'
+              }`}
+            >
+              {priorityPrompt.title}
             </h3>
-            <p className="text-xs text-slate-200 mb-5 leading-relaxed font-sans">
-              {languagePt
-                ? '⚡ Deseja ativar Força Espelho (Mirror Force) em resposta ao ataque?'
-                : '⚡ Do you wish to activate Mirror Force in response to the attack?'}
-            </p>
-            <div className="flex space-x-3">
-              <button
-                onClick={mirrorForcePrompt.onDecline}
-                className="flex-1 py-2.5 rounded-lg font-bold text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-600 font-serif"
-              >
-                {languagePt ? 'Não Ativar' : 'Do Not Activate'}
-              </button>
-              <button
-                onClick={mirrorForcePrompt.onAccept}
-                className="flex-1 py-2.5 rounded-lg font-black text-xs bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white transition-all shadow-[0_0_20px_rgba(34,211,238,0.8)] border border-cyan-300 font-serif animate-pulse flex items-center justify-center gap-1.5"
-              >
-                <span>🪞</span> {languagePt ? 'Ativar Força Espelho!' : 'Activate Mirror Force!'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* 🕊️ MODAL DE CONFIRMAÇÃO DE ATIVAÇÃO DE WABOKU */}
-      {wabokuPrompt && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-          <div className="bg-[#0b1324] border-2 border-sky-400 rounded-2xl p-6 text-center max-w-sm w-full mx-4 shadow-[0_0_40px_rgba(56,189,248,0.7)]">
-            <div className="w-24 h-34 mx-auto mb-3 rounded-lg overflow-hidden border-2 border-sky-300 shadow-lg">
-              <img
-                src={wabokuPrompt.card.data.imageUrl}
-                alt={wabokuPrompt.card.data.name}
-                className="w-full h-full object-contain"
-              />
+            {/* Card Preview */}
+            {priorityPrompt.cardImage && (
+              <div className="relative w-24 h-36 sm:w-28 sm:h-40 mx-auto mb-3 rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl group">
+                <img
+                  src={priorityPrompt.cardImage}
+                  alt={priorityPrompt.cardName}
+                  className="w-full h-full object-contain"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+              </div>
+            )}
+
+            {/* Card Name */}
+            <div className="text-sm sm:text-base font-serif font-black text-amber-200 mb-2 drop-shadow-sm">
+              {priorityPrompt.cardName}
             </div>
 
-            <h3 className="text-base font-serif font-black text-sky-300 mb-1">
-              {languagePt && wabokuPrompt.card.data.namePt
-                ? wabokuPrompt.card.data.namePt
-                : wabokuPrompt.card.data.name}
-            </h3>
-            <p className="text-xs text-sky-100/90 mb-5 leading-relaxed">
-              {languagePt
-                ? 'Deseja ativar Waboku agora? Uma aura sagrada envolverá seus monstros, impedindo sua destruição em batalha e reduzindo todo dano a 0 neste turno.'
-                : 'Do you want to activate Waboku now? A sacred aura will protect your monsters from battle destruction and reduce battle damage to 0 this turn.'}
-            </p>
+            {/* Message Body */}
+            <div className="text-xs sm:text-sm text-slate-200 mb-6 leading-relaxed font-sans px-1">
+              {priorityPrompt.message}
+            </div>
 
-            <div className="flex flex-col space-y-2.5">
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
-                onClick={() => handleActivateWaboku(wabokuPrompt.zoneIndex)}
-                className="w-full py-2.5 px-4 bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 hover:from-sky-300 hover:to-blue-400 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-[0_0_20px_rgba(56,189,248,0.8)] transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                onClick={priorityPrompt.onDecline}
+                className="flex-1 py-3 px-4 rounded-xl font-serif font-bold text-xs uppercase tracking-wider bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-500 transition-all shadow-md active:scale-95"
               >
-                <span>🕊️</span>
-                <span>{languagePt ? 'Ativar Waboku' : 'Activate Waboku'}</span>
+                {priorityPrompt.declineText}
               </button>
 
               <button
-                onClick={() => setWabokuPrompt(null)}
-                className="w-full py-1.5 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
+                onClick={priorityPrompt.onConfirm}
+                className={`flex-1 py-3 px-4 rounded-xl font-serif font-black text-xs uppercase tracking-wider text-white transition-all shadow-lg active:scale-95 flex items-center justify-center gap-1.5 animate-pulse ${
+                  priorityPrompt.accentColor === 'cyan'
+                    ? 'bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-600 hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_25px_rgba(34,211,238,0.8)] border border-cyan-200'
+                    : priorityPrompt.accentColor === 'amber'
+                    ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-slate-950 shadow-[0_0_25px_rgba(245,158,11,0.8)] border border-yellow-200'
+                    : priorityPrompt.accentColor === 'sky'
+                    ? 'bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 hover:from-sky-300 hover:to-blue-400 shadow-[0_0_25px_rgba(56,189,248,0.8)] border border-sky-200'
+                    : 'bg-gradient-to-r from-fuchsia-600 via-purple-500 to-indigo-600 hover:from-fuchsia-500 hover:to-purple-400 shadow-[0_0_25px_rgba(217,70,239,0.8)] border border-fuchsia-200'
+                }`}
               >
-                {languagePt ? 'Cancelar' : 'Cancel'}
+                {priorityPrompt.confirmText}
               </button>
             </div>
           </div>

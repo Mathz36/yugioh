@@ -3440,6 +3440,28 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       session.matchState.currentTurn = 2;
       session.matchState.activePlayerId = kaiba.id;
       session.matchState.phase = 'MAIN1';
+      kaiba.deck = [
+        {
+          uid: 'draw_card_1',
+          data: CLASSIC_CARDS.BLUE_EYES,
+          position: 'ATTACK',
+          hasAttacked: false,
+          hasChangedPositionThisTurn: false,
+          turnSummoned: 0,
+          monstersDestroyedCount: 0,
+          hasAttackedDirectly: false,
+        },
+        {
+          uid: 'draw_card_2',
+          data: CLASSIC_CARDS.BATTLE_OX,
+          position: 'ATTACK',
+          hasAttacked: false,
+          hasChangedPositionThisTurn: false,
+          turnSummoned: 0,
+          monstersDestroyedCount: 0,
+          hasAttackedDirectly: false,
+        },
+      ];
       kaiba.hand = [
         {
           uid: 'bot_pot',
@@ -4804,6 +4826,526 @@ describe('DuelMatchSession & DuelBot Integration', () => {
       expect(monster.data.defense).toBe(1700);
       expect(p1.spellTrapZones[1]).toBeNull();
       expect(p1.graveyard.some((c) => c.uid === castleWalls.uid)).toBe(true);
+    });
+  });
+
+  describe('Player Trap Activation Freedom Suite: Strategic Decision & Manual Triggering (AAA Pattern)', () => {
+    it('1. Teste de Decisão do Jogador de NÃO Ativar Trap Hole (Guarda Estratégica): jogador retém o controle e a carta permanece virada para baixo no campo', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Jogador (Yugi) possui Trap Hole baixada virada para baixo no campo (turnSet < currentTurn)
+      const trapHole: CardInstance = {
+        uid: 'yugi_trap_hole_strategic_hold',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.spellTrapZones[0] = trapHole;
+
+      // Avança para o turno 2 (turno do oponente Kaiba)
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Oponente invoca um monstro de 1500 ATK
+      const summonedMonster: CardInstance = {
+        uid: 'kaiba_summoned_monster_1500_atk',
+        data: {
+          id: 'mock_monster_1500_atk',
+          name: 'Ryu-Kishin Warrior',
+          type: 'Normal Monster',
+          level: 4,
+          attack: 1500,
+          defense: 1200,
+          description: 'A 1500 ATK monster.',
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[0] = summonedMonster;
+
+      // Act:
+      // Valide que session.canActivateTrapHole retorna canActivate: true
+      const canActivateCheck = session.canActivateTrapHole(summonedMonster, yugi.id);
+      expect(canActivateCheck.canActivate).toBe(true);
+      expect(canActivateCheck.trapZoneIndex).toBe(0);
+
+      // O jogador decide estrategicamente NÃO ativar Trap Hole (não chama session.activateTrapHole)
+      // A partida continua sem que nenhuma remoção automática ocorra
+
+      // Assert:
+      // O monstro permanece em campo na zona do oponente
+      expect(kaiba.monsterZones[0]).not.toBeNull();
+      expect(kaiba.monsterZones[0]?.uid).toBe(summonedMonster.uid);
+      expect(kaiba.monsterZones[0]?.data.attack).toBe(1500);
+      expect(kaiba.graveyard.some((c) => c.uid === summonedMonster.uid)).toBe(false);
+
+      // O Trap Hole permanece virado para baixo no campo do jogador (zona intacta)
+      expect(yugi.spellTrapZones[0]).not.toBeNull();
+      expect(yugi.spellTrapZones[0]?.uid).toBe(trapHole.uid);
+      expect(yugi.spellTrapZones[0]?.isFaceDown).toBe(true);
+      expect(yugi.graveyard.some((c) => c.uid === trapHole.uid)).toBe(false);
+
+      // O jogador retém o controle e nenhum dano ou término de jogo foi disparado
+      expect(yugi.lifePoints).toBe(8000);
+      expect(kaiba.lifePoints).toBe(8000);
+    });
+
+    it('2. Teste de Decisão de Ativar Trap Hole: jogador confirma ativação, monstro invocado é destruído e enviado ao cemitério', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const yugi = session.player1;
+      const kaiba = session.player2;
+
+      // Jogador (Yugi) possui Trap Hole baixada virada para baixo no turno 1
+      const trapHole: CardInstance = {
+        uid: 'yugi_trap_hole_active_decision',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      yugi.spellTrapZones[1] = trapHole;
+
+      // Turno 2 (turno de Kaiba, Main Phase 1)
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = kaiba.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Oponente invoca monstro com 1500 ATK na zona 2
+      const summonedMonster: CardInstance = {
+        uid: 'kaiba_beast_1500_atk_target',
+        data: {
+          id: 'mock_beast_1500_atk',
+          name: 'Dark Chimera',
+          type: 'Normal Monster',
+          level: 4,
+          attack: 1500,
+          defense: 1000,
+          description: 'A 1500 ATK beast.',
+        },
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      kaiba.monsterZones[2] = summonedMonster;
+
+      // Act:
+      // 1. Valida condição de ativação
+      const canActivateCheck = session.canActivateTrapHole(summonedMonster, yugi.id);
+      expect(canActivateCheck.canActivate).toBe(true);
+      expect(canActivateCheck.trapZoneIndex).toBe(1);
+
+      // 2. Jogador confirma a ativação chamando session.activateTrapHole
+      const activationSuccess = session.activateTrapHole(yugi.id, canActivateCheck.trapZoneIndex, 2);
+
+      // Assert:
+      // Ativação foi bem-sucedida
+      expect(activationSuccess).toBe(true);
+
+      // O monstro invocado é destruído e enviado ao cemitério do oponente
+      expect(kaiba.monsterZones[2]).toBeNull();
+      expect(kaiba.graveyard.some((c) => c.uid === summonedMonster.uid)).toBe(true);
+
+      // O Trap Hole vai para o cemitério do jogador e a zona é liberada
+      expect(yugi.spellTrapZones[1]).toBeNull();
+      expect(yugi.graveyard.some((c) => c.uid === trapHole.uid)).toBe(true);
+      expect(yugi.graveyard.find((c) => c.uid === trapHole.uid)?.isFaceDown).toBe(false);
+    });
+
+    it('3. Teste de Ativação Manual de Waboku no Turno do Oponente: anula qualquer dano de batalha e protege monstros da destruição', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+      const opponent = session.player2;
+
+      // Turno do oponente (activePlayerId = opponent.id)
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = opponent.id;
+      session.matchState.phase = 'BATTLE';
+
+      // Jogador possui Waboku baixado no seu campo (turnSet < currentTurn)
+      const waboku: CardInstance = {
+        uid: 'player_waboku_opponent_turn',
+        data: CLASSIC_CARDS.WABOKU,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.spellTrapZones[0] = waboku;
+
+      // Jogador possui um monstro fraco em campo em Modo de Ataque (Celtic Guardian com 1400 ATK)
+      const defenderMonster: CardInstance = {
+        uid: 'player_celtic_guardian_1400',
+        data: CLASSIC_CARDS.CELTIC_GUARDIAN,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      player.monsterZones[0] = defenderMonster;
+
+      // Oponente possui um monstro poderoso (Blue-Eyes White Dragon com 3000 ATK)
+      const attackerMonster: CardInstance = {
+        uid: 'opponent_blue_eyes_3000',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+      opponent.monsterZones[0] = attackerMonster;
+
+      // Act:
+      // 1. Valida canActivateWaboku
+      const checkWaboku = session.canActivateWaboku(player.id);
+      expect(checkWaboku.canActivate).toBe(true);
+      expect(checkWaboku.trapZoneIndex).toBe(0);
+
+      // 2. Jogador ativa Waboku chamando session.activateWaboku(player.id, trapZoneIndex) no turno do oponente
+      const activated = session.activateWaboku(player.id, checkWaboku.trapZoneIndex);
+
+      // 3. Oponente declara ataque com Blue-Eyes (3000 ATK) contra Celtic Guardian (1400 ATK)
+      const attackSuccess = session.declareAttack(0, 0);
+
+      // Assert:
+      // Ativação de Waboku bem-sucedida
+      expect(activated).toBe(true);
+      // A flag session.isWabokuActiveForPlayerId === player.id se torna verdadeira
+      expect(session.isWabokuActiveForPlayerId).toBe(player.id);
+
+      // O Waboku vai para o cemitério do jogador e a zona é esvaziada
+      expect(player.spellTrapZones[0]).toBeNull();
+      expect(player.graveyard.some((c) => c.uid === waboku.uid)).toBe(true);
+
+      // Ataque ocorreu com sucesso
+      expect(attackSuccess).toBe(true);
+
+      // O monstro do jogador NÃO é destruído e permanece vivo no campo
+      expect(player.monsterZones[0]).not.toBeNull();
+      expect(player.monsterZones[0]?.uid).toBe(defenderMonster.uid);
+      expect(player.graveyard.some((c) => c.uid === defenderMonster.uid)).toBe(false);
+
+      // Qualquer dano de batalha sofrido pelo monstro ou jogador neste turno é anulado (8000 LP intactos)
+      expect(player.lifePoints).toBe(8000);
+      expect(opponent.lifePoints).toBe(8000);
+    });
+  });
+
+  describe('Refatoração das Regras de Armadilhas (Desacoplamento e Ativação Reativa)', () => {
+    it('DuelBot.tryActivateTrapHoleOnSummon NUNCA auto-executa para o jogador humano (player1)', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+      const bot = session.player2;
+
+      // Yugi (humano) possui Trap Hole baixada no turno 1
+      player.spellTrapZones[0] = {
+        uid: 'human_trap_hole',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Turno 2: Bot invoca Blue-Eyes (3000 ATK)
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = bot.id;
+      session.matchState.phase = 'MAIN1';
+
+      bot.monsterZones[0] = {
+        uid: 'bot_blue_eyes',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Act
+      const triggered = DuelBot.tryActivateTrapHoleOnSummon(session, player.id, 0);
+
+      // Assert: DuelBot NUNCA auto-executa decisões para o jogador humano
+      expect(triggered).toBe(false);
+      expect(player.spellTrapZones[0]).not.toBeNull();
+      expect(bot.monsterZones[0]).not.toBeNull();
+      expect(bot.graveyard.some((c) => c.uid === 'bot_blue_eyes')).toBe(false);
+    });
+
+    it('DuelBot.checkPlayerReactionOnSummon realiza consulta limpa sem auto-execução da armadilha', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+      const bot = session.player2;
+
+      player.spellTrapZones[2] = {
+        uid: 'human_trap_hole_query',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = bot.id;
+      session.matchState.phase = 'MAIN1';
+
+      bot.monsterZones[1] = {
+        uid: 'bot_summoned_monster',
+        data: CLASSIC_CARDS.VORSE_RAIDER,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Act
+      const reaction = DuelBot.checkPlayerReactionOnSummon(session, player.id, 1);
+
+      // Assert
+      expect(reaction.canActivate).toBe(true);
+      expect(reaction.trapZoneIndex).toBe(2);
+      expect(reaction.card?.uid).toBe('human_trap_hole_query');
+
+      // Assegure que a armadilha NÃO foi executada (permaneceu em campo)
+      expect(player.spellTrapZones[2]).not.toBeNull();
+      expect(bot.monsterZones[1]).not.toBeNull();
+    });
+
+    it('DuelBot.checkPlayerReactionOnSummon retorna canActivate: false para monstros virados para baixo ou com ATK < 1000', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+      const bot = session.player2;
+
+      player.spellTrapZones[0] = {
+        uid: 'human_trap_hole_atk_check',
+        data: CLASSIC_CARDS.TRAP_HOLE,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = bot.id;
+
+      // Monstro com ATK < 1000 (Kuriboh ATK 300)
+      bot.monsterZones[0] = {
+        uid: 'bot_kuriboh',
+        data: CLASSIC_CARDS.KURIBOH,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Monstro baixado virado para baixo (Defense)
+      bot.monsterZones[1] = {
+        uid: 'bot_face_down',
+        data: CLASSIC_CARDS.BLUE_EYES,
+        position: 'DEFENSE',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Act
+      const reactionAtkLow = DuelBot.checkPlayerReactionOnSummon(session, player.id, 0);
+      const reactionFaceDown = DuelBot.checkPlayerReactionOnSummon(session, player.id, 1);
+
+      // Assert
+      expect(reactionAtkLow.canActivate).toBe(false);
+      expect(reactionFaceDown.canActivate).toBe(false);
+    });
+
+    it('activateWaboku valida face-down, turnSet < currentTurn e card Waboku', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+
+      // Carta que NÃO é Waboku (Mirror Force) na zona 0
+      player.spellTrapZones[0] = {
+        uid: 'not_waboku',
+        data: CLASSIC_CARDS.MIRROR_FORCE,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Waboku baixado no turno atual (turnSet === currentTurn) na zona 1
+      player.spellTrapZones[1] = {
+        uid: 'waboku_same_turn',
+        data: CLASSIC_CARDS.WABOKU,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 2,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Waboku revelado face-up na zona 2
+      player.spellTrapZones[2] = {
+        uid: 'waboku_face_up',
+        data: CLASSIC_CARDS.WABOKU,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Waboku válido na zona 3
+      player.spellTrapZones[3] = {
+        uid: 'waboku_valid',
+        data: CLASSIC_CARDS.WABOKU,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      session.matchState.currentTurn = 2;
+
+      // Act & Assert 1: Rejeita carta que não é Waboku
+      const resWrongCard = session.activateWaboku(player.id, 0);
+      expect(resWrongCard).toBe(false);
+
+      // Act & Assert 2: Rejeita Waboku baixado no mesmo turno
+      const resSameTurn = session.activateWaboku(player.id, 1);
+      expect(resSameTurn).toBe(false);
+
+      // Act & Assert 3: Rejeita Waboku face-up
+      const resFaceUp = session.activateWaboku(player.id, 2);
+      expect(resFaceUp).toBe(false);
+
+      // Act & Assert 4: Ativa com sucesso Waboku válido
+      const resValid = session.activateWaboku(player.id, 3);
+      expect(resValid).toBe(true);
+      expect(session.isWabokuActiveForPlayerId).toBe(player.id);
+      expect(player.spellTrapZones[3]).toBeNull();
+      expect(player.graveyard.some((c) => c.uid === 'waboku_valid')).toBe(true);
+    });
+
+    it('Armadilhas podem ser ativadas no turno do oponente desde que turnSet < currentTurn', () => {
+      // Arrange
+      const session = new DuelMatchSession('Yugi', createYugiDeck(), 'Kaiba', createKaibaDeck());
+      const player = session.player1;
+      const opponent = session.player2;
+
+      // Turno 2: Turno do oponente (Kaiba)
+      session.matchState.currentTurn = 2;
+      session.matchState.activePlayerId = opponent.id;
+      session.matchState.phase = 'MAIN1';
+
+      // Jogador possui Reinforcements baixado no turno 1
+      player.spellTrapZones[0] = {
+        uid: 'player_reinforcements',
+        data: CLASSIC_CARDS.REINFORCEMENTS,
+        position: 'ATTACK',
+        isFaceDown: true,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 0,
+        turnSet: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      player.monsterZones[0] = {
+        uid: 'player_celtic_guardian',
+        data: CLASSIC_CARDS.CELTIC_GUARDIAN,
+        position: 'ATTACK',
+        isFaceDown: false,
+        hasAttacked: false,
+        hasChangedPositionThisTurn: false,
+        turnSummoned: 1,
+        monstersDestroyedCount: 0,
+        hasAttackedDirectly: false,
+      };
+
+      // Act: Jogador ativa armadilha durante o turno do oponente
+      const activated = session.activateTrap('player_reinforcements', 'player_celtic_guardian');
+
+      // Assert
+      expect(activated).toBe(true);
+      expect(player.spellTrapZones[0]).toBeNull();
+      expect(player.graveyard.some((c) => c.uid === 'player_reinforcements')).toBe(true);
     });
   });
 });
