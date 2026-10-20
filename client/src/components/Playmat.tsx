@@ -16,6 +16,13 @@ export interface PlaymatProps {
   onExitToMenu?: () => void;
 }
 
+export interface ActionBanner {
+  cardName: string;
+  cardImage?: string;
+  description: string;
+  badge?: string;
+}
+
 export interface PriorityPrompt {
   type: 'TRAP_HOLE' | 'MIRROR_FORCE' | 'KURIBOH' | 'WABOKU';
   badge: string;
@@ -77,6 +84,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
   // Modais e Estados Visuais
   const [countdown, setCountdown] = useState<number | null>(5); // Contagem regressiva inicial de 5s
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [actionBanner, setActionBanner] = useState<ActionBanner | null>(null);
   const [selectedHandCardUid, setSelectedHandCardUid] = useState<string | null>(null);
   const [pendingSummonZone, setPendingSummonZone] = useState<number | null>(null); // Quando clica na zona para escolher ATK/DEF
   const [selectedTributeZones, setSelectedTributeZones] = useState<number[]>([]); // Zonas selecionadas para sacrifício
@@ -145,64 +153,78 @@ export const Playmat: React.FC<PlaymatProps> = ({
     icon?: string;
   } | null>(null);
 
-  // Metadados visuais e mensagens dinâmicas para ações táticas genéricas com alvo
+  // Dispara o Action Banner de ativação de cartas com miniatura 40x56px e tipografia dourada
+  const triggerActionBanner = (
+    cardName: string,
+    description: string,
+    cardImage?: string,
+    badge = '[ATIVAÇÃO]',
+    durationMs = 3200
+  ) => {
+    setActionBanner({ cardName, description, cardImage, badge });
+    scheduleTimer(() => {
+      setActionBanner(null);
+    }, durationMs);
+  };
+
+  // Metadados visuais e mensagens dinâmicas para ações táticas genéricas com alvo (estilo técnico sem emojis)
   const getTacticalActionMeta = (action: string, isPt: boolean) => {
     switch (action) {
       case 'DESTROY_MONSTER':
         return {
-          icon: '🪲',
+          icon: '[DESTRUIR]',
           badgeSelected: isPt ? 'DESTRUIR' : 'DESTROY',
           confirmVerb: isPt ? 'Destruição' : 'Destruction',
           promptMessage: (maxTargets: number) =>
             isPt
               ? maxTargets > 1
-                ? `🎯 Escolha até ${maxTargets} monstros do adversário para destruir!`
-                : '🎯 Escolha 1 monstro do adversário para destruir!'
+                ? `Escolha até ${maxTargets} monstros do adversário para destruir!`
+                : 'Escolha 1 monstro do adversário para destruir!'
               : maxTargets > 1
-              ? `🎯 Choose up to ${maxTargets} opponent monsters to destroy!`
-              : '🎯 Choose 1 opponent monster to destroy!',
+              ? `Choose up to ${maxTargets} opponent monsters to destroy!`
+              : 'Choose 1 opponent monster to destroy!',
         };
       case 'RETURN_TO_HAND':
         return {
-          icon: '🐧',
+          icon: '[RETORNAR]',
           badgeSelected: isPt ? 'RETORNAR' : 'RETURN',
           confirmVerb: isPt ? 'Retorno' : 'Return',
           promptMessage: (maxTargets: number) =>
             isPt
               ? maxTargets > 1
-                ? `🎯 Escolha até ${maxTargets} monstros do adversário para retornar à mão!`
-                : '🎯 Escolha 1 monstro do adversário para retornar à mão!'
+                ? `Escolha até ${maxTargets} monstros do adversário para retornar à mão!`
+                : 'Escolha 1 monstro do adversário para retornar à mão!'
               : maxTargets > 1
-              ? `🎯 Choose up to ${maxTargets} opponent monsters to return to hand!`
-              : '🎯 Choose 1 opponent monster to return to hand!',
+              ? `Choose up to ${maxTargets} opponent monsters to return to hand!`
+              : 'Choose 1 opponent monster to return to hand!',
         };
       case 'DESTROY_SPELL_TRAP':
         return {
-          icon: '🌪️',
+          icon: '[DESTRUIR M/A]',
           badgeSelected: isPt ? 'DESTRUIR M/A' : 'DESTROY S/T',
           confirmVerb: isPt ? 'Destruição de Magia/Armadilha' : 'Spell/Trap Destruction',
           promptMessage: (maxTargets: number) =>
             isPt
               ? maxTargets > 1
-                ? `🎯 Escolha até ${maxTargets} cartas de Magia/Armadilha do adversário para destruir!`
-                : '🎯 Escolha 1 carta de Magia/Armadilha do adversário para destruir!'
+                ? `Escolha até ${maxTargets} cartas de Magia/Armadilha do adversário para destruir!`
+                : 'Escolha 1 carta de Magia/Armadilha do adversário para destruir!'
               : maxTargets > 1
-              ? `🎯 Choose up to ${maxTargets} opponent Spell/Trap cards to destroy!`
-              : '🎯 Choose 1 opponent Spell/Trap card to destroy!',
+              ? `Choose up to ${maxTargets} opponent Spell/Trap cards to destroy!`
+              : 'Choose 1 opponent Spell/Trap card to destroy!',
         };
       default:
         return {
-          icon: '🎯',
+          icon: '[ALVO]',
           badgeSelected: isPt ? 'SELECIONADO' : 'SELECTED',
           confirmVerb: isPt ? 'Alvo' : 'Target',
           promptMessage: (maxTargets: number) =>
             isPt
               ? maxTargets > 1
-                ? `🎯 Escolha até ${maxTargets} alvos do adversário!`
-                : '🎯 Escolha 1 alvo do adversário!'
+                ? `Escolha até ${maxTargets} alvos do adversário!`
+                : 'Escolha 1 alvo do adversário!'
               : maxTargets > 1
-              ? `🎯 Choose up to ${maxTargets} opponent targets!`
-              : '🎯 Choose 1 opponent target!',
+              ? `Choose up to ${maxTargets} opponent targets!`
+              : 'Choose 1 opponent target!',
         };
     }
   };
@@ -425,7 +447,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
     if (!isPlayerTurn || match.isGameOver) return;
     
     // Anuncia a passagem do turno
-    showNotification(`⏳ ${p1.nickname} passou o turno para ${p2.nickname}`);
+    showNotification(`[TURNO] ${p1.nickname} passou o turno para ${p2.nickname}`);
     session.endTurn();
     setSelectedHandCardUid(null);
     setSelectedAttackerZone(null);
@@ -506,7 +528,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   scheduleTimer(() => {
                     session.nextPhase(); // MAIN2
                     session.nextPhase(); // END -> Turno do Jogador
-                    showNotification(`⚔️ É a vez de ${p1.nickname} duelar!`);
+                    showNotification(`[TURNO] É a vez de ${p1.nickname} duelar!`);
                     forceUpdate();
 
                     const lastCard = session.player1.hand[session.player1.hand.length - 1];
@@ -528,8 +550,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
                 if (session.isWabokuActiveForPlayerId === p1.id) {
                   showNotification(
                     languagePt
-                      ? '🕊️ O poder sagrado de Waboku protegeu seus monstros e anulou todo dano de batalha!'
-                      : '🕊️ Waboku sacred power protected your monsters and prevented all battle damage!'
+                      ? '[WABOKU] O poder sagrado de Waboku protegeu seus monstros e anulou todo dano de batalha!'
+                      : '[WABOKU] Waboku sacred power protected your monsters and prevented all battle damage!'
                   );
                   onShieldedAttack();
                   finishBotTurn();
@@ -549,8 +571,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
                   setPriorityPrompt({
                     type: 'KURIBOH',
-                    badge: languagePt ? 'EFEITO RÁPIDO DA MÃO' : 'HAND QUICK EFFECT',
-                    badgeIcon: '🤎',
+                    badge: languagePt ? 'EFEITO RÁPIDO' : 'QUICK EFFECT',
+                    badgeIcon: '[EFEITO]',
                     title: languagePt ? 'JANELA DE PRIORIDADE' : 'PRIORITY WINDOW',
                     cardName: kuribohName,
                     cardImage: kuribohCard?.data.imageUrl,
@@ -565,16 +587,22 @@ export const Playmat: React.FC<PlaymatProps> = ({
                         You are about to take <strong className="text-red-400 font-mono font-black text-sm">{dmgAmount}</strong> battle damage! Discard <strong className="text-amber-300">{kuribohName}</strong> from your hand to prevent all damage?
                       </>
                     ),
-                    confirmText: languagePt ? 'Ativar Kuriboh ⚡' : 'Activate Kuriboh ⚡',
-                    declineText: languagePt ? 'Receber Dano ❌' : 'Take Damage ❌',
+                    confirmText: languagePt ? 'Ativar Kuriboh' : 'Activate Kuriboh',
+                    declineText: languagePt ? 'Receber Dano' : 'Take Damage',
                     onConfirm: () => {
                       setPriorityPrompt(null);
                       session.activateKuriboh(p1.id);
                       soundFX.playMagicShield();
+                      triggerActionBanner(
+                        kuribohName,
+                        languagePt ? 'Kuriboh foi descartado da mão e absorveu todo o dano de batalha!' : 'Kuriboh was discarded and absorbed all battle damage!',
+                        kuribohCard?.data.imageUrl,
+                        '[EFEITO]'
+                      );
                       showNotification(
                         languagePt
-                          ? '🛡️ Kuriboh absorveu todo o dano do ataque!'
-                          : '🛡️ Kuriboh absorbed all battle damage!'
+                          ? '[KURIBOH] Kuriboh absorveu todo o dano do ataque!'
+                          : '[KURIBOH] Kuriboh absorbed all battle damage!'
                       );
                       onShieldedAttack();
                       finishBotTurn();
@@ -648,8 +676,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   if (action === 'DESTROY_MONSTER') {
                     showNotification(
                       languagePt
-                        ? `🪲 CONTRA-ATAQUE FLIP! ${flipName} destruiu ${attackerName}!`
-                        : `🪲 FLIP COUNTER-ATTACK! ${flipName} destroyed ${attackerName}!`
+                        ? `[EFEITO FLIP] ${flipName} destruiu ${attackerName}!`
+                        : `[FLIP EFFECT] ${flipName} destroyed ${attackerName}!`
                     );
                     soundFX.playDestruction();
                     setIsCameraShaking(true);
@@ -665,8 +693,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   } else if (action === 'RETURN_TO_HAND') {
                     showNotification(
                       languagePt
-                        ? `🐧 CONTRA-ATAQUE FLIP! ${flipName} devolveu ${attackerName} para a mão!`
-                        : `🐧 FLIP COUNTER-ATTACK! ${flipName} returned ${attackerName} to hand!`
+                        ? `[EFEITO FLIP] ${flipName} devolveu ${attackerName} para a mão!`
+                        : `[FLIP EFFECT] ${flipName} returned ${attackerName} to hand!`
                     );
                     soundFX.playReturnToHand();
                     scheduleTimer(() => {
@@ -738,8 +766,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
                       soundFX.playMagicShield();
                       showNotification(
                         languagePt
-                          ? '🕊️ O monstro em defesa foi protegido pela aura sagrada de Waboku!'
-                          : '🕊️ Defense monster was protected by Waboku sacred aura!'
+                          ? '[WABOKU] O monstro em defesa foi protegido pela aura sagrada de Waboku!'
+                          : '[WABOKU] Defense monster was protected by Waboku sacred aura!'
                       );
                     }
                   } else if (attackerEffAtk < target.card.data.defense) {
@@ -768,17 +796,17 @@ export const Playmat: React.FC<PlaymatProps> = ({
             setPriorityPrompt({
               type: 'MIRROR_FORCE',
               badge: languagePt ? 'RESPOSTA DE ATAQUE' : 'ATTACK REACTION',
-              badgeIcon: '🪞',
+              badgeIcon: '[ARMADILHA]',
               title: languagePt ? 'JANELA DE PRIORIDADE' : 'PRIORITY WINDOW',
               cardName: trapName,
               cardImage: trapCard?.data.imageUrl,
               cardType: 'TRAP',
               accentColor: 'cyan',
               message: languagePt
-                ? '⚡ Deseja ativar Força Espelho (Mirror Force) em resposta ao ataque?'
-                : '⚡ Do you wish to activate Mirror Force in response to the attack?',
-              confirmText: languagePt ? 'Ativar Força Espelho ⚡' : 'Activate Mirror Force ⚡',
-              declineText: languagePt ? 'Guardar / Passar ❌' : 'Keep / Pass ❌',
+                ? 'Deseja ativar Força Espelho (Mirror Force) em resposta ao ataque declarado?'
+                : 'Do you wish to activate Mirror Force in response to the declared attack?',
+              confirmText: languagePt ? 'Ativar Força Espelho' : 'Activate Mirror Force',
+              declineText: languagePt ? 'Guardar / Passar' : 'Keep / Pass',
               onConfirm: () => {
                 setPriorityPrompt(null);
                 const botAttackersUids = bot.monsterZones
@@ -794,18 +822,19 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   triggerCardDestruction(botAttackersUids);
                 }
 
-                setCelebratoryBanner({
-                  title: languagePt
-                    ? '🪞 FORÇA ESPELHO ATIVADA! O ataque foi refletido e todos os monstros de ataque do adversário foram destruídos!'
-                    : '🪞 MIRROR FORCE ACTIVATED! The attack was reflected and all opponent attack position monsters were destroyed!',
-                  icon: '🪞',
-                });
-                scheduleTimer(() => setCelebratoryBanner(null), 3500);
+                triggerActionBanner(
+                  trapName,
+                  languagePt
+                    ? 'O ataque foi refletido e todos os monstros de ataque do adversário foram destruídos!'
+                    : 'The attack was reflected and all opponent attack position monsters were destroyed!',
+                  trapCard?.data.imageUrl,
+                  '[ARMADILHA]'
+                );
 
                 showNotification(
                   languagePt
-                    ? '🪞 FORÇA ESPELHO ATIVADA! O ataque foi refletido e todos os monstros de ataque do adversário foram destruídos!'
-                    : '🪞 MIRROR FORCE ACTIVATED!'
+                    ? '[FORÇA ESPELHO] O ataque foi refletido e todos os monstros de ataque do adversário foram destruídos!'
+                    : '[MIRROR FORCE] The attack was reflected and all opponent attack monsters were destroyed!'
                 );
 
                 setLungingZone(null);
@@ -814,7 +843,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                 scheduleTimer(() => {
                   session.nextPhase(); // MAIN2
                   session.nextPhase(); // END -> Turno do Jogador
-                  showNotification(`⚔️ É a vez de ${p1.nickname} duelar!`);
+                  showNotification(`[TURNO] É a vez de ${p1.nickname} duelar!`);
                   forceUpdate();
 
                   const lastCard = session.player1.hand[session.player1.hand.length - 1];
@@ -838,7 +867,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           scheduleTimer(() => {
             session.nextPhase(); // MAIN2
             session.nextPhase(); // END -> Turno do Jogador
-            showNotification(`⚔️ É a vez de ${p1.nickname} duelar!`);
+            showNotification(`[TURNO] É a vez de ${p1.nickname} duelar!`);
             forceUpdate();
 
             const lastCard = session.player1.hand[session.player1.hand.length - 1];
@@ -889,17 +918,17 @@ export const Playmat: React.FC<PlaymatProps> = ({
             setPriorityPrompt({
               type: 'TRAP_HOLE',
               badge: languagePt ? 'RESPOSTA DE INVOCAÇÃO' : 'SUMMON REACTION',
-              badgeIcon: '🕳️',
+              badgeIcon: '[ARMADILHA]',
               title: languagePt ? 'JANELA DE PRIORIDADE' : 'PRIORITY WINDOW',
               cardName: trapName,
               cardImage: trapCard?.data.imageUrl,
               cardType: 'TRAP',
               accentColor: 'purple',
               message: languagePt
-                ? `🕳️ O oponente invocou ${summonedName} (ATK ${summonedAtk}). Deseja ativar sua carta armadilha ${trapName}?`
-                : `🕳️ Opponent summoned ${summonedName} (ATK ${summonedAtk}). Do you wish to activate your trap card ${trapName}?`,
-              confirmText: languagePt ? 'Ativar Armadilha ⚡' : 'Activate Trap ⚡',
-              declineText: languagePt ? 'Guardar / Passar ❌' : 'Keep / Pass ❌',
+                ? `O oponente invocou ${summonedName} (ATK ${summonedAtk}). Deseja ativar sua carta armadilha ${trapName}?`
+                : `Opponent summoned ${summonedName} (ATK ${summonedAtk}). Do you wish to activate your trap card ${trapName}?`,
+              confirmText: languagePt ? 'Ativar Buraco Armadilha' : 'Activate Trap Hole',
+              declineText: languagePt ? 'Guardar / Passar' : 'Keep / Pass',
               onConfirm: () => {
                 setPriorityPrompt(null);
                 const success = session.activateTrapHole(
@@ -912,10 +941,18 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   setIsCameraShaking(true);
                   scheduleTimer(() => setIsCameraShaking(false), 400);
                   triggerCardDestruction(summonedUid);
+                  triggerActionBanner(
+                    trapName,
+                    languagePt
+                      ? `${summonedName} caiu no Buraco Armadilha e foi destruído!`
+                      : `${summonedName} fell into the Trap Hole and was destroyed!`,
+                    trapCard?.data.imageUrl,
+                    '[ARMADILHA]'
+                  );
                   showNotification(
                     languagePt
-                      ? `🕳️ Buraco Armadilha ativado! ${summonedName} foi destruído e enviado ao cemitério!`
-                      : `🕳️ Trap Hole activated! ${summonedName} was destroyed and sent to the graveyard!`
+                      ? `[BURACO ARMADILHA] Buraco Armadilha ativado! ${summonedName} foi destruído!`
+                      : `[TRAP HOLE] Trap Hole activated! ${summonedName} was destroyed!`
                   );
                   forceUpdate();
                 }
@@ -1002,8 +1039,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
       if (opponentSpellTrapCount < 1) {
         showNotification(
           languagePt
-            ? '⚠️ O adversário não possui Cartas Mágicas ou Armadilhas no campo!'
-            : '⚠️ Opponent has no Spell or Trap cards on the field!'
+            ? '[AVISO] O adversário não possui Cartas Mágicas ou Armadilhas no campo!'
+            : '[WARNING] Opponent has no Spell or Trap cards on the field!'
         );
         return false;
       }
@@ -1074,8 +1111,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
       if (isSpellOrTrapCard(card)) {
         showNotification(
           languagePt
-            ? '⚠️ Cartas Mágicas e Armadilhas só podem ser colocadas nas Zonas de Magia e Armadilha (M/A) abaixo!'
-            : '⚠️ Spell and Trap cards can only be placed in the Spell & Trap Zones (M/A) below!'
+            ? '[AVISO] Cartas Mágicas e Armadilhas só podem ser colocadas nas Zonas de Magia e Armadilha (M/A) abaixo!'
+            : '[WARNING] Spell and Trap cards can only be placed in the Spell & Trap Zones (M/A) below!'
         );
         return;
       }
@@ -1100,8 +1137,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
           }
           showNotification(
             languagePt
-              ? `⚠️ Você já selecionou os ${requiredTributes} sacrifício(s). Clique em uma das zonas liberadas ou vazias para invocar!`
-              : `⚠️ You already selected ${requiredTributes} tribute(s). Click on one of the vacated or empty zones to summon!`
+              ? `[AVISO] Você já selecionou os ${requiredTributes} sacrifício(s). Clique em uma das zonas liberadas ou vazias para invocar!`
+              : `[WARNING] You already selected ${requiredTributes} tribute(s). Click on one of the vacated or empty zones to summon!`
           );
           return;
         }
@@ -1120,8 +1157,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
               const cardName = (languagePt && card.data.namePt) ? card.data.namePt : card.data.name;
               showNotification(
                 languagePt
-                  ? `✨ ${requiredTributes} sacrifício(s) pronto(s)! Agora clique na zona onde deseja baixar ${cardName}!`
-                  : `✨ ${requiredTributes} tribute(s) ready! Now click on the zone to summon ${cardName}!`
+                  ? `[PRONTO] ${requiredTributes} sacrifício(s) pronto(s)! Agora clique na zona onde deseja baixar ${cardName}!`
+                  : `[READY] ${requiredTributes} tribute(s) ready! Now click on the zone to summon ${cardName}!`
               );
             }
           }
@@ -1131,8 +1168,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
         // Clicou numa zona vazia antes de selecionar os sacrifícios
         showNotification(
           languagePt
-            ? `⚠️ Monstro Nível ${card.data.level} exige selecionar ${requiredTributes} monstro(s) no seu campo como sacrifício primeiro!`
-            : `⚠️ Level ${card.data.level} monster requires selecting ${requiredTributes} monster(s) on your field as tribute first!`
+            ? `[TRIBUTO] Monstro Nível ${card.data.level} exige selecionar ${requiredTributes} monstro(s) no seu campo como sacrifício primeiro!`
+            : `[TRIBUTE] Level ${card.data.level} monster requires selecting ${requiredTributes} monster(s) on your field as tribute first!`
         );
         return;
       }
@@ -1166,8 +1203,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
         ) {
           showNotification(
             languagePt
-              ? '⏳ Esta carta foi baixada neste turno e só poderá ser revelada no próximo turno!'
-              : '⏳ This card was set this turn and can only be flipped next turn!'
+              ? '[AVISO] Esta carta foi baixada neste turno e só poderá ser revelada no próximo turno!'
+              : '[WARNING] This card was set this turn and can only be flipped next turn!'
           );
           return;
         }
@@ -1188,8 +1225,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
         if (currentMonster.turnSummoned === match.currentTurn) {
           showNotification(
             languagePt
-              ? '⏳ Este monstro foi invocado neste turno e só poderá atacar no próximo turno!'
-              : '⏳ This monster was summoned this turn and cannot attack until next turn!'
+              ? '[AVISO] Este monstro foi invocado neste turno e só poderá atacar no próximo turno!'
+              : '[WARNING] This monster was summoned this turn and cannot attack until next turn!'
           );
           return;
         }
@@ -1197,8 +1234,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
       } else if (currentMonster.position === 'DEFENSE') {
         showNotification(
           languagePt
-            ? '🛡️ Monstros em Posição de Defesa não podem atacar!'
-            : '🛡️ Monsters in Defense Position cannot attack!'
+            ? '[AVISO] Monstros em Posição de Defesa não podem atacar!'
+            : '[WARNING] Monsters in Defense Position cannot attack!'
         );
       }
     }
@@ -1227,8 +1264,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
           if (posResult.flipEffect.targetName) {
             showNotification(
               languagePt
-                ? `🪲 Efeito FLIP: ${posResult.flipEffect.targetName} do oponente foi destruído!`
-                : `🪲 FLIP Effect: Opponent's ${posResult.flipEffect.targetName} was destroyed!`
+                ? `[EFEITO FLIP] ${posResult.flipEffect.targetName} do oponente foi destruído!`
+                : `[FLIP EFFECT] Opponent's ${posResult.flipEffect.targetName} was destroyed!`
             );
           }
         } else if (posResult.flipEffect.action === 'RETURN_TO_HAND') {
@@ -1236,14 +1273,14 @@ export const Playmat: React.FC<PlaymatProps> = ({
           if (posResult.flipEffect.targetNames && posResult.flipEffect.targetNames.length > 0) {
             showNotification(
               languagePt
-                ? `🐧 Efeito FLIP: ${posResult.flipEffect.targetNames.join(', ')} retornou para a mão do oponente!`
-                : `🐧 FLIP Effect: ${posResult.flipEffect.targetNames.join(', ')} returned to opponent's hand!`
+                ? `[EFEITO FLIP] ${posResult.flipEffect.targetNames.join(', ')} retornou para a mão do oponente!`
+                : `[FLIP EFFECT] ${posResult.flipEffect.targetNames.join(', ')} returned to opponent's hand!`
             );
           } else if (posResult.flipEffect.targetName) {
             showNotification(
               languagePt
-                ? `🐧 Efeito FLIP: ${posResult.flipEffect.targetName} retornou para a mão do oponente!`
-                : `🐧 FLIP Effect: ${posResult.flipEffect.targetName} returned to opponent's hand!`
+                ? `[EFEITO FLIP] ${posResult.flipEffect.targetName} retornou para a mão do oponente!`
+                : `[FLIP EFFECT] ${posResult.flipEffect.targetName} returned to opponent's hand!`
             );
           }
         }
@@ -1289,10 +1326,16 @@ export const Playmat: React.FC<PlaymatProps> = ({
             setIsCameraShaking(true);
             scheduleTimer(() => setIsCameraShaking(false), 400);
             triggerCardDestruction(summonedUid);
+            triggerActionBanner(
+              languagePt ? 'Buraco Armadilha' : 'Trap Hole',
+              languagePt ? `${summonedName} caiu no Buraco Armadilha do oponente!` : `${summonedName} fell into opponent's Trap Hole!`,
+              '/cards/trap-hole.jpg',
+              '[ARMADILHA]'
+            );
             showNotification(
               languagePt
-                ? `🕳️ ARMADILHA DO OPONENTE! Buraco Armadilha destruiu ${summonedName}!`
-                : `🕳️ OPPONENT TRAP! Trap Hole destroyed ${summonedName}!`
+                ? `[ARMADILHA DO OPONENTE] Buraco Armadilha destruiu ${summonedName}!`
+                : `[OPPONENT TRAP] Trap Hole destroyed ${summonedName}!`
             );
           }
         }
@@ -1300,7 +1343,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
       forceUpdate();
     } else {
-      showNotification(languagePt ? '❌ Falha ao invocar monstro. Verifique as regras.' : '❌ Failed to summon monster. Check the rules.');
+      showNotification(languagePt ? '[FALHA] Falha ao invocar monstro. Verifique as regras.' : '[FAILED] Failed to summon monster. Check the rules.');
     }
   };
 
@@ -1333,17 +1376,17 @@ export const Playmat: React.FC<PlaymatProps> = ({
               setPriorityPrompt({
                 type: 'WABOKU',
                 badge: languagePt ? 'ARMADILHA NORMAL' : 'NORMAL TRAP',
-                badgeIcon: '🕊️',
-                title: languagePt ? '⚡ ATIVAÇÃO DE ARMADILHA' : '⚡ TRAP ACTIVATION',
+                badgeIcon: '[ARMADILHA]',
+                title: languagePt ? 'ATIVAÇÃO DE ARMADILHA' : 'TRAP ACTIVATION',
                 cardName,
                 cardImage: currentSlot.data.imageUrl,
                 cardType: 'TRAP',
                 accentColor: 'sky',
                 message: languagePt
-                  ? `⚡ Ativar ${cardName} agora? Uma aura sagrada envolverá seus monstros, impedindo sua destruição em batalha e reduzindo todo dano de batalha a 0 neste turno.`
-                  : `⚡ Activate ${cardName} now? A sacred aura will protect your monsters from battle destruction and reduce battle damage to 0 this turn.`,
-                confirmText: languagePt ? 'Ativar Armadilha ⚡' : 'Activate Trap ⚡',
-                declineText: languagePt ? 'Guardar / Passar ❌' : 'Keep / Cancel ❌',
+                  ? `Deseja ativar ${cardName} agora? Uma aura sagrada envolverá seus monstros, impedindo sua destruição em batalha e reduzindo todo dano de batalha a 0 neste turno.`
+                  : `Activate ${cardName} now? A sacred aura will protect your monsters from battle destruction and reduce battle damage to 0 this turn.`,
+                confirmText: languagePt ? 'Ativar Waboku' : 'Activate Waboku',
+                declineText: languagePt ? 'Guardar / Passar' : 'Keep / Cancel',
                 onConfirm: () => {
                   setPriorityPrompt(null);
                   handleActivateWaboku(zoneIndex);
@@ -1356,24 +1399,24 @@ export const Playmat: React.FC<PlaymatProps> = ({
             } else {
               showNotification(
                 languagePt
-                  ? '🪤 Esta armadilha é de ativação reativa (ex: Força Espelho, Buraco Armadilha) e responderá a ações específicas do oponente!'
-                  : '🪤 This trap triggers in response to specific opponent actions!'
+                  ? '[ARMADILHA] Esta armadilha é de ativação reativa (ex: Força Espelho, Buraco Armadilha) e responderá a ações do oponente!'
+                  : '[TRAP] This trap triggers in response to specific opponent actions!'
               );
               return;
             }
           } else {
             showNotification(
               languagePt
-                ? '⏳ Armadilhas baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.'
-                : '⏳ Set traps cannot be activated during the same turn they were placed.'
+                ? '[AVISO] Armadilhas baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.'
+                : '[WARNING] Set traps cannot be activated during the same turn they were placed.'
             );
             return;
           }
         } else {
           showNotification(
             languagePt
-              ? '⚠️ Você não pode ativar cartas mágicas normais durante o turno do oponente!'
-              : '⚠️ You cannot activate normal spells during opponent turn!'
+              ? '[AVISO] Você não pode ativar cartas mágicas normais durante o turno do oponente!'
+              : '[WARNING] You cannot activate normal spells during opponent turn!'
           );
           return;
         }
@@ -1384,8 +1427,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
     if (match.phase !== 'MAIN1' && match.phase !== 'MAIN2') {
       showNotification(
         languagePt
-          ? '⚠️ Cartas Mágicas e Armadilhas só podem ser baixadas ou ativadas nas Fases Principais!'
-          : '⚠️ Spell and Trap cards can only be set or activated during Main Phases!'
+          ? '[AVISO] Cartas Mágicas e Armadilhas só podem ser baixadas ou ativadas nas Fases Principais!'
+          : '[WARNING] Spell and Trap cards can only be set or activated during Main Phases!'
       );
       return;
     }
@@ -1406,8 +1449,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
           } else {
             showNotification(
               languagePt
-                ? '⏳ Cartas Mágicas baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.'
-                : '⏳ Set Spell cards cannot be activated during the same turn they were placed on the field.'
+                ? '[AVISO] Cartas Mágicas baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.'
+                : '[WARNING] Set Spell cards cannot be activated during the same turn they were placed on the field.'
             );
           }
         }
@@ -1431,17 +1474,17 @@ export const Playmat: React.FC<PlaymatProps> = ({
               setPriorityPrompt({
                 type: 'WABOKU',
                 badge: languagePt ? 'ARMADILHA NORMAL' : 'NORMAL TRAP',
-                badgeIcon: '🕊️',
-                title: languagePt ? '⚡ ATIVAÇÃO DE ARMADILHA' : '⚡ TRAP ACTIVATION',
+                badgeIcon: '[ARMADILHA]',
+                title: languagePt ? 'ATIVAÇÃO DE ARMADILHA' : 'TRAP ACTIVATION',
                 cardName,
                 cardImage: currentSlot.data.imageUrl,
                 cardType: 'TRAP',
                 accentColor: 'sky',
                 message: languagePt
-                  ? `⚡ Ativar ${cardName} agora? Uma aura sagrada envolverá seus monstros, impedindo sua destruição em batalha e reduzindo todo dano de batalha a 0 neste turno.`
-                  : `⚡ Activate ${cardName} now? A sacred aura will protect your monsters from battle destruction and reduce battle damage to 0 this turn.`,
-                confirmText: languagePt ? 'Ativar Armadilha ⚡' : 'Activate Trap ⚡',
-                declineText: languagePt ? 'Guardar / Passar ❌' : 'Keep / Cancel ❌',
+                  ? `Deseja ativar ${cardName} agora? Uma aura sagrada envolverá seus monstros, impedindo sua destruição em batalha e reduzindo todo dano de batalha a 0 neste turno.`
+                  : `Activate ${cardName} now? A sacred aura will protect your monsters from battle destruction and reduce battle damage to 0 this turn.`,
+                confirmText: languagePt ? 'Ativar Waboku' : 'Activate Waboku',
+                declineText: languagePt ? 'Guardar / Passar' : 'Keep / Cancel',
                 onConfirm: () => {
                   setPriorityPrompt(null);
                   handleActivateWaboku(zoneIndex);
@@ -1454,15 +1497,15 @@ export const Playmat: React.FC<PlaymatProps> = ({
             } else {
               showNotification(
                 languagePt
-                  ? '🪤 Esta armadilha é de ativação reativa e será disparada automaticamente em resposta às ações do adversário!'
-                  : '🪤 This trap is reactive and triggers automatically in response to opponent actions!'
+                  ? '[ARMADILHA] Esta armadilha é de ativação reativa e será disparada em resposta às ações do adversário!'
+                  : '[TRAP] This trap is reactive and triggers in response to opponent actions!'
               );
             }
           } else {
             showNotification(
               languagePt
-                ? '⏳ Cartas Armadilha baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.'
-                : '⏳ Set Trap cards cannot be activated during the same turn they were placed on the field.'
+                ? '[AVISO] Cartas Armadilha baixadas não podem ser ativadas no mesmo turno em que foram colocadas no campo.'
+                : '[WARNING] Set Trap cards cannot be activated during the same turn they were placed on the field.'
             );
           }
         }
@@ -1477,8 +1520,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
     if (isMonsterCard(selectedCard)) {
       showNotification(
         languagePt
-          ? '⚠️ Monstros só podem ser invocados nas Zonas de Monstros!'
-          : '⚠️ Monsters can only be summoned in Monster Zones!'
+          ? '[AVISO] Monstros só podem ser invocados nas Zonas de Monstros!'
+          : '[WARNING] Monsters can only be summoned in Monster Zones!'
       );
       return;
     }
@@ -1486,8 +1529,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
     if (!isSpellOrTrapCard(selectedCard)) {
       showNotification(
         languagePt
-          ? '⚠️ Apenas Cartas Mágicas ou Armadilhas podem ser colocadas nestas zonas!'
-          : '⚠️ Only Spell or Trap cards can be placed in these zones!'
+          ? '[AVISO] Apenas Cartas Mágicas ou Armadilhas podem ser colocadas nestas zonas!'
+          : '[WARNING] Only Spell or Trap cards can be placed in these zones!'
       );
       return;
     }
@@ -1495,8 +1538,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
     if (currentSlot !== null) {
       showNotification(
         languagePt
-          ? '⚠️ Esta zona já está ocupada por outra carta!'
-          : '⚠️ This zone is already occupied by another card!'
+          ? '[AVISO] Esta zona já está ocupada por outra carta!'
+          : '[WARNING] This zone is already occupied by another card!'
       );
       return;
     }
@@ -1534,12 +1577,12 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
       showNotification(
         languagePt
-          ? `🎴 Carta ${cardTypeLabel} baixada virada para baixo na zona!`
-          : `🎴 ${cardTypeLabel} card set face-down in the zone!`
+          ? `[BAIXAR] Carta ${cardTypeLabel} baixada virada para baixo na zona!`
+          : `[SET] ${cardTypeLabel} card set face-down in the zone!`
       );
       forceUpdate();
     } else {
-      showNotification(languagePt ? '❌ Não foi possível baixar a carta.' : '❌ Failed to set card.');
+      showNotification(languagePt ? '[FALHA] Não foi possível baixar a carta.' : '[FAILED] Failed to set card.');
     }
   };
 
@@ -1548,10 +1591,18 @@ export const Playmat: React.FC<PlaymatProps> = ({
     const success = session.activateWaboku(p1.id, zoneIndex);
     if (success) {
       soundFX.playMagicShield();
+      triggerActionBanner(
+        languagePt ? 'Waboku' : 'Waboku',
+        languagePt
+          ? 'Uma aura sagrada protege seus monstros contra destruição e anula todo dano de batalha neste turno!'
+          : 'A sacred aura protects your monsters from destruction and prevents battle damage this turn!',
+        '/cards/waboku.jpg',
+        '[ARMADILHA]'
+      );
       showNotification(
         languagePt
-          ? '🕊️ Waboku ativado! Uma aura sagrada azul e branca protege seus monstros contra destruição e anula todo dano de batalha neste turno!'
-          : '🕊️ Waboku activated! A sacred blue and white aura protects your monsters from destruction and prevents battle damage this turn!'
+          ? '[WABOKU] Waboku ativado! Uma aura sagrada protege seus monstros contra destruição e anula todo dano de batalha!'
+          : '[WABOKU] Waboku activated! A sacred aura protects your monsters and prevents battle damage!'
       );
       setPriorityPrompt(null);
       forceUpdate();
@@ -1589,10 +1640,18 @@ export const Playmat: React.FC<PlaymatProps> = ({
       if (success) {
         setSelectedHandCardUid(null);
         setSpellChoiceModal(null);
+        triggerActionBanner(
+          cardDisplayName,
+          languagePt
+            ? 'Relâmpagos celestiais aniquilam todas as forças do adversário!'
+            : 'Heavenly lightning annihilates all opponent monsters!',
+          card.data.imageUrl,
+          '[MAGIA]'
+        );
         showNotification(
           languagePt
-            ? `⚡ ${cardDisplayName} ativado! Todos os monstros do oponente foram aniquilados pelo relâmpago!`
-            : `⚡ ${cardDisplayName} activated! All opponent monsters were destroyed by lightning!`
+            ? `[MAGIA] ${cardDisplayName} ativado! Todos os monstros do oponente foram aniquilados!`
+            : `[SPELL] ${cardDisplayName} activated! All opponent monsters were destroyed!`
         );
         forceUpdate();
       }
@@ -1616,10 +1675,18 @@ export const Playmat: React.FC<PlaymatProps> = ({
       if (success) {
         setSelectedHandCardUid(null);
         setSpellChoiceModal(null);
+        triggerActionBanner(
+          cardDisplayName,
+          languagePt
+            ? 'O vórtice dimensional destruiu todos os monstros no campo!'
+            : 'The dimensional vortex destroyed all monsters on the field!',
+          card.data.imageUrl,
+          '[MAGIA]'
+        );
         showNotification(
           languagePt
-            ? `🕳️ ${cardDisplayName} ativado! O campo foi aniquilado!`
-            : `🕳️ ${cardDisplayName} activated! The entire field was destroyed!`
+            ? `[MAGIA] ${cardDisplayName} ativado! O campo foi aniquilado!`
+            : `[SPELL] ${cardDisplayName} activated! The entire field was destroyed!`
         );
         forceUpdate();
       }
@@ -1641,10 +1708,16 @@ export const Playmat: React.FC<PlaymatProps> = ({
           setTimeout(() => setRecentDrawnUids([]), 1200);
         }
 
+        triggerActionBanner(
+          cardDisplayName,
+          languagePt ? 'Você comprou 2 cartas do seu deck!' : 'You drew 2 cards from your deck!',
+          card.data.imageUrl,
+          '[MAGIA]'
+        );
         showNotification(
           languagePt
-            ? `🏺 ${cardDisplayName} ativado! Você comprou 2 cartas!`
-            : `🏺 ${cardDisplayName} activated! You drew 2 cards!`
+            ? `[MAGIA] ${cardDisplayName} ativado! Você comprou 2 cartas!`
+            : `[SPELL] ${cardDisplayName} activated! You drew 2 cards!`
         );
         forceUpdate();
       }
@@ -1662,10 +1735,16 @@ export const Playmat: React.FC<PlaymatProps> = ({
       if (success) {
         setSelectedHandCardUid(null);
         setSpellChoiceModal(null);
+        triggerActionBanner(
+          cardDisplayName,
+          languagePt ? `Você recuperou ${value} Pontos de Vida!` : `You gained ${value} Life Points!`,
+          card.data.imageUrl,
+          '[MAGIA]'
+        );
         showNotification(
           languagePt
-            ? `💚 ${cardDisplayName} ativado! Você recuperou ${value} Pontos de Vida!`
-            : `💚 ${cardDisplayName} activated! You gained ${value} Life Points!`
+            ? `[MAGIA] ${cardDisplayName} ativado! Você recuperou ${value} LP!`
+            : `[SPELL] ${cardDisplayName} activated! You gained ${value} LP!`
         );
         forceUpdate();
       }
@@ -1685,10 +1764,16 @@ export const Playmat: React.FC<PlaymatProps> = ({
       if (success) {
         setSelectedHandCardUid(null);
         setSpellChoiceModal(null);
+        triggerActionBanner(
+          cardDisplayName,
+          languagePt ? `Causou ${value} de dano direto aos LPs do adversário!` : `Inflicted ${value} direct damage to opponent's LP!`,
+          card.data.imageUrl,
+          '[MAGIA]'
+        );
         showNotification(
           languagePt
-            ? `🔥 ${cardDisplayName} causou ${value} de dano direto aos LPs do adversário!`
-            : `🔥 ${cardDisplayName} inflicted ${value} direct damage to opponent's LP!`
+            ? `[MAGIA] ${cardDisplayName} causou ${value} de dano direto aos LPs do oponente!`
+            : `[SPELL] ${cardDisplayName} inflicted ${value} direct damage to opponent's LP!`
         );
         forceUpdate();
       }
@@ -1717,14 +1802,20 @@ export const Playmat: React.FC<PlaymatProps> = ({
       setSelectedHandCardUid(null);
       setSpellChoiceModal(null);
       soundFX.playPlaceCard();
+      triggerActionBanner(
+        cardDisplayName,
+        languagePt ? 'Carta Mágica ativada com sucesso!' : 'Spell card successfully activated!',
+        card.data.imageUrl,
+        '[MAGIA]'
+      );
       showNotification(
         languagePt
-          ? `✨ ${cardDisplayName} ativado!`
-          : `✨ ${cardDisplayName} activated!`
+          ? `[MAGIA] ${cardDisplayName} ativado!`
+          : `[SPELL] ${cardDisplayName} activated!`
       );
       forceUpdate();
     } else {
-      showNotification(languagePt ? '❌ Falha ao ativar Carta Mágica.' : '❌ Failed to activate Spell card.');
+      showNotification(languagePt ? '[FALHA] Falha ao ativar Carta Mágica.' : '[FAILED] Failed to activate Spell card.');
     }
   };
 
@@ -1781,18 +1872,18 @@ export const Playmat: React.FC<PlaymatProps> = ({
         triggerCardDestruction(botMirrorResult.destroyedUids);
       }
 
-      setCelebratoryBanner({
-        title: languagePt
-          ? '🪞 O ADVERSÁRIO ATIVOU FORÇA ESPELHO! Seu ataque foi refletido e todos os seus monstros de ataque foram destruídos!'
-          : '🪞 OPPONENT ACTIVATED MIRROR FORCE! Your attack was reflected and all your attack position monsters were destroyed!',
-        icon: '🪞',
-      });
-      setTimeout(() => setCelebratoryBanner(null), 3500);
-
+      triggerActionBanner(
+        languagePt ? 'Força Espelho' : 'Mirror Force',
+        languagePt
+          ? 'O oponente ativou Força Espelho! Seus monstros em modo de ataque foram aniquilados!'
+          : 'Opponent activated Mirror Force! Your attack position monsters were destroyed!',
+        '/cards/mirror-force.jpg',
+        '[ARMADILHA]'
+      );
       showNotification(
         languagePt
-          ? '🪞 O Bot ativou Força Espelho! Seus monstros em modo de ataque foram aniquilados!'
-          : '🪞 Opponent activated Mirror Force! Your attack position monsters were destroyed!'
+          ? '[FORÇA ESPELHO] O Bot ativou Força Espelho! Seus monstros em modo de ataque foram aniquilados!'
+          : '[MIRROR FORCE] Opponent activated Mirror Force! Your attack position monsters were destroyed!'
       );
 
       setSelectedAttackerZone(null);
@@ -1828,8 +1919,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
           soundFX.playMagicShield();
           showNotification(
             languagePt
-              ? '🕊️ O oponente está protegido pela aura sagrada de Waboku! O dano direto foi anulado!'
-              : '🕊️ Opponent is protected by Waboku! Direct damage was negated!'
+              ? '[WABOKU] O oponente está protegido pela aura sagrada de Waboku! O dano direto foi anulado!'
+              : '[WABOKU] Opponent is protected by Waboku! Direct damage was negated!'
           );
         } else {
           setFloatingDamage({ amount: dmg, isPlayer: false, zoneIndex: null });
@@ -1882,8 +1973,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
               soundFX.playMagicShield();
               showNotification(
                 languagePt
-                  ? '🕊️ O monstro do oponente foi protegido pela aura sagrada de Waboku!'
-                  : '🕊️ Opponent monster was protected by Waboku!'
+                  ? '[WABOKU] O monstro do oponente foi protegido pela aura sagrada de Waboku!'
+                  : '[WABOKU] Opponent monster was protected by Waboku!'
               );
             }
           } else if (attackerEffAtk < defenderEffAtk) {
@@ -1915,8 +2006,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
               soundFX.playMagicShield();
               showNotification(
                 languagePt
-                  ? '🕊️ O monstro em defesa foi protegido pela aura sagrada de Waboku!'
-                  : '🕊️ Opponent defense monster was protected by Waboku!'
+                  ? '[WABOKU] O monstro em defesa foi protegido pela aura sagrada de Waboku!'
+                  : '[WABOKU] Opponent defense monster was protected by Waboku!'
               );
             }
           } else if (attackerEffAtk < defendingCard.data.defense) {
@@ -1945,13 +2036,13 @@ export const Playmat: React.FC<PlaymatProps> = ({
   // Ativação da Roleta do Tempo de Time Wizard
   const handleActivateTimeWizard = (zoneIndex: number) => {
     if (!isPlayerTurn || (match.phase !== 'MAIN1' && match.phase !== 'MAIN2')) {
-      showNotification(languagePt ? '⏳ O efeito só pode ser ativado na Fase Principal!' : '⏳ Effect can only be activated during Main Phase!');
+      showNotification(languagePt ? '[AVISO] O efeito só pode ser ativado na Fase Principal!' : '[WARNING] Effect can only be activated during Main Phase!');
       return;
     }
 
     const card = p1.monsterZones[zoneIndex];
     if (!card || card.hasUsedEffectThisTurn) {
-      showNotification(languagePt ? '⚠️ Time Wizard já usou o efeito neste turno!' : '⚠️ Time Wizard already used its effect this turn!');
+      showNotification(languagePt ? '[AVISO] Time Wizard já usou o efeito neste turno!' : '[WARNING] Time Wizard already used its effect this turn!');
       return;
     }
 
@@ -1970,7 +2061,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
         setTimeout(() => setIsCameraShaking(false), 350);
 
         triggerCardDestruction(result.destroyedUids);
-        showNotification(languagePt ? '⚡ TEMPO ACELERADO! O oponente teve seu campo destruído!' : '⚡ TIME ACCELERATED! Opponent field was destroyed!');
+        showNotification(languagePt ? '[TIME WIZARD] TEMPO ACELERADO! O oponente teve seu campo destruído!' : '[TIME WIZARD] TIME ACCELERATED! Opponent field was destroyed!');
       } else {
         soundFX.playDestruction();
         setIsCameraShaking(true);
@@ -1981,7 +2072,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           setFloatingDamage({ amount: result.burnDamage, isPlayer: true, zoneIndex: null });
           setTimeout(() => setFloatingDamage(null), 1400);
         }
-        showNotification(languagePt ? '💥 FALHA TEMPORAL! Seus monstros foram destruídos!' : '💥 TIME BACKFIRE! Your monsters were destroyed!');
+        showNotification(languagePt ? '[TIME WIZARD] FALHA TEMPORAL! Seus monstros foram destruídos!' : '[TIME WIZARD] TIME BACKFIRE! Your monsters were destroyed!');
       }
 
       forceUpdate();
@@ -2036,41 +2127,51 @@ export const Playmat: React.FC<PlaymatProps> = ({
   return (
     <div className="flex h-screen w-screen max-h-screen bg-[#07050d] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#180e2d] via-[#090614] to-[#030206] select-none text-slate-100 overflow-hidden font-sans relative">
       
-      {/* 🔮 ALERTA VISUAL INTEGRADO NA TELA (SUBSTITUINDO ALERT NATIVO) */}
-      {toastMessage && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+      {/* ACTION BANNER DE ATIVAÇÃO DE CARTAS (MINIATURA 40x56px, BORDA METÁLICA, NOME DOURADO) */}
+      {actionBanner && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-slideInRight">
+          <div className="bg-[#0c0818]/95 border-2 border-amber-500/80 rounded-2xl px-5 py-3 shadow-[0_0_35px_rgba(245,158,11,0.5)] backdrop-blur-md flex items-center gap-3.5 max-w-lg">
+            {actionBanner.cardImage && (
+              <div className="w-[40px] h-[56px] min-w-[40px] rounded border border-amber-300/80 overflow-hidden shadow-md bg-black">
+                <img
+                  src={actionBanner.cardImage}
+                  alt={actionBanner.cardName}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+            <div className="flex flex-col text-left">
+              <div className="flex items-center gap-2">
+                {actionBanner.badge && (
+                  <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-600/60 uppercase tracking-wider">
+                    {actionBanner.badge}
+                  </span>
+                )}
+                <span className="font-serif font-black text-amber-300 text-sm tracking-wide drop-shadow">
+                  {actionBanner.cardName}
+                </span>
+              </div>
+              <p className="text-xs text-slate-200 font-sans mt-0.5 leading-snug line-clamp-2">
+                {actionBanner.description}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ALERTA VISUAL DO SISTEMA (QUANDO NÃO HOUVER ACTION BANNER) */}
+      {toastMessage && !actionBanner && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none">
           <div className="bg-[#180e2d]/95 border-2 border-amber-400 text-amber-200 px-6 py-2.5 rounded-full shadow-[0_0_30px_rgba(245,158,11,0.9)] backdrop-blur-md font-serif font-black text-sm tracking-wide flex items-center gap-2.5">
-            <span className="text-lg text-amber-400">𓂀</span>
+            <span className="text-[10px] font-mono font-black text-amber-300 bg-amber-950/80 px-1.5 py-0.5 rounded border border-amber-500/60">[SISTEMA]</span>
             <span>{toastMessage}</span>
           </div>
         </div>
       )}
 
-      {/* 💥 BANNER DE EFEITO FLIP ATIVADO */}
-      {flipEffectBanner && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-bounce">
-          <div className="bg-gradient-to-r from-purple-950 via-amber-900 to-purple-950 border-2 border-amber-300 text-amber-200 px-8 py-3 rounded-2xl shadow-[0_0_50px_rgba(245,158,11,1)] backdrop-blur-md flex items-center gap-3">
-            <span className="text-3xl animate-spin">💥</span>
-            <div>
-              <div className="text-[10px] tracking-widest text-amber-300 font-mono uppercase font-black">
-                {languagePt ? 'Efeito Especial de Virar' : 'Flip Special Effect'}
-              </div>
-              <div className="text-lg font-serif font-black text-white drop-shadow-[0_2px_8px_rgba(0,0,0,1)]">
-                {languagePt
-                  ? `EFEITO FLIP: ${flipEffectBanner.cardName} foi ativado!`
-                  : `FLIP EFFECT: ${flipEffectBanner.cardName} was activated!`}
-              </div>
-            </div>
-            <span className="text-2xl">
-              {flipEffectBanner.action === 'DESTROY_MONSTER' ? '🪲' : '🐧'}
-            </span>
-          </div>
-        </div>
-      )}
 
 
-
-      {/* ⏳ MODAL / ROLETA DO TEMPO DE TIME WIZARD */}
+      {/* MODAL / ROLETA DO TEMPO DE TIME WIZARD */}
       {timeWizardRoulette && (
         <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-gradient-to-b from-[#1a102a] to-[#0a0512] border-2 border-yellow-400 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_0_60px_rgba(234,179,8,0.9)] flex flex-col items-center">
@@ -2081,7 +2182,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
             {/* Moeda 3D Girando */}
             <div className="w-28 h-28 my-4 rounded-full border-4 border-yellow-300 bg-gradient-to-tr from-yellow-600 via-amber-300 to-yellow-500 flex items-center justify-center shadow-[0_0_35px_rgba(250,204,21,1)] relative overflow-hidden">
               <div className={`text-5xl ${timeWizardRoulette.isSpinning ? 'anim-coin-spin' : ''}`}>
-                {timeWizardRoulette.isSpinning ? '🪙' : timeWizardRoulette.outcome === 'HEADS' ? '👑' : '💀'}
+                <span className="text-xl font-mono font-black text-yellow-300">{timeWizardRoulette.isSpinning ? '[ROLANDO]' : timeWizardRoulette.outcome === 'HEADS' ? '[CARA]' : '[COROA]'}</span>
               </div>
             </div>
 
@@ -2093,7 +2194,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
               ) : timeWizardRoulette.outcome === 'HEADS' ? (
                 <div className="animate-bounce">
                   <span className="text-lg font-black text-emerald-400 font-serif tracking-wide block">
-                    ⚡ {languagePt ? 'CARA (HEADS)!' : 'HEADS!'}
+                    [SUCESSO] {languagePt ? 'CARA (HEADS)!' : 'HEADS!'}
                   </span>
                   <span className="text-xs text-emerald-200/90 font-sans mt-1 block">
                     {languagePt ? 'O campo do adversário desintegrou-se!' : 'Opponent field disintegrated!'}
@@ -2102,7 +2203,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
               ) : (
                 <div className="animate-bounce">
                   <span className="text-lg font-black text-red-500 font-serif tracking-wide block">
-                    💥 {languagePt ? 'COROA (TAILS)!' : 'TAILS!'}
+                    [FALHA] {languagePt ? 'COROA (TAILS)!' : 'TAILS!'}
                   </span>
                   <span className="text-xs text-red-300/90 font-sans mt-1 block">
                     {languagePt ? 'A magia temporal explodiu contra você!' : 'Time magic backfired against you!'}
@@ -2114,12 +2215,12 @@ export const Playmat: React.FC<PlaymatProps> = ({
         </div>
       )}
 
-      {/* ⚡ ANIMAÇÃO LENDÁRIA DE RAIGEKI: RELÂMPAGOS E DESTRUIÇÃO TOTAL */}
+      {/* ANIMAÇÃO LENDÁRIA DE RAIGEKI: RELÂMPAGOS E DESTRUIÇÃO TOTAL */}
       {raigekiActive && (
         <div className="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-center animate-fadeIn bg-gradient-to-b from-sky-400/40 via-yellow-200/50 to-amber-500/30 backdrop-blur-[2px]">
           <div className="absolute inset-0 bg-white/40 animate-ping"></div>
           <div className="relative text-center p-6 rounded-3xl bg-black/85 border-4 border-yellow-300 shadow-[0_0_80px_rgba(250,204,21,1)]">
-            <div className="text-6xl sm:text-7xl mb-2 animate-bounce">⚡ 🌩️ ⚡</div>
+            <div className="text-3xl sm:text-4xl font-mono font-black text-yellow-300 tracking-widest mb-2 animate-bounce">[RAIGEKI]</div>
             <h2 className="text-3xl sm:text-4xl font-serif font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-200 to-yellow-500 drop-shadow-[0_0_20px_rgba(250,204,21,0.9)] uppercase">
               {languagePt ? 'RAIGEKI !' : 'RAIGEKI !'}
             </h2>
@@ -2132,107 +2233,84 @@ export const Playmat: React.FC<PlaymatProps> = ({
         </div>
       )}
 
-      {/* 🪞 BANNER COMEMORATIVO DE FORÇA ESPELHO / CARTAS LENDÁRIAS */}
+      {/* BANNER COMEMORATIVO DE FORÇA ESPELHO / CARTAS LENDÁRIAS */}
       {celebratoryBanner && (
         <div className="fixed top-12 left-1/2 -translate-x-1/2 z-50 max-w-xl w-[90%] pointer-events-none animate-fadeIn">
           <div className="bg-gradient-to-r from-purple-950/95 via-[#1a0e2e]/95 to-purple-950/95 border-2 border-cyan-400 rounded-2xl p-4 sm:p-5 text-center shadow-[0_0_50px_rgba(34,211,238,0.85)] flex items-center justify-center gap-3">
-            <span className="text-3xl sm:text-4xl animate-spin">{celebratoryBanner.icon || '🪞'}</span>
+            <span className="text-xs font-mono font-black bg-cyan-950 text-cyan-300 border border-cyan-400 px-2 py-1 rounded">[ATIVADO]</span>
             <div className="text-sm sm:text-base font-serif font-black text-cyan-200 tracking-wide drop-shadow-[0_0_12px_rgba(34,211,238,0.9)] leading-snug">
               {celebratoryBanner.title}
             </div>
-            <span className="text-3xl sm:text-4xl animate-spin">{celebratoryBanner.icon || '🪞'}</span>
+            <span className="text-xs font-mono font-black bg-cyan-950 text-cyan-300 border border-cyan-400 px-2 py-1 rounded">[ATIVADO]</span>
           </div>
         </div>
       )}
 
-      {/* ⚔️ JANELA DE PRIORIDADE E RESPOSTA MASTER DUEL (UNIFIED PRIORITY PROMPT) */}
+      {/* JANELA DE PRIORIDADE E RESPOSTA TÁTICA (RIGHT-DOCKED TACTICAL HUD) */}
       {priorityPrompt && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div
-            className={`bg-gradient-to-b from-[#150f2e] via-[#090616] to-[#040209] rounded-3xl p-6 sm:p-7 max-w-sm w-full relative overflow-hidden border-2 text-center transition-all ${
-              priorityPrompt.accentColor === 'cyan'
-                ? 'border-cyan-400 shadow-[0_0_50px_rgba(34,211,238,0.7)]'
-                : priorityPrompt.accentColor === 'amber'
-                ? 'border-amber-400 shadow-[0_0_50px_rgba(245,158,11,0.7)]'
-                : priorityPrompt.accentColor === 'sky'
-                ? 'border-sky-400 shadow-[0_0_50px_rgba(56,189,248,0.7)]'
-                : 'border-fuchsia-500 shadow-[0_0_50px_rgba(217,70,239,0.7)]'
-            }`}
-          >
-            {/* Header Badge */}
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-black tracking-widest uppercase border bg-black/60 shadow-inner text-slate-200 border-slate-700">
-                <span className="animate-pulse">{priorityPrompt.badgeIcon || '⚡'}</span>
-                <span>{priorityPrompt.badge}</span>
-              </span>
-            </div>
-
-            {/* Window Title */}
-            <h3
-              className={`text-lg sm:text-xl font-serif font-black tracking-widest mb-3 uppercase drop-shadow-md ${
-                priorityPrompt.accentColor === 'cyan'
-                  ? 'text-cyan-300'
-                  : priorityPrompt.accentColor === 'amber'
-                  ? 'text-amber-300'
-                  : priorityPrompt.accentColor === 'sky'
-                  ? 'text-sky-300'
-                  : 'text-fuchsia-300'
-              }`}
+        <div className="fixed right-4 sm:right-6 top-24 z-50 w-72 sm:w-84 max-h-[80vh] flex flex-col animate-slideInRight bg-[#0c0818]/95 border-2 border-amber-500/80 rounded-2xl p-4 shadow-[0_0_35px_rgba(245,158,11,0.5)] backdrop-blur-md overflow-y-auto text-center">
+          {/* Header Badge */}
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-500/30">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-black tracking-widest uppercase border bg-black/60 shadow-inner text-amber-300 border-amber-500/50">
+              {priorityPrompt.badgeIcon && <span className="font-bold">{priorityPrompt.badgeIcon}</span>}
+              <span>{priorityPrompt.badge}</span>
+            </span>
+            <button
+              onClick={priorityPrompt.onDecline}
+              className="text-slate-400 hover:text-white text-xs font-mono px-1.5 py-0.5 rounded hover:bg-white/10"
+              title={languagePt ? 'Fechar / Passar' : 'Close / Pass'}
             >
-              {priorityPrompt.title}
-            </h3>
+              [X]
+            </button>
+          </div>
 
-            {/* Card Preview */}
-            {priorityPrompt.cardImage && (
-              <div className="relative w-24 h-36 sm:w-28 sm:h-40 mx-auto mb-3 rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl group">
-                <img
-                  src={priorityPrompt.cardImage}
-                  alt={priorityPrompt.cardName}
-                  className="w-full h-full object-contain"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-              </div>
-            )}
+          {/* Window Title */}
+          <h3 className="text-sm font-serif font-black tracking-wider mb-2 uppercase drop-shadow text-amber-300">
+            {priorityPrompt.title}
+          </h3>
 
-            {/* Card Name */}
-            <div className="text-sm sm:text-base font-serif font-black text-amber-200 mb-2 drop-shadow-sm">
-              {priorityPrompt.cardName}
+          {/* Card Preview */}
+          {priorityPrompt.cardImage && (
+            <div className="relative w-20 h-28 mx-auto mb-2 rounded-lg overflow-hidden border border-amber-400/60 shadow-lg">
+              <img
+                src={priorityPrompt.cardImage}
+                alt={priorityPrompt.cardName}
+                className="w-full h-full object-contain"
+              />
             </div>
+          )}
 
-            {/* Message Body */}
-            <div className="text-xs sm:text-sm text-slate-200 mb-6 leading-relaxed font-sans px-1">
-              {priorityPrompt.message}
-            </div>
+          {/* Card Name */}
+          <div className="text-xs font-serif font-black text-amber-200 mb-1 drop-shadow-sm">
+            {priorityPrompt.cardName}
+          </div>
 
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={priorityPrompt.onDecline}
-                className="flex-1 py-3 px-4 rounded-xl font-serif font-bold text-xs uppercase tracking-wider bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-500 transition-all shadow-md active:scale-95"
-              >
-                {priorityPrompt.declineText}
-              </button>
+          {/* Message Body */}
+          <div className="text-[11px] text-slate-200 mb-4 leading-relaxed font-sans px-1">
+            {priorityPrompt.message}
+          </div>
 
-              <button
-                onClick={priorityPrompt.onConfirm}
-                className={`flex-1 py-3 px-4 rounded-xl font-serif font-black text-xs uppercase tracking-wider text-white transition-all shadow-lg active:scale-95 flex items-center justify-center gap-1.5 animate-pulse ${
-                  priorityPrompt.accentColor === 'cyan'
-                    ? 'bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-600 hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_25px_rgba(34,211,238,0.8)] border border-cyan-200'
-                    : priorityPrompt.accentColor === 'amber'
-                    ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-slate-950 shadow-[0_0_25px_rgba(245,158,11,0.8)] border border-yellow-200'
-                    : priorityPrompt.accentColor === 'sky'
-                    ? 'bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-600 hover:from-sky-300 hover:to-blue-400 shadow-[0_0_25px_rgba(56,189,248,0.8)] border border-sky-200'
-                    : 'bg-gradient-to-r from-fuchsia-600 via-purple-500 to-indigo-600 hover:from-fuchsia-500 hover:to-purple-400 shadow-[0_0_25px_rgba(217,70,239,0.8)] border border-fuchsia-200'
-                }`}
-              >
-                {priorityPrompt.confirmText}
-              </button>
-            </div>
+          {/* Action Buttons */}
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={priorityPrompt.onConfirm}
+              className="w-full py-2.5 px-3 rounded-xl font-serif font-black text-xs uppercase tracking-wider text-slate-950 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 shadow-[0_0_20px_rgba(245,158,11,0.7)] border border-yellow-200 transition-all active:scale-95 flex items-center justify-center gap-1.5"
+            >
+              <span className="font-mono text-[10px] bg-black/30 text-slate-950 px-1 rounded font-black">[ATIVAR]</span>
+              <span>{priorityPrompt.confirmText}</span>
+            </button>
+
+            <button
+              onClick={priorityPrompt.onDecline}
+              className="w-full py-2 px-3 rounded-xl font-serif font-bold text-xs uppercase tracking-wider bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-500 transition-all shadow-md active:scale-95"
+            >
+              {priorityPrompt.declineText}
+            </button>
           </div>
         </div>
       )}
 
-      {/* 🔮 OVERLAY DE CONTAGEM REGRESSIVA INICIAL (5 SEGUNDOS) */}
+      {/* OVERLAY DE CONTAGEM REGRESSIVA INICIAL (5 SEGUNDOS) */}
       {countdown !== null && (
         <div
           onClick={() => {
@@ -2243,9 +2321,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           }}
           className="absolute inset-0 bg-black/95 z-50 flex flex-col items-center justify-center animate-fadeIn cursor-pointer"
         >
-          <div className="text-6xl text-amber-400 drop-shadow-[0_0_20px_rgba(245,158,11,0.8)] mb-4 animate-pulse">
-            𓂀
-          </div>
+          <div className="text-3xl sm:text-4xl font-serif font-black tracking-widest text-amber-400 drop-shadow-[0_0_20px_rgba(245,158,11,0.8)] mb-4 animate-pulse">[DUEL]</div>
           <h2 className="text-2xl font-serif tracking-widest text-amber-300 font-black mb-6">
             A PARTIDA VAI INICIAR EM
           </h2>
@@ -2265,7 +2341,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           {/* Topo do Grimoire com Tradução e Botão de Sair */}
           <div className="w-full flex justify-between items-center pb-2 mb-2 border-b border-[#311f49]">
             <div className="flex items-center space-x-1.5">
-              <span className="text-xl text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">𓂀</span>
+              <span className="text-[10px] font-mono font-black text-amber-400 border border-amber-500/50 px-1.5 py-0.5 rounded bg-black/40 mr-1">[YGO]</span>
               <h1 className="text-xs font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-600 font-serif">
                 GRIMOIRE
               </h1>
@@ -2278,7 +2354,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                 title={languagePt ? 'Configurações de Áudio e Idioma' : 'Audio and Language Settings'}
                 aria-label={languagePt ? 'Abrir Configurações' : 'Open Settings'}
               >
-                ⚙️
+                CFG
               </button>
 
               <button
@@ -2286,7 +2362,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                 className="px-2.5 py-1 rounded text-[10px] font-bold tracking-wider bg-red-950/80 border border-red-500/50 hover:border-red-400 text-red-300 transition-colors cursor-pointer"
                 title={languagePt ? 'Sair ou Render-se do Duelo' : 'Surrender or Exit Duel'}
               >
-                🏳️ {languagePt ? 'Sair' : 'Exit'}
+                <span className="font-mono text-[9px] mr-1">[SAIR]</span><span>{languagePt ? 'Render-se' : 'Surrender'}</span>
               </button>
             </div>
           </div>
@@ -2307,8 +2383,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
               if (isOpponentOwned && isFaceDown) {
                 const isSpellOrTrap = inspectedCard.data.type.toLowerCase().includes('spell') || inspectedCard.data.type.toLowerCase().includes('trap') || inspectedCard.data.type.toLowerCase().includes('mágic') || inspectedCard.data.type.toLowerCase().includes('armadilha');
                 const titleText = isSpellOrTrap
-                  ? (languagePt ? 'Carta Mágica/Armadilha Oculta 𓂀' : 'Hidden Spell/Trap Card 𓂀')
-                  : (languagePt ? 'Carta Oculta do Adversário 𓂀' : 'Opponent Hidden Card 𓂀');
+                  ? (languagePt ? 'Carta Mágica/Armadilha [OCULTA]' : 'Hidden Spell/Trap Card [FACE-DOWN]')
+                  : (languagePt ? 'Carta do Adversário [OCULTA]' : 'Opponent Card [FACE-DOWN]');
                 const descText = isSpellOrTrap
                   ? (languagePt
                       ? 'Esta carta mágica ou armadilha está virada para baixo no campo do oponente. Seu efeito será ativado no momento oportuno!'
@@ -2354,7 +2430,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     />
                     {isPlayerOwned && isFaceDown && (
                       <div className="absolute top-3 left-3 right-3 bg-purple-950/90 border border-purple-400 text-purple-200 text-[10px] font-black py-1 px-2 rounded shadow-lg text-center backdrop-blur-sm">
-                        👁️ {languagePt ? 'Carta Oculta (Apenas você pode ver)' : 'Face-Down Card (Only you can see)'}
+                        <span className="font-mono text-[9px] bg-purple-900 border border-purple-500/60 px-1 py-0.5 rounded mr-1">[OCULTA]</span> {languagePt ? 'Carta Oculta (Apenas você pode ver)' : 'Face-Down Card (Only you can see)'}
                       </div>
                     )}
                   </div>
@@ -2367,7 +2443,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                       </span>
                       {inspectedCard.data.level > 0 && (
                         <span className="text-[11px] font-serif text-amber-400">
-                          {'★'.repeat(Math.max(0, inspectedCard.data.level))}
+                          LV {inspectedCard.data.level}
                         </span>
                       )}
                     </div>
@@ -2416,10 +2492,10 @@ export const Playmat: React.FC<PlaymatProps> = ({
                                   : 'bg-amber-950/80 border-amber-600/60 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]'
                               }`}
                             >
-                              ATK ⚔️ {effectiveAtk} {isBuffed && <span className="text-[10px] font-sans text-yellow-300">▲</span>}
+                              <span className="font-mono text-amber-300 font-bold">[ATK]</span> {effectiveAtk} {isBuffed && <span className="text-[10px] font-sans text-yellow-300">▲</span>}
                             </div>
                             <div className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-600/60 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]">
-                              DEF 🛡️ {inspectedCard.data.defense ?? 0}
+                              <span className="font-mono text-blue-300 font-bold">[DEF]</span> {inspectedCard.data.defense ?? 0}
                             </div>
                           </div>
 
@@ -2435,7 +2511,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                                     : 'bg-slate-800/80 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
                                 }`}
                               >
-                                <span>⏳</span>
+                                <span className="font-mono text-[10px] font-bold">[TEMPO]</span>
                                 <span>
                                   {inspectedCard.hasUsedEffectThisTurn
                                     ? 'Roleta Já Utilizada'
@@ -2580,7 +2656,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                           : 'bg-cyan-900/90 border-cyan-400 text-cyan-200'
                       }`}
                     >
-                      <span>🌪️</span>
+                      <span className="font-mono text-[9px] text-cyan-300 font-bold">[M/A]</span>
                       <span>
                         {isTacticalSelected
                           ? languagePt ? 'DESTRUIR' : 'DESTROY'
@@ -2685,7 +2761,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   {/* Badge de Aura Sagrada de Waboku */}
                   {isWabokuProtected && (
                     <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-sky-400 via-white to-blue-400 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow-[0_0_15px_rgba(186,230,254,0.9)] border border-white flex items-center gap-1 uppercase tracking-wider animate-pulse pointer-events-none">
-                      <span>🕊️</span>
+                      <span className="font-mono text-[9px] font-black">[SAGRADO]</span>
                       <span>{languagePt ? 'AURA SAGRADA' : 'SACRED AURA'}</span>
                     </div>
                   )}
@@ -2693,7 +2769,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   {/* Indicador de Alvo de Ataque */}
                   {!isTacticalTargeting && isTargetable && (
                     <div className="absolute -top-3 z-30 bg-red-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
-                      <span>🎯</span> {languagePt ? 'ALVO' : 'TARGET'}
+                      <span className="font-mono text-[9px] font-black">[ALVO]</span>
                     </div>
                   )}
 
@@ -2750,11 +2826,11 @@ export const Playmat: React.FC<PlaymatProps> = ({
                                       : 'text-amber-400'
                                   }`}
                                 >
-                                  ⚔️ {effectiveAtk} {isBuffed && <span className="text-[9px] text-yellow-300 font-sans">▲</span>}
+                                  <span className="font-mono text-[9px] text-amber-400 font-bold">ATK</span> {effectiveAtk} {isBuffed && <span className="text-[9px] text-yellow-300 font-sans">▲</span>}
                                 </span>
                               );
                             })()}
-                            <span className="text-blue-400">🛡️ {slot.data.defense}</span>
+                            <span className="text-blue-400 font-mono text-[9px] font-bold">DEF {slot.data.defense}</span>
                           </div>
                         </div>
                       )}
@@ -2780,7 +2856,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
               {formatPhaseName(match.phase)}
             </span>
             <span className="text-[11px] sm:text-xs text-slate-300 font-mono font-bold">
-              {languagePt ? 'Turno' : 'Turn'} {match.currentTurn} • {isPlayerTurn ? `🌟 ${languagePt ? 'TURNO DE' : "TURN OF"} ${p1.nickname.toUpperCase()}` : `⏳ ${languagePt ? 'TURNO DE' : "TURN OF"} ${p2.nickname.toUpperCase()}`}
+              {languagePt ? 'Turno' : 'Turn'} {match.currentTurn} • {isPlayerTurn ? `[VEZ DE ${p1.nickname.toUpperCase()}]` : `[VEZ DE ${p2.nickname.toUpperCase()}]`}
             </span>
           </div>
 
@@ -2795,8 +2871,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     if (tacticalTargetSelection.selectedUids.length === 0) {
                       showNotification(
                         languagePt
-                          ? '⚠️ Clique em um alvo com o selo "ESCOLHER ALVO" para selecionar!'
-                          : '⚠️ Click a target with the "SELECT TARGET" badge!'
+                          ? '[AVISO] Clique em um alvo com o selo "ESCOLHER ALVO" para selecionar!'
+                          : '[WARNING] Click a target with the "SELECT TARGET" badge!'
                       );
                       return;
                     }
@@ -2864,7 +2940,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                 onClick={() => handleOpponentZoneClick(null)}
                 className="px-5 py-1 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs uppercase tracking-widest rounded-full shadow-[0_0_25px_rgba(239,68,68,0.9)] border-2 border-yellow-300 animate-bounce flex items-center gap-1.5"
               >
-                <span>⚡</span> {languagePt ? 'ATACAR DIRETAMENTE OS LPs!' : 'DIRECT ATTACK LIFE POINTS!'}
+                <span className="font-mono text-xs font-black mr-1">[ATAQUE]</span> {languagePt ? 'ATACAR DIRETAMENTE OS LPs!' : 'DIRECT ATTACK LIFE POINTS!'}
               </button>
             )}
 
@@ -2875,14 +2951,14 @@ export const Playmat: React.FC<PlaymatProps> = ({
               disabled={!isPlayerTurn || match.isGameOver || match.phase === 'BATTLE'}
               className="px-3.5 sm:px-4 py-1 bg-gradient-to-r from-indigo-700 to-purple-800 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-30 text-xs font-bold rounded-lg border border-indigo-400/50 shadow-md transition-all font-serif"
             >
-              {languagePt ? 'Fase de Batalha ⚔️' : 'Battle Phase ⚔️'}
+              {languagePt ? 'Fase de Batalha' : 'Battle Phase'}
             </button>
             <button
               onClick={handleEndTurn}
               disabled={!isPlayerTurn || match.isGameOver}
               className="px-3.5 sm:px-4 py-1 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 disabled:opacity-30 text-xs font-black rounded-lg border border-amber-400 shadow-md transition-all text-slate-950 font-serif"
             >
-              {languagePt ? 'Encerrar Turno 🛡️' : 'End Turn 🛡️'}
+              {languagePt ? 'Encerrar Turno' : 'End Turn'}
             </button>
           </div>
         </div>
@@ -2967,7 +3043,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   {/* Badge de Aura Sagrada de Waboku */}
                   {isWabokuProtected && (
                     <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-sky-400 via-white to-blue-400 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow-[0_0_15px_rgba(186,230,254,0.9)] border border-white flex items-center gap-1 uppercase tracking-wider animate-pulse pointer-events-none">
-                      <span>🕊️</span>
+                      <span className="font-mono text-[9px] font-black">[SAGRADO]</span>
                       <span>{languagePt ? 'AURA SAGRADA' : 'SACRED AURA'}</span>
                     </div>
                   )}
@@ -2977,18 +3053,18 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-red-600 to-rose-700 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(239,68,68,0.9)] border border-yellow-300 animate-bounce flex items-center gap-1 uppercase tracking-wider">
                       {isTributeTargetZone ? (
                         <>
-                          <span>⚡</span> {languagePt ? 'INVOCAR AQUI!' : 'SUMMON HERE!'}
+                          <span className="font-mono text-[9px] bg-black/40 px-1 rounded font-black">[INVOCAR]</span> {languagePt ? 'INVOCAR AQUI!' : 'SUMMON HERE!'}
                         </>
                       ) : (
                         <>
-                          <span>🔥</span> {languagePt ? 'SACRIFÍCIO' : 'TRIBUTE'}
+                          <span className="font-mono text-[9px] bg-black/40 px-1 rounded font-black">[TRIBUTO]</span> {languagePt ? 'SACRIFÍCIO' : 'TRIBUTE'}`.replace('`', '')
                         </>
                       )}
                     </div>
                   ) : (
                     (isValidSummonZone || isTributeTargetZone) && (
                       <div className="absolute -top-3 z-30 bg-emerald-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
-                        <span>⬇️</span> {languagePt ? 'INVOCAR' : 'SUMMON'}
+                        <span className="font-mono text-[9px] bg-black/40 px-1 rounded font-black">[INVOCAR]</span> {languagePt ? 'INVOCAR' : 'SUMMON'}
                       </div>
                     )
                   )}
@@ -3009,9 +3085,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
                       {/* Indicador de Carta Oculta do Jogador (visível permanentemente em tamanho sutil) */}
                       {slot.isFaceDown && (
-                        <div className="absolute top-1 right-1 bg-purple-950/80 border border-purple-400 text-purple-200 text-[9px] px-1.5 py-0.5 rounded shadow pointer-events-none">
-                          👁️
-                        </div>
+                        <div className="absolute top-1 right-1 bg-purple-950/80 border border-purple-400 text-purple-200 text-[9px] px-1.5 py-0.5 rounded shadow pointer-events-none">[DEF]</div>
                       )}
 
                       {/* Informações ocultas por padrão - reveladas suavemente apenas em hover */}
@@ -3031,19 +3105,19 @@ export const Playmat: React.FC<PlaymatProps> = ({
                                     : 'text-amber-400'
                                 }`}
                               >
-                                ⚔️ {effectiveAtk} {isBuffed && <span className="text-[9px] text-yellow-300 font-sans">▲</span>}
+                                <span className="font-mono text-[9px] text-amber-400 font-bold">ATK</span> {effectiveAtk} {isBuffed && <span className="text-[9px] text-yellow-300 font-sans">▲</span>}
                               </span>
                             );
                           })()}
-                          <span className="text-blue-400">🛡️ {slot.data.defense}</span>
+                          <span className="text-blue-400 font-mono text-[9px] font-bold">DEF {slot.data.defense}</span>
                           {slot.hasAttacked ? (
                             <span className="text-red-400 font-sans text-[9px]">{languagePt ? 'Atacou' : 'Attacked'}</span>
                           ) : slot.turnSummoned === match.currentTurn ? (
-                            <span className="text-yellow-400 font-sans text-[9px]">{languagePt ? 'Invocado ⏳' : 'Summoned ⏳'}</span>
+                            <span className="text-yellow-400 font-mono text-[9px]">[INVOCADO]</span>
                           ) : isDefense ? (
-                            <span className="text-blue-400 font-sans text-[9px]">{languagePt ? 'Defesa 🛡️' : 'Defense 🛡️'}</span>
+                            <span className="text-blue-400 font-mono text-[9px]">[DEFESA]</span>
                           ) : match.phase === 'BATTLE' && !isDefense ? (
-                            <span className="text-emerald-400 font-sans text-[9px] animate-pulse">{languagePt ? 'Pronto ⚔️' : 'Ready ⚔️'}</span>
+                            <span className="text-emerald-400 font-mono text-[9px] animate-pulse">[PRONTO]</span>
                           ) : null}
                         </div>
                       </div>
@@ -3090,9 +3164,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                         className="max-h-full max-w-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
                       />
                       {slot.isFaceDown && (
-                        <div className="absolute top-1 right-1 bg-purple-950/80 border border-purple-400 text-purple-200 text-[8px] px-1 rounded pointer-events-none">
-                          👁️
-                        </div>
+                        <div className="absolute top-1 right-1 bg-purple-950/80 border border-purple-400 text-purple-200 text-[8px] px-1 rounded pointer-events-none">[DEF]</div>
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-1.5 pointer-events-none rounded-lg">
                         <div className="text-[10px] font-black text-emerald-200 truncate drop-shadow text-center">
@@ -3175,8 +3247,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     </div>
 
                     <div className="flex justify-between text-[8px] sm:text-[9px] font-mono font-black text-amber-300 bg-black/90 px-1 py-0.5 rounded shadow">
-                      <span>⚔️ {card.data.attack}</span>
-                      <span>🛡️ {card.data.defense}</span>
+                      <span>ATK {card.data.attack}</span>
+                      <span>DEF {card.data.defense}</span>
                     </div>
                   </div>
                 </div>
@@ -3211,141 +3283,161 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
 
 
-        {/* 🎴 MODAL DE ESCOLHA DE POSIÇÃO DE INVOCAÇÃO (FACE-UP OU VIRADO PARA BAIXO) */}
+        {/* MODAL DE ESCOLHA DE POSIÇÃO DE INVOCAÇÃO (RIGHT-DOCKED TACTICAL HUD) */}
         {summonChoiceModal && (
-          <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
-            <div className="bg-[#120c22] border-2 border-amber-400 rounded-2xl p-6 text-center max-w-sm shadow-[0_0_40px_rgba(245,158,11,0.5)]">
-              <h3 className="text-lg font-serif font-black text-amber-300 mb-1">
-                {languagePt ? 'COMO DESEJA BAIXAR?' : 'SUMMON POSITION'}
-              </h3>
-              <p className="text-xs text-slate-300 mb-4">
-                {languagePt ? 'Escolha a postura do monstro no campo:' : 'Choose how to place this monster:'}
-              </p>
+          <div className="fixed right-4 sm:right-6 top-24 z-50 w-72 sm:w-84 max-h-[80vh] flex flex-col animate-slideInRight bg-[#0c0818]/95 border-2 border-amber-500/80 rounded-2xl p-4 shadow-[0_0_35px_rgba(245,158,11,0.5)] backdrop-blur-md overflow-y-auto text-center">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-500/30">
+              <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-600/50 uppercase tracking-wider">
+                [INVOCAÇÃO]
+              </span>
+              <button
+                onClick={() => setSummonChoiceModal(null)}
+                className="text-slate-400 hover:text-white text-xs font-mono px-1.5 py-0.5 rounded hover:bg-white/10"
+              >
+                [X]
+              </button>
+            </div>
 
-              <div className="flex justify-center mb-4">
-                <div className="w-28 h-40 rounded-lg p-1 bg-gradient-to-br from-[#7a4e23] to-[#1a0f05] border border-amber-400/80 shadow-md">
-                  <img
-                    src={summonChoiceModal.card.data.imageUrl}
-                    alt={summonChoiceModal.card.data.name}
-                    className="w-full h-full object-contain rounded"
-                  />
-                </div>
+            <h3 className="text-base font-serif font-black text-amber-300 mb-1">
+              {languagePt ? 'POSIÇÃO DE BATALHA' : 'BATTLE POSITION'}
+            </h3>
+            <p className="text-[11px] text-slate-300 mb-3">
+              {languagePt ? 'Escolha a postura do monstro no campo:' : 'Choose how to place this monster:'}
+            </p>
+
+            <div className="flex justify-center mb-3">
+              <div className="w-20 h-28 rounded-lg p-0.5 bg-gradient-to-br from-[#7a4e23] to-[#1a0f05] border border-amber-400/80 shadow-md">
+                <img
+                  src={summonChoiceModal.card.data.imageUrl}
+                  alt={summonChoiceModal.card.data.name}
+                  className="w-full h-full object-contain rounded"
+                />
               </div>
+            </div>
 
-              <div className="flex flex-col gap-2.5">
-                <button
-                  onClick={() =>
-                    executeSummon(
-                      summonChoiceModal.zoneIndex,
-                      summonChoiceModal.tributeIndices,
-                      'ATTACK',
-                      false
-                    )
-                  }
-                  className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
-                >
-                  <span>⚔️</span>
-                  <span>{languagePt ? 'Invocar em Modo de Ataque' : 'Summon in Attack Mode'}</span>
-                </button>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() =>
+                  executeSummon(
+                    summonChoiceModal.zoneIndex,
+                    summonChoiceModal.tributeIndices,
+                    'ATTACK',
+                    false
+                  )
+                }
+                className="w-full py-2 px-3 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
+              >
+                <span className="font-mono text-[10px] bg-black/30 text-slate-950 px-1 rounded font-black">[ATK]</span>
+                <span>{languagePt ? 'Invocar em Modo de Ataque' : 'Summon in Attack Mode'}</span>
+              </button>
 
-                <button
-                  onClick={() =>
-                    executeSummon(
-                      summonChoiceModal.zoneIndex,
-                      summonChoiceModal.tributeIndices,
-                      'DEFENSE',
-                      true
-                    )
-                  }
-                  className="w-full py-2.5 px-4 bg-purple-900 hover:bg-purple-800 text-purple-100 border border-purple-400/60 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
-                >
-                  <span>👁️</span>
-                  <span>{languagePt ? 'Baixar de Cabeça para Baixo' : 'Set Face-Down (Defense)'}</span>
-                </button>
+              <button
+                onClick={() =>
+                  executeSummon(
+                    summonChoiceModal.zoneIndex,
+                    summonChoiceModal.tributeIndices,
+                    'DEFENSE',
+                    true
+                  )
+                }
+                className="w-full py-2 px-3 bg-purple-900/90 hover:bg-purple-800 text-purple-100 border border-purple-400/60 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
+              >
+                <span className="font-mono text-[10px] bg-black/40 text-purple-300 px-1 rounded font-black">[DEF]</span>
+                <span>{languagePt ? 'Baixar Virado para Baixo' : 'Set Face-Down (Defense)'}</span>
+              </button>
 
-                <button
-                  onClick={() => setSummonChoiceModal(null)}
-                  className="w-full py-1.5 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
-                >
-                  {languagePt ? 'Cancelar' : 'Cancel'}
-                </button>
-              </div>
+              <button
+                onClick={() => setSummonChoiceModal(null)}
+                className="w-full py-1 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
+              >
+                {languagePt ? 'Cancelar' : 'Cancel'}
+              </button>
             </div>
           </div>
         )}
 
-        {/* ⚡ MODAL DE ESCOLHA DE CARTA MÁGICA: ATIVAR OU BAIXAR */}
+        {/* MODAL DE ESCOLHA DE CARTA MÁGICA (RIGHT-DOCKED TACTICAL HUD) */}
         {spellChoiceModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-            <div className="bg-[#0e1a14] border-2 border-emerald-500 rounded-2xl p-6 text-center max-w-sm w-full mx-4 shadow-[0_0_40px_rgba(16,185,129,0.5)]">
-              <div className="w-24 h-34 mx-auto mb-3 rounded-lg overflow-hidden border-2 border-emerald-400 shadow-lg">
-                <img
-                  src={spellChoiceModal.card.data.imageUrl}
-                  alt={spellChoiceModal.card.data.name}
-                  className="w-full h-full object-contain"
-                />
-              </div>
+          <div className="fixed right-4 sm:right-6 top-24 z-50 w-72 sm:w-84 max-h-[80vh] flex flex-col animate-slideInRight bg-[#0c0818]/95 border-2 border-amber-500/80 rounded-2xl p-4 shadow-[0_0_35px_rgba(245,158,11,0.5)] backdrop-blur-md overflow-y-auto text-center">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-500/30">
+              <span className="text-[10px] font-mono font-black text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-600/50 uppercase tracking-wider">
+                [MAGIA]
+              </span>
+              <button
+                onClick={() => setSpellChoiceModal(null)}
+                className="text-slate-400 hover:text-white text-xs font-mono px-1.5 py-0.5 rounded hover:bg-white/10"
+              >
+                [X]
+              </button>
+            </div>
 
-              <h3 className="text-base font-serif font-black text-emerald-300 mb-1">
-                {languagePt && spellChoiceModal.card.data.namePt
-                  ? spellChoiceModal.card.data.namePt
-                  : spellChoiceModal.card.data.name}
-              </h3>
-              <p className="text-xs text-emerald-100/80 mb-5">
-                {spellChoiceModal.isFromField
-                  ? (languagePt
-                      ? 'Deseja ativar esta Carta Mágica virada para baixo?'
-                      : 'Do you want to activate this face-down Spell card?')
-                  : (languagePt
-                      ? 'Como deseja utilizar esta Carta Mágica?'
-                      : 'How would you like to play this Spell card?')}
-              </p>
+            <div className="w-20 h-28 mx-auto mb-2 rounded-lg overflow-hidden border border-emerald-400/80 shadow-lg">
+              <img
+                src={spellChoiceModal.card.data.imageUrl}
+                alt={spellChoiceModal.card.data.name}
+                className="w-full h-full object-contain"
+              />
+            </div>
 
-              <div className="flex flex-col space-y-2.5">
+            <h3 className="text-sm font-serif font-black text-amber-300 mb-1">
+              {languagePt && spellChoiceModal.card.data.namePt
+                ? spellChoiceModal.card.data.namePt
+                : spellChoiceModal.card.data.name}
+            </h3>
+            <p className="text-[11px] text-slate-300 mb-4">
+              {spellChoiceModal.isFromField
+                ? (languagePt
+                    ? 'Deseja ativar esta Carta Mágica virada para baixo?'
+                    : 'Do you want to activate this face-down Spell card?')
+                : (languagePt
+                    ? 'Como deseja utilizar esta Carta Mágica?'
+                    : 'How would you like to play this Spell card?')}
+            </p>
+
+            <div className="flex flex-col space-y-2">
+              <button
+                onClick={() =>
+                  handleActivateSpell(
+                    spellChoiceModal.card,
+                    spellChoiceModal.zoneIndex
+                  )
+                }
+                className="w-full py-2 px-3 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
+              >
+                <span className="font-mono text-[10px] bg-black/40 text-emerald-300 px-1 rounded font-black">[ATIVAR]</span>
+                <span>
+                  {spellChoiceModal.isFromField
+                    ? (languagePt ? 'Ativar Magia' : 'Activate Spell')
+                    : (languagePt ? 'Ativar Imediatamente' : 'Activate Immediately')}
+                </span>
+              </button>
+
+              {!spellChoiceModal.isFromField && (
                 <button
                   onClick={() =>
-                    handleActivateSpell(
+                    handleSetSpellTrap(
                       spellChoiceModal.card,
                       spellChoiceModal.zoneIndex
                     )
                   }
-                  className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                  className="w-full py-2 px-3 bg-emerald-950/90 hover:bg-emerald-900 text-emerald-200 border border-emerald-500/60 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
                 >
-                  <span>⚡</span>
-                  <span>
-                    {spellChoiceModal.isFromField
-                      ? (languagePt ? 'Ativar Magia' : 'Activate Spell')
-                      : (languagePt ? 'Ativar Magia Imediatamente' : 'Activate Spell Immediately')}
-                  </span>
+                  <span className="font-mono text-[10px] bg-black/40 text-emerald-300 px-1 rounded font-black">[BAIXAR]</span>
+                  <span>{languagePt ? 'Baixar na Zona (Virada para Baixo)' : 'Set in Zone (Face-Down)'}</span>
                 </button>
+              )}
 
-                {!spellChoiceModal.isFromField && (
-                  <button
-                    onClick={() =>
-                      handleSetSpellTrap(
-                        spellChoiceModal.card,
-                        spellChoiceModal.zoneIndex
-                      )
-                    }
-                    className="w-full py-2.5 px-4 bg-emerald-950/90 hover:bg-emerald-900 text-emerald-200 border border-emerald-500/60 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 flex items-center justify-center gap-2"
-                  >
-                    <span>👁️</span>
-                    <span>{languagePt ? 'Baixar na Zona (Virada para Baixo)' : 'Set in Zone (Face-Down)'}</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={() => setSpellChoiceModal(null)}
-                  className="w-full py-1.5 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
-                >
-                  {languagePt ? 'Cancelar' : 'Cancel'}
-                </button>
-              </div>
+              <button
+                onClick={() => setSpellChoiceModal(null)}
+                className="w-full py-1 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
+              >
+                {languagePt ? 'Cancelar' : 'Cancel'}
+              </button>
             </div>
           </div>
         )}
 
-        {/* 🏳️ MODAL DE CONFIRMAÇÃO DE SAIR / RENDER-SE */}
+        {/* MODAL DE CONFIRMAÇÃO DE SAIR / RENDER-SE */}
         {showSurrenderModal && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
             <div className="bg-[#160c1d] border-2 border-red-500 rounded-xl p-6 text-center max-w-sm shadow-[0_0_35px_rgba(239,68,68,0.5)]">
@@ -3389,7 +3481,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   match.winnerPlayerId === p1.id ? 'text-amber-400 animate-bounce' : 'text-red-400 animate-pulse'
                 }`}
               >
-                {match.winnerPlayerId === p1.id ? '👑 𓂀' : '💀 𓂀'}
+                {match.winnerPlayerId === p1.id ? '[VITÓRIA]' : '[DERROTA]'}
               </div>
               <h1
                 className={`text-3xl font-black mb-2 font-serif tracking-widest ${
@@ -3410,14 +3502,14 @@ export const Playmat: React.FC<PlaymatProps> = ({
                       : 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
                   }`}
                 >
-                  ⚔️ Novo Duelo
+                  Novo Duelo
                 </button>
                 {onExitToMenu && (
                   <button
                     onClick={onExitToMenu}
                     className="w-full sm:w-auto px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-purple-500/50 font-bold uppercase tracking-wider rounded-xl shadow transition-transform hover:scale-105 text-xs"
                   >
-                    🏠 Menu Principal
+                    Menu Principal
                   </button>
                 )}
               </div>
