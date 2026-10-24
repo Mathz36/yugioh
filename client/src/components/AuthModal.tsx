@@ -41,32 +41,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4 select-none animate-fadeIn">
       <WebGPUBackdrop variant="auth" showBadge={true} className="z-0" />
-      <div className="w-full max-w-md bg-[#100a1c] border-2 border-amber-500/80 rounded-2xl p-7 shadow-[0_0_50px_rgba(245,158,11,0.4)] flex flex-col items-center relative z-10 overflow-hidden">
+      <div className="w-full max-w-md bg-[#141210]/95 border-2 border-amber-800/80 rounded-2xl p-7 shadow-[0_8px_35px_rgba(0,0,0,0.92)] flex flex-col items-center relative z-10 overflow-hidden backdrop-blur-md">
         
-        {/* Glow de fundo */}
-        <div className="absolute -top-24 -left-24 w-48 h-48 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-amber-600/20 rounded-full blur-3xl pointer-events-none" />
+        {/* Glow atmosférico suave Dark Stone & Aged Gold */}
+        <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-amber-700/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Emblema do Olho do Milênio */}
-        <div className="text-4xl text-amber-400 drop-shadow-[0_0_12px_rgba(245,158,11,0.9)] mb-1">
+        <div className="text-4xl text-amber-400 drop-shadow-[0_2px_12px_rgba(245,158,11,0.5)] mb-1">
           𓂀
         </div>
-        <h1 className="text-2xl font-black font-serif tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-500 text-center">
+        <h1 className="text-2xl font-black font-serif tracking-widest text-amber-300 text-center">
           REINO DOS DUELISTAS
         </h1>
-        <p className="text-xs text-purple-300/70 font-sans tracking-wide uppercase mt-1 mb-6">
-          {isSignUp ? 'Criar Conta de Duelista' : 'Acesso à Arena Sagrada'}
+        <p className="text-[10px] text-amber-200/70 font-mono tracking-widest uppercase mt-1 mb-6">
+          {isSignUp ? '[CRIAR CONTA DE DUELISTA]' : '[ACESSO À ARENA SAGRADA]'}
         </p>
 
         {errorMsg && (
-          <div className="w-full mb-4 px-3 py-2 bg-red-950/80 border border-red-500/60 rounded text-red-200 text-xs text-center font-medium">
+          <div className="w-full mb-4 px-3 py-2 bg-red-950/90 border border-red-700/80 rounded text-red-200 text-xs text-center font-mono font-medium">
             {errorMsg}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="w-full space-y-3.5">
           <div>
-            <label className="block text-[11px] font-bold text-amber-300/80 uppercase tracking-wider mb-1">
+            <label className="block text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider mb-1">
               Nickname de Duelista
             </label>
             <input
@@ -74,12 +74,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               placeholder="Ex: Yugi Muto, Seto Kaiba, SeuNick"
-              className="w-full bg-[#181026] border border-purple-800/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
+              className="w-full bg-[#1c1917] border border-amber-900/60 rounded-lg px-3 py-2 text-sm text-stone-100 placeholder-stone-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-amber-300/80 uppercase tracking-wider mb-1">
+            <label className="block text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider mb-1">
               Email
             </label>
             <input
@@ -88,12 +88,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="seu-email@dominio.com"
               required
-              className="w-full bg-[#181026] border border-purple-800/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
+              className="w-full bg-[#1c1917] border border-amber-900/60 rounded-lg px-3 py-2 text-sm text-stone-100 placeholder-stone-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-amber-300/80 uppercase tracking-wider mb-1">
+            <label className="block text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider mb-1">
               Senha
             </label>
             <input
@@ -102,30 +102,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="w-full bg-[#181026] border border-purple-800/80 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
+              className="w-full bg-[#1c1917] border border-amber-900/60 rounded-lg px-3 py-2 text-sm text-stone-100 placeholder-stone-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all font-mono"
             />
           </div>
 
           <button
             type="submit"
-            className="w-full py-2.5 mt-2 bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-sm uppercase tracking-wider rounded-lg shadow-[0_0_20px_rgba(245,158,11,0.5)] border border-amber-300 transition-transform active:scale-95"
+            className="w-full py-2.5 mt-2 bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs uppercase tracking-wider rounded-lg shadow-lg border border-amber-300 transition-all cursor-pointer active:scale-95 font-mono"
           >
-            {isSignUp ? 'Cadastrar e Entrar' : 'Entrar no Reino'}
+            {isSignUp ? '[CADASTRAR E ENTRAR]' : '[ENTRAR NO REINO]'}
           </button>
         </form>
 
         <div className="flex items-center my-4 w-full">
-          <div className="flex-1 border-t border-purple-900/60" />
-          <span className="px-3 text-[10px] text-purple-300/50 uppercase tracking-widest font-mono">OU</span>
-          <div className="flex-1 border-t border-purple-900/60" />
+          <div className="flex-1 border-t border-amber-900/50" />
+          <span className="px-3 text-[10px] text-amber-400/50 uppercase tracking-widest font-mono">[OU]</span>
+          <div className="flex-1 border-t border-amber-900/50" />
         </div>
 
         {/* Botão de Convidado / Teste Rápido */}
         <button
           onClick={handleGuestPlay}
-          className="w-full py-2 bg-purple-950/60 hover:bg-purple-900/60 border border-purple-700/60 rounded-lg text-purple-200 text-xs font-bold uppercase tracking-wider transition-colors shadow-sm"
+          className="w-full py-2 bg-[#1c1917] hover:bg-[#292524] border border-amber-800/70 hover:border-amber-500 rounded-lg text-amber-200 text-xs font-mono font-black uppercase tracking-wider transition-colors shadow-sm cursor-pointer"
         >
-          🎮 Jogar como Convidado (Yugi Muto)
+          [JOGAR COMO CONVIDADO • YUGI MUTO]
         </button>
 
         <div className="mt-5 text-center">
@@ -134,9 +134,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               setIsSignUp(!isSignUp);
               setErrorMsg(null);
             }}
-            className="text-xs text-amber-400/90 hover:text-amber-300 underline underline-offset-4 transition-colors"
+            className="text-xs text-amber-400/80 hover:text-amber-300 font-mono underline underline-offset-4 transition-colors cursor-pointer"
           >
-            {isSignUp ? 'Já possui conta? Faça login aqui' : 'Novo no Reino dos Duelistas? Crie sua conta'}
+            {isSignUp ? '[Já possui conta? Faça login aqui]' : '[Novo no Reino dos Duelistas? Crie sua conta]'}
           </button>
         </div>
 

@@ -335,14 +335,14 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
   }, [catalogCards, searchQuery, filterType]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#07050d] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1b1035] via-[#090614] to-[#030206] text-slate-100 select-none font-sans relative">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#0c0a09] select-none text-stone-100 font-sans relative">
       {/* Camada 3D WebGPU no Fundo do Construtor de Decks */}
-      <WebGPUBackdrop variant="deck" showBadge={true} className="z-0 opacity-45" />
+      <WebGPUBackdrop variant="deck" showBadge={true} className="z-0 opacity-30" />
 
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none">
-          <div className="bg-[#180e2d]/95 border-2 border-amber-400 text-amber-200 px-6 py-2.5 rounded-full shadow-[0_0_30px_rgba(245,158,11,0.85)] backdrop-blur-md font-serif font-bold text-xs sm:text-sm tracking-wide flex items-center gap-2">
+          <div className="bg-[#141210]/95 border-2 border-amber-800/80 text-amber-200 px-6 py-2 rounded-full shadow-[0_8px_35px_rgba(0,0,0,0.92)] backdrop-blur-md font-mono font-bold text-xs sm:text-sm tracking-wide flex items-center gap-2">
             <span className="text-amber-400">𓂀</span>
             <span>{toastMessage}</span>
           </div>
@@ -352,19 +352,19 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
       {/* =====================================================================
           LADO ESQUERDO: LISTA DE DECKS + INSPETOR LATERAL AMPLIADO (GRIMOIRE)
          ===================================================================== */}
-      <aside className="relative w-80 lg:w-96 bg-[#0d0918]/95 border-r-2 border-[#382654] flex flex-col justify-between p-4 shadow-[5px_0_30px_rgba(0,0,0,0.85)] z-20 shrink-0 overflow-y-auto">
+      <aside className="relative w-80 lg:w-96 bg-[#141210]/95 border-r border-amber-900/60 flex flex-col justify-between p-4 shadow-[5px_0_30px_rgba(0,0,0,0.85)] z-20 shrink-0 overflow-y-auto backdrop-blur-md">
         <div className="space-y-3.5">
           {/* Header e Botão Voltar ao Menu */}
-          <div className="flex items-center justify-between pb-3 border-b border-purple-900/50">
+          <div className="flex items-center justify-between pb-3 border-b border-amber-900/50">
             <div className="flex items-center gap-2">
-              <span className="text-2xl text-amber-400 drop-shadow-[0_0_10px_rgba(245,158,11,0.8)]">
-                🎴
+              <span className="text-2xl text-amber-400 drop-shadow-[0_2px_10px_rgba(245,158,11,0.5)]">
+                𓂀
               </span>
               <div>
                 <h1 className="text-sm sm:text-base font-black font-serif tracking-wider text-amber-300 uppercase">
                   {isPt ? 'Construtor de Decks' : 'Deck Builder'}
                 </h1>
-                <p className="text-[10px] font-mono text-purple-300/75">
+                <p className="text-[10px] font-mono text-stone-400">
                   {isPt ? `Duelista: ${userNickname}` : `Duelist: ${userNickname}`}
                 </p>
               </div>
@@ -372,22 +372,21 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
 
             <button
               onClick={onBackToMenu}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/40 hover:border-amber-400 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+              className="px-2.5 py-1.5 rounded-lg bg-[#1c1917] hover:bg-[#292524] text-amber-300 border border-amber-800/70 hover:border-amber-400 text-xs font-mono font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
               title={isPt ? 'Voltar ao Menu Principal' : 'Back to Main Menu'}
             >
-              <span>⬅</span>
-              <span>{isPt ? 'Voltar ao Menu' : 'Menu'}</span>
+              <span>[➔ MENU]</span>
             </button>
           </div>
 
           {/* Botões de Ação: Novo Deck e Clonar */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs font-mono text-purple-300/80 px-1">
-              <span>{isPt ? 'SEUS DECKS' : 'YOUR DECKS'}</span>
+            <div className="flex items-center justify-between text-xs font-mono text-amber-400/80 px-1">
+              <span>{isPt ? '[SEUS DECKS]' : '[YOUR DECKS]'}</span>
               <span className="text-amber-300 font-bold">
                 {isPt
-                  ? `Personalizados: ${customDecksCount}/${DeckService.MAX_USER_DECKS}`
-                  : `Custom: ${customDecksCount}/${DeckService.MAX_USER_DECKS}`}
+                  ? `Slots: ${customDecksCount}/${DeckService.MAX_USER_DECKS}`
+                  : `Slots: ${customDecksCount}/${DeckService.MAX_USER_DECKS}`}
               </span>
             </div>
 
@@ -395,23 +394,22 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
               <button
                 onClick={() => handleCreateNewDeck(false)}
                 disabled={customDecksCount >= DeckService.MAX_USER_DECKS}
-                className={`py-2 px-3 rounded-xl font-serif font-black text-xs uppercase tracking-wider border flex items-center justify-center gap-1.5 transition-all ${
+                className={`py-2 px-3 rounded-xl font-mono font-black text-xs uppercase tracking-wider border flex items-center justify-center gap-1.5 transition-all ${
                   customDecksCount >= DeckService.MAX_USER_DECKS
-                    ? 'bg-slate-900/50 border-slate-800 text-slate-600 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 border-yellow-200 shadow-[0_0_15px_rgba(245,158,11,0.4)] cursor-pointer'
+                    ? 'bg-[#1c1917] border-stone-800 text-stone-600 cursor-not-allowed'
+                    : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border-amber-300 shadow-md cursor-pointer'
                 }`}
               >
-                <span>➕</span>
-                <span>{isPt ? 'Novo Deck' : 'New Deck'}</span>
+                <span>[+ NOVO]</span>
               </button>
 
               <button
                 onClick={() => handleCreateNewDeck(true)}
                 disabled={customDecksCount >= DeckService.MAX_USER_DECKS}
-                className={`py-2 px-3 rounded-xl font-serif font-bold text-xs border flex items-center justify-center gap-1 transition-all ${
+                className={`py-2 px-3 rounded-xl font-mono font-black text-xs uppercase tracking-wider border flex items-center justify-center gap-1 transition-all ${
                   customDecksCount >= DeckService.MAX_USER_DECKS
-                    ? 'bg-slate-900/50 border-slate-800 text-slate-600 cursor-not-allowed'
-                    : 'bg-purple-950/80 hover:bg-purple-900/80 text-purple-200 border-purple-500/50 cursor-pointer'
+                    ? 'bg-[#1c1917] border-stone-800 text-stone-600 cursor-not-allowed'
+                    : 'bg-[#1c1917] hover:bg-[#292524] text-amber-200 border-amber-800/70 hover:border-amber-500 cursor-pointer'
                 }`}
                 title={
                   isPt
@@ -419,8 +417,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                     : 'Clone selected deck into a new editable slot'
                 }
               >
-                <span>📋</span>
-                <span>{isPt ? 'Clonar Atual' : 'Clone Deck'}</span>
+                <span>[CLONAR]</span>
               </button>
             </div>
           </div>
@@ -437,29 +434,29 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                   onClick={() => handleSelectDeck(deck)}
                   className={`p-2.5 rounded-xl border-2 transition-all cursor-pointer relative ${
                     isSelected
-                      ? 'bg-gradient-to-r from-amber-950/60 via-purple-950/60 to-slate-900 border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.3)]'
-                      : 'bg-slate-950/80 border-slate-800/90 hover:border-purple-600/60'
+                      ? 'bg-gradient-to-r from-amber-950/40 via-[#1c1917] to-[#141210] border-amber-500/80 shadow-[0_4px_20px_rgba(0,0,0,0.8)]'
+                      : 'bg-[#141210]/80 border-stone-800 hover:border-amber-800/70'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-1.5">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span
-                          className={`text-[8.5px] font-mono uppercase px-1.5 py-0.5 rounded font-bold ${
+                          className={`text-[8.5px] font-mono uppercase px-1.5 py-0.5 rounded font-black ${
                             deck.isPrebuilt
-                              ? 'bg-purple-900/80 text-purple-200 border border-purple-600/40'
-                              : 'bg-emerald-900/80 text-emerald-200 border border-emerald-600/40'
+                              ? 'bg-amber-950/90 text-amber-300 border border-amber-700/60'
+                              : 'bg-[#292524] text-stone-300 border border-stone-600'
                           }`}
                         >
                           {deck.isPrebuilt
                             ? isPt
-                              ? 'Clássico'
-                              : 'Prebuilt'
+                              ? '[CLÁSSICO]'
+                              : '[PREBUILT]'
                             : isPt
-                            ? 'Personalizado'
-                            : 'Custom'}
+                            ? '[PERSONALIZADO]'
+                            : '[CUSTOM]'}
                         </span>
-                        <span className="text-[9.5px] font-mono text-slate-400">
+                        <span className="text-[9.5px] font-mono text-stone-400">
                           {cardCount}/60 {isPt ? 'cartas' : 'cards'}
                         </span>
                       </div>
@@ -473,39 +470,38 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                     {!deck.isPrebuilt && (
                       <button
                         onClick={(e) => handleDeleteCustomDeck(deck, e)}
-                        className="text-xs text-rose-400 hover:text-rose-200 p-1 rounded hover:bg-rose-950/60 transition-colors cursor-pointer"
+                        className="text-xs font-mono font-black text-red-400 hover:text-red-200 p-1 rounded hover:bg-red-950/60 transition-colors cursor-pointer"
                         title={isPt ? 'Excluir Deck Personalizado' : 'Delete Custom Deck'}
                       >
-                        🗑️
+                        [X]
                       </button>
                     )}
                   </div>
 
                   {/* Ação Inferior do Card de Deck: Definir como Principal ★ */}
-                  <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex items-center justify-between">
+                  <div className="mt-2 pt-1.5 border-t border-stone-800/80 flex items-center justify-between">
                     <button
                       onClick={(e) => handleSetMainDeck(deck.id, e)}
-                      className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-black flex items-center gap-1 transition-all cursor-pointer ${
                         deck.isActive
-                          ? 'bg-amber-400 text-slate-950 shadow-[0_0_12px_rgba(245,158,11,0.7)] font-black'
-                          : 'bg-slate-900 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          ? 'bg-amber-400 text-stone-950 shadow font-black'
+                          : 'bg-[#1c1917] hover:bg-amber-500/20 text-amber-300 border border-amber-700/60'
                       }`}
                     >
-                      <span>★</span>
                       <span>
                         {deck.isActive
                           ? isPt
-                            ? 'Principal ★'
-                            : 'Main ★'
+                            ? '[★ PRINCIPAL]'
+                            : '[★ MAIN]'
                           : isPt
-                          ? 'Definir Principal ★'
-                          : 'Set Main ★'}
+                          ? '[DEFINIR PRINCIPAL]'
+                          : '[SET MAIN]'}
                       </span>
                     </button>
 
                     {isSelected && (
                       <span className="text-[9px] font-mono text-amber-300 font-bold">
-                        {isPt ? 'Em edição ➔' : 'Editing ➔'}
+                        {isPt ? '[EM EDIÇÃO ➔]' : '[EDITING ➔]'}
                       </span>
                     )}
                   </div>
@@ -519,28 +515,28 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
             INSPETOR LATERAL AMPLIADO: ARTE EM DESTAQUE E ATRIBUTOS COMPLETOS
            ===================================================================== */}
         {inspectedCard && (
-          <div className="mt-3 pt-3 border-t border-purple-900/60 bg-gradient-to-b from-[#150d28]/95 to-black/90 rounded-2xl p-3.5 border border-purple-700/50 shadow-2xl flex flex-col gap-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-bold flex items-center gap-1">
-                <span>👁️</span> {isPt ? 'Inspeção de Carta' : 'Card Inspector'}
+          <div className="mt-3 pt-3 border-t border-amber-900/50 bg-[#141210]/95 rounded-2xl p-3.5 border border-amber-900/60 shadow-2xl flex flex-col gap-2.5">
+            <div className="flex items-center justify-between pb-1 border-b border-amber-900/40">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-black flex items-center gap-1">
+                [INSPETOR DE CARTAS]
               </span>
               {inspectedCard.attribute && (
-                <span className="px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-400 text-amber-300 font-mono font-bold text-[9px]">
-                  {inspectedCard.attribute}
+                <span className="px-1.5 py-0.5 rounded bg-[#1c1917] border border-amber-800/60 text-amber-300 font-mono font-black text-[9px]">
+                  [{inspectedCard.attribute}]
                 </span>
               )}
             </div>
 
             {/* Arte Ampliada com Moldura Dourada (Showcase 3D WebGPU Interativo) */}
-            <div className="relative group mx-auto w-36 sm:w-44 aspect-[2/2.8] rounded-xl border-2 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.35)] overflow-hidden">
+            <div className="relative group mx-auto w-36 sm:w-44 aspect-[2/2.8] rounded-xl border-2 border-amber-600/80 shadow-[0_4px_25px_rgba(0,0,0,0.9)] overflow-hidden bg-[#1c1917]">
               <Card3DShowcase
                 card={inspectedCard}
                 languagePt={isPt}
                 className="w-full h-full"
               />
               {/* Badge com quantidade no deck em edição */}
-              <div className="pointer-events-none absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded-full bg-black/90 border border-amber-400 text-amber-300 font-mono font-black text-[9px]">
-                {getCardQuantityInDeck(inspectedCard.id)}/3
+              <div className="pointer-events-none absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded-full bg-[#141210]/95 border border-amber-500 text-amber-300 font-mono font-black text-[9px] shadow">
+                [{getCardQuantityInDeck(inspectedCard.id)}/3]
               </div>
             </div>
 
@@ -550,37 +546,35 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                 {isPt ? inspectedCard.namePt || inspectedCard.name : inspectedCard.name}
               </h4>
               {inspectedCard.namePt && inspectedCard.namePt !== inspectedCard.name && (
-                <p className="text-[10px] text-purple-300/70 font-serif italic">
+                <p className="text-[10px] text-stone-400 font-serif italic">
                   {inspectedCard.name}
                 </p>
               )}
-              <div className="flex items-center justify-center gap-1.5 mt-1 text-[10px] font-mono text-purple-300">
-                <span>{inspectedCard.type}</span>
-                {inspectedCard.race && <span>• {inspectedCard.race}</span>}
+              <div className="flex items-center justify-center gap-1.5 mt-1 text-[10px] font-mono text-amber-400/80">
+                <span>[{inspectedCard.type}]</span>
+                {inspectedCard.race && <span>• [{inspectedCard.race}]</span>}
               </div>
               {/* Estrelas de Nível para Monstros */}
               {inspectedCard.level !== undefined && inspectedCard.level > 0 && (
-                <div className="flex items-center justify-center gap-0.5 mt-1 text-amber-400 text-[11px]" title={`Nível ${inspectedCard.level}`}>
-                  {'★'.repeat(inspectedCard.level)}
-                  <span className="text-[10px] font-mono text-slate-400 ml-1">
-                    (Nv. {inspectedCard.level})
-                  </span>
+                <div className="flex items-center justify-center gap-1 mt-1 bg-[#1c1917] border border-amber-900/60 py-0.5 px-2 rounded-lg text-amber-400 text-xs font-mono font-black" title={`Nível ${inspectedCard.level}`}>
+                  <span>NÍVEL</span>
+                  <span className="text-amber-300">★ {inspectedCard.level}</span>
                 </div>
               )}
             </div>
 
             {/* Caixa de ATK / DEF em Destaque (Apenas para Monstros) */}
             {isMonsterType(inspectedCard.type) && inspectedCard.attack !== undefined && (
-              <div className="bg-black/60 rounded-xl p-1.5 border border-amber-400/40 grid grid-cols-2 gap-2 text-center">
-                <div className="border-r border-purple-800/60">
-                  <span className="text-[9px] font-mono text-slate-400 uppercase block">ATK</span>
-                  <span className="text-xs sm:text-sm font-black font-mono text-amber-300">
+              <div className="grid grid-cols-2 gap-2 text-center mt-0.5">
+                <div className="bg-[#1c1917] border border-emerald-900/60 rounded-lg p-1.5 flex items-center justify-between px-2.5">
+                  <span className="text-[9px] font-mono text-emerald-400/90 uppercase font-black">[ATK]</span>
+                  <span className="text-xs sm:text-sm font-black font-mono text-emerald-300 tabular-nums">
                     {inspectedCard.attack}
                   </span>
                 </div>
-                <div>
-                  <span className="text-[9px] font-mono text-slate-400 uppercase block">DEF</span>
-                  <span className="text-xs sm:text-sm font-black font-mono text-sky-300">
+                <div className="bg-[#1c1917] border border-stone-800 rounded-lg p-1.5 flex items-center justify-between px-2.5">
+                  <span className="text-[9px] font-mono text-stone-400 uppercase font-black">[DEF]</span>
+                  <span className="text-xs sm:text-sm font-black font-mono text-stone-200 tabular-nums">
                     {inspectedCard.defense ?? 0}
                   </span>
                 </div>
@@ -589,29 +583,25 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
 
             {/* Destaque para Cartas Mágicas */}
             {isSpellType(inspectedCard.type) && (
-              <div className="bg-emerald-950/40 rounded-xl p-1.5 border border-emerald-500/50 flex items-center justify-center gap-2 text-center">
-                <span className="text-xs">✨</span>
-                <span className="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider">
-                  {isPt ? 'Carta Mágica' : 'Spell Card'}
-                  {inspectedCard.race ? ` • ${inspectedCard.race}` : ''}
+              <div className="bg-emerald-950/80 rounded-lg p-1.5 border border-emerald-700/60 text-center">
+                <span className="text-xs font-mono font-black text-emerald-300 uppercase tracking-wider">
+                  [{isPt ? 'CARTA MÁGICA' : 'SPELL CARD'}{inspectedCard.race ? ` • ${inspectedCard.race}` : ''}]
                 </span>
               </div>
             )}
 
             {/* Destaque para Cartas Armadilhas */}
             {isTrapType(inspectedCard.type) && (
-              <div className="bg-fuchsia-950/40 rounded-xl p-1.5 border border-fuchsia-500/50 flex items-center justify-center gap-2 text-center">
-                <span className="text-xs">🪤</span>
-                <span className="text-xs font-mono font-bold text-fuchsia-300 uppercase tracking-wider">
-                  {isPt ? 'Carta Armadilha' : 'Trap Card'}
-                  {inspectedCard.race ? ` • ${inspectedCard.race}` : ''}
+              <div className="bg-red-950/80 rounded-lg p-1.5 border border-red-700/60 text-center">
+                <span className="text-xs font-mono font-black text-red-300 uppercase tracking-wider">
+                  [{isPt ? 'CARTA ARMADILHA' : 'TRAP CARD'}{inspectedCard.race ? ` • ${inspectedCard.race}` : ''}]
                 </span>
               </div>
             )}
 
             {/* Descrição / Efeito da Carta com Rolagem Suave */}
-            <div className="bg-black/40 rounded-xl p-2 border border-purple-900/40 max-h-24 overflow-y-auto">
-              <p className="text-[10px] sm:text-[10.5px] text-slate-300 leading-relaxed font-sans">
+            <div className="bg-[#1c1917] rounded-xl p-2.5 border border-amber-950/60 max-h-24 overflow-y-auto">
+              <p className="text-[10px] sm:text-[11px] text-stone-300 leading-relaxed font-sans">
                 {isPt
                   ? inspectedCard.descriptionPt || inspectedCard.description
                   : inspectedCard.description}
@@ -623,17 +613,16 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
               <button
                 onClick={() => handleAddCardToDeck(inspectedCard)}
                 disabled={getCardQuantityInDeck(inspectedCard.id) >= DeckService.MAX_COPIES_PER_CARD || deckStats.total >= 60}
-                className={`py-1.5 rounded-xl font-serif font-black text-xs uppercase tracking-wider border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                className={`py-1.5 rounded-xl font-mono font-black text-xs uppercase tracking-wider border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   getCardQuantityInDeck(inspectedCard.id) >= DeckService.MAX_COPIES_PER_CARD || deckStats.total >= 60
-                    ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-slate-950 border-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+                    ? 'bg-[#1c1917] border-stone-800 text-stone-600 cursor-not-allowed'
+                    : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border-amber-300 shadow-md'
                 }`}
               >
-                <span>➕</span>
                 <span>
                   {getCardQuantityInDeck(inspectedCard.id) >= DeckService.MAX_COPIES_PER_CARD
-                    ? isPt ? 'Limite 3/3 Atingido' : 'Max 3/3 Reached'
-                    : isPt ? 'Adicionar ao Deck (+1)' : 'Add to Deck (+1)'}
+                    ? isPt ? '[LIMITE 3/3 ATINGIDO]' : '[MAX 3/3 REACHED]'
+                    : isPt ? '[+ ADICIONAR AO DECK (+1)]' : '[+ ADD TO DECK (+1)]'}
                 </span>
               </button>
             )}
@@ -648,19 +637,19 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
         {/* -------------------------------------------------------------------
             CENTRO SUPERIOR: DECK EM EDIÇÃO (INPUT DE NOME, CONTAGEM E SALVAR)
            ------------------------------------------------------------------- */}
-        <div className="bg-[#110b22]/90 border-2 border-[#3c285c] rounded-2xl p-3.5 shadow-xl flex flex-col gap-2.5 shrink-0 max-h-[38vh]">
+        <div className="bg-[#141210]/95 border-2 border-amber-800/80 rounded-2xl p-3.5 shadow-xl flex flex-col gap-2.5 shrink-0 max-h-[38vh] backdrop-blur-md">
           {/* Barra Superior do Deck em Edição */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-purple-900/50">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-amber-900/50">
             <div className="flex items-center gap-3 flex-1 min-w-[240px]">
               <div className="flex flex-col flex-1 max-w-md">
-                <label className="text-[9.5px] font-mono uppercase tracking-wider text-purple-300/80 mb-0.5">
+                <label className="text-[9.5px] font-mono uppercase tracking-wider text-amber-400/80 mb-0.5">
                   {selectedDeck.isPrebuilt
                     ? isPt
-                      ? 'Deck Clássico (Somente Leitura - Clique em Clonar para Editar)'
-                      : 'Classic Deck (Read-Only - Click Clone to Edit)'
+                      ? '[DECK CLÁSSICO: SOMENTE LEITURA • CLIQUE EM CLONAR PARA EDITAR]'
+                      : '[CLASSIC DECK: READ-ONLY • CLICK CLONE TO EDIT]'
                     : isPt
-                    ? 'Nome / Apelido do Deck em Edição'
-                    : 'Editing Deck Nickname'}
+                    ? '[NOME / APELIDO DO DECK EM EDIÇÃO]'
+                    : '[EDITING DECK NICKNAME]'}
                 </label>
                 <input
                   type="text"
@@ -673,17 +662,17 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                   placeholder={isPt ? 'Digite o apelido do seu deck...' : 'Enter deck name...'}
                   className={`px-3 py-1.5 rounded-lg font-serif font-bold text-xs sm:text-sm border focus:outline-none transition-all ${
                     selectedDeck.isPrebuilt
-                      ? 'bg-slate-900/60 border-slate-700 text-slate-400 cursor-not-allowed'
-                      : 'bg-slate-950 border-amber-500/60 focus:border-amber-300 text-amber-200 shadow-inner'
+                      ? 'bg-[#1c1917] border-stone-800 text-stone-500 cursor-not-allowed'
+                      : 'bg-[#1c1917] border-amber-800/70 focus:border-amber-400 text-amber-200 shadow-inner'
                   }`}
                 />
               </div>
 
               {/* Contagem de Cartas (ex: 40/60) e Subtotais */}
-              <div className="flex items-center gap-2 bg-black/50 px-3 py-1.5 rounded-xl border border-purple-800/50">
-                <div className="text-center pr-2 border-r border-purple-800/50">
-                  <div className="text-[8.5px] font-mono uppercase text-purple-300">
-                    {isPt ? 'Cartas' : 'Cards'}
+              <div className="flex items-center gap-2 bg-[#1c1917] px-3 py-1.5 rounded-xl border border-amber-900/60 shadow-inner">
+                <div className="text-center pr-2 border-r border-amber-900/50">
+                  <div className="text-[8.5px] font-mono uppercase text-stone-400 font-bold">
+                    {isPt ? 'CARTAS' : 'CARDS'}
                   </div>
                   <div
                     className={`text-sm sm:text-base font-black font-mono ${
@@ -695,15 +684,15 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                     {deckStats.total}/60
                   </div>
                 </div>
-                <div className="flex items-center gap-2 text-[10px] sm:text-[11px] font-mono">
+                <div className="flex items-center gap-2 text-[10px] sm:text-[11px] font-mono font-bold">
                   <span className="text-amber-300" title="Monstros">
-                    👾 {deckStats.monsters}
+                    [MON: {deckStats.monsters}]
                   </span>
-                  <span className="text-emerald-300" title="Mágicas">
-                    ✨ {deckStats.spells}
+                  <span className="text-emerald-400" title="Mágicas">
+                    [MAG: {deckStats.spells}]
                   </span>
-                  <span className="text-pink-300" title="Armadilhas">
-                    🪤 {deckStats.traps}
+                  <span className="text-red-400" title="Armadilhas">
+                    [ARM: {deckStats.traps}]
                   </span>
                 </div>
               </div>
@@ -714,32 +703,30 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
               {!selectedDeck.isActive && (
                 <button
                   onClick={() => handleSetMainDeck(selectedDeck.id)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-amber-500/20 text-amber-300 border border-amber-400/50 text-xs font-serif font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-[#1c1917] hover:bg-amber-500/20 text-amber-300 border border-amber-700/60 text-xs font-mono font-black flex items-center gap-1.5 transition-all cursor-pointer"
                 >
-                  <span>★</span>
-                  <span>{isPt ? 'Tornar Principal' : 'Set Main'}</span>
+                  <span>{isPt ? '[★ TORNAR PRINCIPAL]' : '[★ SET MAIN]'}</span>
                 </button>
               )}
 
               <button
                 onClick={handleSaveDeck}
-                className={`px-4 py-2 rounded-xl font-serif font-black text-xs uppercase tracking-wider border flex items-center gap-2 transition-all cursor-pointer ${
+                className={`px-4 py-2 rounded-xl font-mono font-black text-xs uppercase tracking-wider border flex items-center gap-2 transition-all cursor-pointer ${
                   selectedDeck.isPrebuilt
-                    ? 'bg-purple-900 hover:bg-purple-800 text-amber-200 border-purple-400'
+                    ? 'bg-[#1c1917] hover:bg-[#292524] text-amber-300 border-amber-700/70'
                     : hasUnsavedChanges
-                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 border-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.6)] animate-pulse'
-                    : 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 border-yellow-200 shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+                    ? 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border-amber-300 shadow-lg animate-pulse'
+                    : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border-amber-300 shadow-md'
                 }`}
               >
-                <span>💾</span>
                 <span>
                   {selectedDeck.isPrebuilt
                     ? isPt
-                      ? 'Salvar como Novo Deck'
-                      : 'Save as New Deck'
+                      ? '[SALVAR COMO NOVO DECK]'
+                      : '[SAVE AS NEW DECK]'
                     : isPt
-                    ? 'Salvar Deck'
-                    : 'Save Deck'}
+                    ? '[SALVAR DECK]'
+                    : '[SAVE DECK]'}
                 </span>
               </button>
             </div>
@@ -748,11 +735,11 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
           {/* Grade de Cartas dentro do Deck em Edição */}
           <div className="flex-1 overflow-y-auto pr-1 scroll-smooth">
             {editingCards.length === 0 ? (
-              <div className="h-24 flex flex-col items-center justify-center text-slate-400 border border-dashed border-purple-800/50 rounded-xl bg-black/30">
-                <p className="text-xs font-serif">
+              <div className="h-24 flex flex-col items-center justify-center text-stone-400 border border-dashed border-amber-900/50 rounded-xl bg-[#1c1917]/50 font-mono text-xs">
+                <p>
                   {isPt
-                    ? 'Este deck está vazio. Clique nas cartas do Catálogo abaixo para adicioná-las!'
-                    : 'This deck is empty. Click cards in the Catalog below to add them!'}
+                    ? '[Este deck está vazio. Clique nas cartas do Catálogo abaixo para adicioná-las!]'
+                    : '[This deck is empty. Click cards in the Catalog below to add them!]'}
                 </p>
               </div>
             ) : (
@@ -762,7 +749,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                     key={card.id}
                     onClick={() => handleRemoveCardFromDeck(card)}
                     onMouseEnter={() => setInspectedCard(card)}
-                    className="group relative rounded-lg overflow-hidden border border-amber-500/40 hover:border-rose-400 bg-slate-950 transition-all cursor-pointer shadow hover:scale-105"
+                    className="group relative rounded-lg overflow-hidden border border-amber-700/50 hover:border-red-400 bg-[#1c1917] transition-all cursor-pointer shadow hover:scale-105"
                     title={
                       isPt
                         ? `${card.namePt || card.name} (Clique para remover 1 cópia)`
@@ -777,13 +764,13 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                       className="w-full aspect-[2/2.8] object-cover"
                     />
                     {/* Badge de Quantidade (x1, x2, x3) */}
-                    <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded bg-black/85 border border-amber-400 text-amber-300 font-mono font-black text-[9px]">
+                    <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded bg-[#141210]/95 border border-amber-500 text-amber-300 font-mono font-black text-[9px] shadow">
                       x{quantity}
                     </div>
                     {/* Overlay de Remover no Hover */}
                     {!selectedDeck.isPrebuilt && (
-                      <div className="absolute inset-0 bg-rose-950/75 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                        <span className="text-xs font-black text-white bg-rose-600 px-2 py-0.5 rounded-full">
+                      <div className="absolute inset-0 bg-red-950/80 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                        <span className="text-xs font-mono font-black text-white bg-red-600 px-2 py-0.5 rounded">
                           -1
                         </span>
                       </div>
@@ -798,25 +785,24 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
         {/* -------------------------------------------------------------------
             CENTRO / INFERIOR: CATÁLOGO DE CARTAS (PESQUISA + FILTROS + GRID)
            ------------------------------------------------------------------- */}
-        <div className="flex-1 bg-[#110b22]/90 border-2 border-[#3c285c] rounded-2xl p-3.5 shadow-xl flex flex-col gap-3 overflow-hidden">
+        <div className="flex-1 bg-[#141210]/95 border-2 border-amber-800/80 rounded-2xl p-3.5 shadow-xl flex flex-col gap-3 overflow-hidden backdrop-blur-md">
           {/* Barra Superior: Título, Quantidade de Cartas Disponíveis, Busca e Filtros */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-purple-900/50">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-amber-900/50">
             {/* Lado Esquerdo: Título e Badge de Cartas Disponíveis no Catálogo */}
             <div className="flex items-center gap-2.5 flex-wrap">
               <div className="flex items-center gap-2">
-                <span className="text-xl">📚</span>
+                <span className="text-sm font-mono font-black text-amber-400">𓂀</span>
                 <h2 className="text-sm sm:text-base font-black font-serif text-amber-300 uppercase tracking-wider">
                   {isPt ? 'Catálogo de Cartas' : 'Card Catalog'}
                 </h2>
               </div>
 
               {/* Badge de Destaque da Onda 1 (200+ cartas disponíveis) */}
-              <div className="px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-950 to-indigo-950 border border-amber-400/60 shadow-[0_0_12px_rgba(245,158,11,0.25)] flex items-center gap-1.5">
-                <span className="text-[10px] text-amber-300 animate-pulse">✨</span>
-                <span className="text-[11px] font-mono font-black text-amber-200">
+              <div className="px-2.5 py-1 rounded-full bg-[#1c1917] border border-amber-800/60 shadow flex items-center gap-1.5">
+                <span className="text-[10px] font-mono font-black text-amber-200">
                   {isPt
-                    ? `Catálogo: ${catalogCards.length > 200 ? '200+ cartas disponíveis' : `${catalogCards.length} cartas disponíveis`} (${filteredCatalog.length} exibidas)`
-                    : `Catalog: ${catalogCards.length > 200 ? '200+ cards available' : `${catalogCards.length} cards available`} (${filteredCatalog.length} shown)`}
+                    ? `[Catálogo: ${catalogCards.length > 200 ? '200+ cartas' : `${catalogCards.length} cartas`} • ${filteredCatalog.length} exibidas]`
+                    : `[Catalog: ${catalogCards.length > 200 ? '200+ cards' : `${catalogCards.length} cards`} • ${filteredCatalog.length} shown]`}
                 </span>
               </div>
             </div>
@@ -830,17 +816,17 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={
                     isPt
-                      ? '🔍 Pesquisar por nome, tipo, atributo ou efeito...'
-                      : '🔍 Search by name, type, attribute or effect...'
+                      ? 'Buscar por nome, tipo, atributo ou efeito...'
+                      : 'Search by name, type, attribute or effect...'
                   }
-                  className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-purple-700/60 focus:border-amber-400 text-xs text-slate-100 focus:outline-none shadow-inner"
+                  className="w-full px-3 py-1.5 rounded-xl bg-[#1c1917] border border-amber-900/60 focus:border-amber-400 text-xs text-stone-100 placeholder-stone-600 focus:outline-none font-mono shadow-inner"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white cursor-pointer"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 font-mono text-xs text-stone-400 hover:text-white cursor-pointer"
                   >
-                    ✕
+                    [X]
                   </button>
                 )}
               </div>
@@ -850,28 +836,27 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
             <div className="flex items-center gap-1.5 flex-wrap">
               {(
                 [
-                  { id: 'ALL', labelPt: 'Todas', labelEn: 'All', icon: '🃏', count: catalogStats.total },
-                  { id: 'MONSTER', labelPt: 'Monstros', labelEn: 'Monsters', icon: '👾', count: catalogStats.monsters },
-                  { id: 'SPELL', labelPt: 'Magia', labelEn: 'Spells', icon: '✨', count: catalogStats.spells },
-                  { id: 'TRAP', labelPt: 'Armadilhas', labelEn: 'Traps', icon: '🪤', count: catalogStats.traps },
+                  { id: 'ALL', labelPt: 'Todas', labelEn: 'All', count: catalogStats.total },
+                  { id: 'MONSTER', labelPt: 'Monstros', labelEn: 'Monsters', count: catalogStats.monsters },
+                  { id: 'SPELL', labelPt: 'Magias', labelEn: 'Spells', count: catalogStats.spells },
+                  { id: 'TRAP', labelPt: 'Armadilhas', labelEn: 'Traps', count: catalogStats.traps },
                 ] as const
               ).map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setFilterType(tab.id)}
-                  className={`px-2.5 py-1 rounded-xl text-xs font-serif font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                  className={`px-2.5 py-1 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
                     filterType === tab.id
-                      ? 'bg-amber-400 text-slate-950 border-yellow-200 shadow-[0_0_12px_rgba(245,158,11,0.5)] font-black scale-[1.02]'
-                      : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-700'
+                      ? 'bg-amber-400 text-stone-950 border-amber-300 shadow font-black scale-[1.02]'
+                      : 'bg-[#1c1917] hover:bg-[#292524] text-stone-300 border border-amber-900/60'
                   }`}
                 >
-                  <span>{tab.icon}</span>
                   <span>{isPt ? tab.labelPt : tab.labelEn}</span>
                   <span
                     className={`text-[9.5px] font-mono px-1 rounded ${
                       filterType === tab.id
-                        ? 'bg-black/30 text-slate-950 font-bold'
-                        : 'bg-purple-950/80 text-purple-300'
+                        ? 'bg-black/30 text-stone-950 font-bold'
+                        : 'bg-[#292524] text-amber-300'
                     }`}
                   >
                     {tab.count}
@@ -884,21 +869,20 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
           {/* Grade Responsiva de Cartas Otimizada para Alta Performance (Lazy Loading + Content Visibility) */}
           <div className="flex-1 overflow-y-auto pr-1 scroll-smooth">
             {filteredCatalog.length === 0 ? (
-              <div className="h-44 flex flex-col items-center justify-center text-slate-400 border border-dashed border-purple-800/50 rounded-xl bg-black/20 gap-2">
-                <span className="text-3xl">🔍</span>
-                <p className="text-xs font-serif">
+              <div className="h-44 flex flex-col items-center justify-center text-stone-400 border border-dashed border-amber-900/50 rounded-xl bg-[#1c1917]/50 gap-2 font-mono text-xs">
+                <p>
                   {isPt
-                    ? 'Nenhuma carta encontrada com o filtro e busca atuais.'
-                    : 'No cards found matching your search and filter criteria.'}
+                    ? '[Nenhuma carta encontrada com o filtro e busca atuais.]'
+                    : '[No cards found matching your search and filter criteria.]'}
                 </p>
                 <button
                   onClick={() => {
                     setSearchQuery('');
                     setFilterType('ALL');
                   }}
-                  className="px-3 py-1 bg-purple-900/70 hover:bg-purple-800 text-amber-300 rounded-lg text-xs font-serif border border-purple-600/50 cursor-pointer"
+                  className="px-3 py-1 bg-[#1c1917] hover:bg-[#292524] text-amber-300 rounded-lg text-xs font-mono font-bold border border-amber-800/60 cursor-pointer"
                 >
-                  {isPt ? 'Limpar Filtros' : 'Clear Filters'}
+                  {isPt ? '[Limpar Filtros]' : '[Clear Filters]'}
                 </button>
               </div>
             ) : (
@@ -915,12 +899,12 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                       style={{ contentVisibility: 'auto', containIntrinsicSize: '140px 220px' }}
                       onMouseEnter={() => setInspectedCard(card)}
                       onClick={() => handleAddCardToDeck(card)}
-                      className={`group rounded-xl overflow-hidden bg-slate-950/90 border-2 flex flex-col justify-between transition-all cursor-pointer hover:-translate-y-0.5 shadow-md ${
+                      className={`group rounded-xl overflow-hidden bg-[#1c1917] border-2 flex flex-col justify-between transition-all cursor-pointer hover:-translate-y-0.5 shadow-md ${
                         isInspected
                           ? 'border-amber-400 shadow-[0_0_18px_rgba(245,158,11,0.5)] ring-1 ring-amber-300'
                           : qtyInDeck > 0
-                          ? 'border-amber-500/70 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
-                          : 'border-slate-800 hover:border-purple-500/70'
+                          ? 'border-amber-600/70 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                          : 'border-stone-800 hover:border-amber-700/70'
                       }`}
                     >
                       <div className="relative">
@@ -936,10 +920,10 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                         <div
                           className={`absolute top-1.5 right-1.5 px-2 py-0.5 rounded-full font-mono font-black text-[10px] border shadow-md ${
                             isMaxed
-                              ? 'bg-amber-400 text-slate-950 border-yellow-200'
+                              ? 'bg-amber-400 text-stone-950 border-amber-300'
                               : qtyInDeck > 0
                               ? 'bg-emerald-950/90 text-emerald-300 border-emerald-400'
-                              : 'bg-black/80 text-slate-300 border-slate-600'
+                              : 'bg-[#141210]/85 text-stone-300 border-stone-600'
                           }`}
                         >
                           {qtyInDeck}/{DeckService.MAX_COPIES_PER_CARD}
@@ -947,19 +931,19 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
 
                         {/* Tag de Atributo ou Tipo sutil no canto superior esquerdo */}
                         {card.attribute && (
-                          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/85 border border-purple-800/80 text-amber-300 font-mono text-[8px] font-bold">
-                            {card.attribute}
+                          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-[#141210]/90 border border-amber-800/60 text-amber-300 font-mono text-[8px] font-bold">
+                            [{card.attribute}]
                           </div>
                         )}
                       </div>
 
                       {/* Rodapé da Carta no Catálogo com Informações e Botões Rápidos (- / +) */}
-                      <div className="p-2 flex flex-col gap-1 bg-gradient-to-b from-slate-900 to-slate-950 border-t border-purple-950">
+                      <div className="p-2 flex flex-col gap-1 bg-[#141210] border-t border-stone-800">
                         <div className="text-[11px] font-serif font-bold text-amber-100 truncate" title={displayName}>
                           {displayName}
                         </div>
 
-                        <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                        <div className="flex items-center justify-between text-[10px] font-mono text-stone-400">
                           <span className="truncate pr-1">
                             {isMonsterType(card.type) && card.attack !== undefined
                               ? `${card.attack}/${card.defense ?? 0}`
@@ -976,10 +960,10 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                             <button
                               onClick={(e) => handleRemoveCardFromDeck(card, e)}
                               disabled={qtyInDeck === 0 || selectedDeck.isPrebuilt}
-                              className={`w-5 h-5 rounded flex items-center justify-center font-bold text-xs border transition-colors ${
+                              className={`w-5 h-5 rounded flex items-center justify-center font-mono font-black text-xs border transition-colors ${
                                 qtyInDeck === 0 || selectedDeck.isPrebuilt
-                                  ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
-                                  : 'bg-rose-950/80 hover:bg-rose-600 text-rose-200 hover:text-white border-rose-500/50 cursor-pointer'
+                                  ? 'bg-[#1c1917] border-stone-800 text-stone-600 cursor-not-allowed'
+                                  : 'bg-red-950/80 hover:bg-red-600 text-red-200 hover:text-white border-red-700/60 cursor-pointer'
                               }`}
                               title={isPt ? 'Remover 1 cópia' : 'Remove 1 copy'}
                             >
@@ -988,10 +972,10 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
                             <button
                               onClick={() => handleAddCardToDeck(card)}
                               disabled={isMaxed || selectedDeck.isPrebuilt}
-                              className={`w-5 h-5 rounded flex items-center justify-center font-bold text-xs border transition-colors ${
+                              className={`w-5 h-5 rounded flex items-center justify-center font-mono font-black text-xs border transition-colors ${
                                 isMaxed || selectedDeck.isPrebuilt
-                                  ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
-                                  : 'bg-emerald-950/80 hover:bg-emerald-500 text-emerald-200 hover:text-slate-950 border-emerald-500/50 cursor-pointer'
+                                  ? 'bg-[#1c1917] border-stone-800 text-stone-600 cursor-not-allowed'
+                                  : 'bg-emerald-950/80 hover:bg-emerald-500 text-emerald-200 hover:text-stone-950 border-emerald-600/60 cursor-pointer'
                               }`}
                               title={isPt ? 'Adicionar 1 cópia' : 'Add 1 copy'}
                             >

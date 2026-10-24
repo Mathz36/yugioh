@@ -40,17 +40,17 @@ export const WebGPUBackdrop: React.FC<WebGPUBackdropProps> = ({
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
     camera.position.set(0, 0, 9);
 
-    // Ambient and gold/purple point lights
-    const ambientLight = new THREE.AmbientLight(0xd8b4fe, 0.95);
+    // Ambient and gold/stone point lights (Dark Stone & Aged Gold atmospheric illumination)
+    const ambientLight = new THREE.AmbientLight(0xffedd5, 0.95);
     scene.add(ambientLight);
 
     const goldLight = new THREE.PointLight(0xf59e0b, 3.2, 25);
     goldLight.position.set(4, 3, 5);
     scene.add(goldLight);
 
-    const purpleLight = new THREE.PointLight(0x9333ea, 2.8, 25);
-    purpleLight.position.set(-4, -3, 4);
-    scene.add(purpleLight);
+    const stoneLight = new THREE.PointLight(0x78716c, 2.5, 25);
+    stoneLight.position.set(-4, -3, 4);
+    scene.add(stoneLight);
 
     // 3D Video Texture Plane inside the WebGPU/Three.js Scene (for Menu or custom videoSrc)
     const shouldRenderVideoPlane =
@@ -97,13 +97,13 @@ export const WebGPUBackdrop: React.FC<WebGPUBackdropProps> = ({
 
       const octaGeom = new THREE.OctahedronGeometry(1.65, 0);
       const octaSolidMat = new THREE.MeshStandardMaterial({
-        color: 0x2e1065,
-        emissive: 0x4c1d95,
+        color: 0x1c1917,
+        emissive: 0x292524,
         emissiveIntensity: 0.35,
-        roughness: 0.25,
+        roughness: 0.35,
         metalness: 0.85,
         transparent: true,
-        opacity: 0.45,
+        opacity: 0.65,
       });
       const octaMesh = new THREE.Mesh(octaGeom, octaSolidMat);
       artifactGroup.add(octaMesh);
@@ -130,7 +130,7 @@ export const WebGPUBackdrop: React.FC<WebGPUBackdropProps> = ({
 
       const ring2Geom = new THREE.TorusGeometry(3.05, 0.018, 12, 64);
       const ring2Mat = new THREE.MeshBasicMaterial({
-        color: 0xa855f7,
+        color: 0xd97706,
         transparent: true,
         opacity: 0.35,
       });

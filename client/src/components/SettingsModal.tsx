@@ -49,88 +49,85 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn select-none"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="relative w-full max-w-md bg-[#0c0914] border-2 border-amber-500/80 rounded-3xl p-6 sm:p-8 shadow-[0_0_50px_rgba(245,158,11,0.35)] flex flex-col items-center overflow-hidden">
-        {/* Glow de fundo */}
-        <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="relative w-full max-w-md bg-[#141210]/95 border-2 border-amber-800/80 rounded-2xl p-6 sm:p-8 shadow-[0_8px_35px_rgba(0,0,0,0.92)] flex flex-col items-center overflow-hidden backdrop-blur-md">
+        {/* Glow atmosférico suave Dark Stone & Aged Gold */}
+        <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-amber-700/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Botão fechar 'X' no canto superior */}
+        {/* Botão fechar '[X]' no canto superior */}
         <button
           onClick={onClose}
           aria-label={isPt ? 'Fechar configurações' : 'Close settings'}
-          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-900/80 border border-slate-700 hover:border-amber-400 text-slate-400 hover:text-amber-300 flex items-center justify-center text-sm font-bold transition-all hover:scale-105"
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#1c1917] border border-amber-900/60 hover:border-amber-500 text-stone-400 hover:text-amber-300 flex items-center justify-center font-mono text-xs font-black transition-all cursor-pointer"
         >
-          ✕
+          [X]
         </button>
 
-        {/* Ícone e Título */}
-        <div className="flex items-center space-x-2 mb-2">
-          <span className="text-3xl text-amber-400 drop-shadow-[0_0_10px_rgba(245,158,11,0.8)]">
-            ⚙️
-          </span>
-          <span className="text-2xl text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">
+        {/* Emblema e Título */}
+        <div className="flex items-center space-x-2 mb-1">
+          <span className="text-3xl text-amber-400 drop-shadow-[0_2px_10px_rgba(245,158,11,0.5)]">
             𓂀
           </span>
         </div>
 
         <h2
           id="settings-title"
-          className="text-xl sm:text-2xl font-black font-serif tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-yellow-500 uppercase text-center"
+          className="text-xl sm:text-2xl font-black font-serif tracking-widest text-amber-300 uppercase text-center"
         >
           {isPt ? 'Configurações' : 'Settings'}
         </h2>
-        <p className="text-xs text-purple-300/80 font-mono tracking-wider mt-1 mb-6 text-center">
-          {isPt ? 'Preferências de Áudio e Idioma' : 'Audio and Language Preferences'}
+        <p className="text-[10px] text-amber-200/70 font-mono tracking-widest mt-1 mb-6 text-center uppercase">
+          {isPt ? '[PREFERÊNCIAS DE ÁUDIO E IDIOMA]' : '[AUDIO AND LANGUAGE PREFERENCES]'}
         </p>
 
         {/* Lista de Configurações */}
-        <div className="w-full space-y-4">
+        <div className="w-full space-y-3.5">
           {/* 1. Trilha Sonora */}
-          <div className="p-4 rounded-2xl bg-slate-950/70 border border-purple-900/60 flex items-center justify-between">
+          <div className="p-3.5 rounded-xl bg-[#1c1917] border border-amber-900/60 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-950/80 border border-purple-700/60 flex items-center justify-center text-xl">
-                {settings.soundMuted ? '🔇' : '🎵'}
+              <div className="w-10 h-10 rounded-lg bg-[#292524] border border-amber-700/60 flex items-center justify-center font-mono text-xs font-black text-amber-300 shrink-0">
+                [SOM]
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-200 font-serif tracking-wide">
+                <h3 className="text-sm font-bold text-stone-200 font-serif tracking-wide">
                   {isPt ? 'Trilha Sonora' : 'Soundtrack Music'}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-stone-400 font-mono">
                   {settings.soundMuted
-                    ? isPt ? 'Áudio desativado' : 'Audio muted'
-                    : isPt ? 'Música clássica em execução' : 'Classic music playing'}
+                    ? isPt ? '[Áudio mutado]' : '[Audio muted]'
+                    : isPt ? '[Música ativa]' : '[Music active]'}
                 </p>
               </div>
             </div>
 
             <button
               onClick={handleToggleMute}
-              className={`px-3.5 py-1.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all border shadow-md flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg font-mono font-black text-xs uppercase tracking-wider transition-all border shadow-sm cursor-pointer ${
                 settings.soundMuted
-                  ? 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'
-                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 border-emerald-400 text-slate-950 shadow-[0_0_15px_rgba(16,185,129,0.4)] hover:brightness-110'
+                  ? 'bg-[#292524] border-stone-700 text-stone-400 hover:text-stone-200'
+                  : 'bg-gradient-to-b from-amber-500 to-amber-600 text-stone-950 border-amber-300'
               }`}
             >
-              <span>{settings.soundMuted ? 'Ativar' : 'Mutado'}</span>
+              <span>{settings.soundMuted ? '[ATIVAR]' : '[MUTAR]'}</span>
             </button>
           </div>
 
           {/* 2. Idioma */}
-          <div className="p-4 rounded-2xl bg-slate-950/70 border border-purple-900/60 flex flex-col space-y-3">
+          <div className="p-3.5 rounded-xl bg-[#1c1917] border border-amber-900/60 flex flex-col space-y-2.5">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-950/80 border border-amber-700/60 flex items-center justify-center text-xl">
-                🌍
+              <div className="w-10 h-10 rounded-lg bg-[#292524] border border-amber-700/60 flex items-center justify-center font-mono text-xs font-black text-amber-300 shrink-0">
+                [IDM]
               </div>
               <div>
-                <h3 className="text-sm font-bold text-slate-200 font-serif tracking-wide">
+                <h3 className="text-sm font-bold text-stone-200 font-serif tracking-wide">
                   {isPt ? 'Idioma do Duelo' : 'Duel Language'}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-stone-400 font-mono">
                   {isPt
                     ? 'Nomes e descrições oficiais de cartas'
                     : 'Official card names and lore'}
@@ -141,41 +138,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="grid grid-cols-2 gap-2 pt-1">
               <button
                 onClick={() => handleSelectLanguage('pt')}
-                className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all border ${
+                className={`py-2 px-3 rounded-lg font-mono font-black text-xs flex items-center justify-center gap-1.5 transition-all border cursor-pointer ${
                   isPt
-                    ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-slate-950 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.4)]'
-                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? 'bg-gradient-to-b from-amber-500 to-amber-600 text-stone-950 border-amber-300 shadow'
+                    : 'bg-[#292524] border-stone-700 text-stone-400 hover:text-stone-200'
                 }`}
               >
-                <span>🇧🇷</span>
-                <span>Português</span>
+                <span>[PT-BR] Português</span>
               </button>
 
               <button
                 onClick={() => handleSelectLanguage('en')}
-                className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all border ${
+                className={`py-2 px-3 rounded-lg font-mono font-black text-xs flex items-center justify-center gap-1.5 transition-all border cursor-pointer ${
                   !isPt
-                    ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-slate-950 border-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.4)]'
-                    : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700'
+                    ? 'bg-gradient-to-b from-amber-500 to-amber-600 text-stone-950 border-amber-300 shadow'
+                    : 'bg-[#292524] border-stone-700 text-stone-400 hover:text-stone-200'
                 }`}
               >
-                <span>🇺🇸</span>
-                <span>English</span>
+                <span>[EN-US] English</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Botão de Fechar / Salvo */}
-        <div className="w-full mt-6 pt-4 border-t border-purple-900/50 flex items-center justify-between">
-          <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
-            <span>✓</span> {isPt ? 'Salvo no navegador' : 'Saved in browser'}
+        {/* Rodapé: Concluir */}
+        <div className="w-full mt-6 pt-4 border-t border-amber-900/50 flex items-center justify-between">
+          <span className="text-[10px] text-amber-400 font-mono flex items-center gap-1">
+            <span>[OK]</span> {isPt ? 'Salvo no navegador' : 'Saved in browser'}
           </span>
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105"
+            className="px-5 py-1.5 bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black font-mono text-xs uppercase tracking-wider rounded-lg shadow border border-amber-300 cursor-pointer"
           >
-            {isPt ? 'Concluir' : 'Done'}
+            {isPt ? '[CONCLUIR]' : '[DONE]'}
           </button>
         </div>
       </div>

@@ -100,43 +100,43 @@ export const App: React.FC = () => {
       <ErrorBoundary>
         <div
           data-testid="hardware-acceleration-guard"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#07040f] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1d0e38] via-[#090514] to-black p-4 text-slate-100 select-none font-sans"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#0c0a09]/95 backdrop-blur-md p-4 text-stone-100 select-none font-sans"
         >
-          <div className="w-full max-w-lg rounded-2xl border-2 border-amber-500/80 bg-[#10091e]/95 p-7 shadow-[0_0_60px_rgba(245,158,11,0.45)] flex flex-col items-center text-center relative overflow-hidden">
-            <span className="inline-block px-3 py-1 mb-3 rounded bg-amber-950/90 border border-amber-500/60 text-[10px] font-mono font-black tracking-widest text-amber-300 uppercase">
+          <div className="w-full max-w-lg rounded-2xl border-2 border-amber-800/80 bg-[#141210]/95 p-7 shadow-[0_8px_35px_rgba(0,0,0,0.92)] flex flex-col items-center text-center relative overflow-hidden backdrop-blur-md">
+            <span className="inline-block px-3 py-1 mb-3 rounded bg-[#1c1917] border border-amber-700/60 text-[10px] font-mono font-black tracking-widest text-amber-300 uppercase">
               [REQUISITO GRÁFICO • WEBGPU / GPU 3D]
             </span>
 
-            <h1 className="text-xl sm:text-2xl font-black font-serif tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-yellow-500 uppercase mb-2">
+            <h1 className="text-xl sm:text-2xl font-black font-serif tracking-wider text-amber-300 uppercase mb-2">
               Aceleração de Hardware Necessária
             </h1>
 
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4">
+            <p className="text-xs sm:text-sm text-stone-300 leading-relaxed mb-4">
               O Reino dos Duelistas opera exclusivamente em 3D imersivo (Three.js + WebGPU) e exige que a{' '}
-              <strong className="text-amber-300">Aceleração de Hardware (GPU)</strong> esteja ativa no seu navegador antes de prosseguir.
+              <strong className="text-amber-400">Aceleração de Hardware (GPU)</strong> esteja ativa no seu navegador antes de prosseguir.
             </p>
 
             {hwStatus.reason && (
-              <div className="w-full mb-4 px-3.5 py-2.5 rounded-xl bg-red-950/75 border border-red-500/60 text-red-200 text-xs font-mono">
+              <div className="w-full mb-4 px-3.5 py-2.5 rounded-xl bg-red-950/90 border border-red-700/80 text-red-200 text-xs font-mono">
                 <span className="font-black text-red-400 mr-1.5">[DIAGNÓSTICO]</span>
                 {hwStatus.reason}
               </div>
             )}
 
-            <div className="w-full text-left bg-[#160d29] border border-purple-800/70 rounded-xl p-4 mb-5 space-y-2.5 text-xs text-slate-300">
-              <div className="text-[11px] font-mono font-black text-amber-300 uppercase tracking-wider">
+            <div className="w-full text-left bg-[#1c1917] border border-amber-900/60 rounded-xl p-4 mb-5 space-y-2.5 text-xs text-stone-300">
+              <div className="text-[11px] font-mono font-black text-amber-400 uppercase tracking-wider">
                 [COMO ATIVAR A GPU NO NAVEGADOR]
               </div>
               <div>
-                <span className="font-bold text-purple-200">Chrome / Edge / Brave:</span> Acesse{' '}
-                <code className="px-1.5 py-0.5 rounded bg-black/70 text-amber-300 font-mono text-[11px]">
+                <span className="font-bold text-amber-300">Chrome / Edge / Brave:</span> Acesse{' '}
+                <code className="px-1.5 py-0.5 rounded bg-black/80 text-amber-400 font-mono text-[11px] border border-amber-900/40">
                   chrome://settings/system
                 </code>{' '}
                 e ative <em>&ldquo;Usar aceleração gráfica quando disponível&rdquo;</em>, depois reinicie o navegador.
               </div>
               <div>
-                <span className="font-bold text-purple-200">Firefox:</span> Acesse{' '}
-                <code className="px-1.5 py-0.5 rounded bg-black/70 text-amber-300 font-mono text-[11px]">
+                <span className="font-bold text-amber-300">Firefox:</span> Acesse{' '}
+                <code className="px-1.5 py-0.5 rounded bg-black/80 text-amber-400 font-mono text-[11px] border border-amber-900/40">
                   about:preferences#general
                 </code>{' '}
                 em Desempenho e marque <em>&ldquo;Usar aceleração de hardware quando disponível&rdquo;</em>.
@@ -146,7 +146,7 @@ export const App: React.FC = () => {
             <button
               type="button"
               onClick={() => verifyHardwareAcceleration().then(setHwStatus)}
-              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black font-serif text-xs sm:text-sm uppercase tracking-wider border border-yellow-200 shadow-[0_0_25px_rgba(245,158,11,0.5)] transition-transform active:scale-95 cursor-pointer"
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black font-mono text-xs sm:text-sm uppercase tracking-wider border border-amber-300 shadow-lg transition-transform active:scale-95 cursor-pointer"
             >
               [Verificar Aceleração de Hardware Novamente]
             </button>
