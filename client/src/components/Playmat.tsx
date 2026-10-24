@@ -8,12 +8,15 @@ import { soundtrackManager } from '../utils/SoundtrackManager';
 import { getUserSettings, UserSettings } from '../utils/settings';
 import { getActiveDeckForDuel } from '../utils/deckStorage';
 import { SettingsModal } from './SettingsModal';
+import { DuelArena3D } from './duel3d/DuelArena3D';
+import { Card3DShowcase } from './duel3d/Card3DShowcase';
 
 export interface PlaymatProps {
   playerNickname?: string;
   playerDeck?: CardData[];
   playerDeckName?: string;
   onExitToMenu?: () => void;
+  onHardwareError?: (reason: string) => void;
 }
 
 export interface ActionBanner {
@@ -43,6 +46,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
   playerNickname = 'Yugi Muto',
   playerDeck,
   onExitToMenu,
+  onHardwareError,
 }) => {
   const resolvePlayerDeck = (): CardData[] => {
     if (playerDeck && playerDeck.length >= 5) {
@@ -103,6 +107,9 @@ export const Playmat: React.FC<PlaymatProps> = ({
   const [languagePt, setLanguagePt] = useState<boolean>(() => getUserSettings(playerNickname).language === 'pt');
   const [showSurrenderModal, setShowSurrenderModal] = useState<boolean>(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState<boolean>(false);
+  const [isLogOpen, setIsLogOpen] = useState<boolean>(false);
+  const [isFieldInfoOpen, setIsFieldInfoOpen] = useState<boolean>(false);
   const [soundMuted, setSoundMuted] = useState<boolean>(() => getUserSettings(playerNickname).soundMuted);
   const [, setRefreshKey] = useState(0);
 
@@ -111,6 +118,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
   const [lungingZone, setLungingZone] = useState<{
     isPlayer: boolean;
     zoneIndex: number;
+    targetIndex?: number | null;
     deltaX: number;
     deltaY: number;
   } | null>(null);
@@ -512,7 +520,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
           const proceedWithBotAttack = () => {
             // Animação de investida do Bot (Lunge) com vetor direcional exato
-            setLungingZone({ isPlayer: false, zoneIndex: attacker.index, deltaX, deltaY });
+            setLungingZone({ isPlayer: false, zoneIndex: attacker.index, targetIndex: targetZoneIdx, deltaX, deltaY });
 
             scheduleTimer(() => {
               soundFX.playAttackStrike();
@@ -986,7 +994,14 @@ export const Playmat: React.FC<PlaymatProps> = ({
                       !card.data.type.toLowerCase().includes('mágica') &&
                       !card.data.type.toLowerCase().includes('trap') &&
                       !card.data.type.toLowerCase().includes('armadilha');
-    if (isMonster && p1.hasNormalSummonedThisTurn) return;
+    if (isMonster && p1.hasNormalSummonedThisTurn) {
+      showNotification(
+        languagePt
+          ? '[AVISO] Você já realizou sua Invocação Normal neste turno!'
+          : '[WARNING] You already performed your Normal Summon this turn!'
+      );
+      return;
+    }
     setSelectedHandCardUid(selectedHandCardUid === card.uid ? null : card.uid);
     setPendingSummonZone(null);
     setSelectedTributeZones([]);
@@ -1117,8 +1132,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
         return;
       }
 
-      // Invocação de Monstro permitida na Fase Principal 1
-      if (match.phase === 'MAIN1') {
+      // Invocação de Monstro permitida na Fase Principal 1 ou 2
+      if (match.phase === 'MAIN1' || match.phase === 'MAIN2') {
         const requiredTributes = card.data.level <= 4 ? 0 : card.data.level <= 6 ? 1 : 2;
         const targetMonster = p1.monsterZones[zoneIndex];
 
@@ -1181,8 +1196,15 @@ export const Playmat: React.FC<PlaymatProps> = ({
             tributeIndices: [],
             card,
           });
+          return;
+        } else {
+          showNotification(
+            languagePt
+              ? '[AVISO] Esta zona já está ocupada por outro monstro!'
+              : '[WARNING] This zone is already occupied by another monster!'
+          );
+          return;
         }
-        return;
       }
       return;
     }
@@ -1298,8 +1320,9 @@ export const Playmat: React.FC<PlaymatProps> = ({
     position: BattlePosition = 'ATTACK',
     isFaceDown: boolean = false
   ) => {
-    if (selectedHandCardUid === null) return;
-    const success = session.normalSummon(selectedHandCardUid, zoneIndex, position, tributeIndices, isFaceDown);
+    const cardUidToSummon = selectedHandCardUid || summonChoiceModal?.card.uid;
+    if (!cardUidToSummon) return;
+    const success = session.normalSummon(cardUidToSummon, zoneIndex, position, tributeIndices, isFaceDown);
     if (success) {
       setSelectedHandCardUid(null);
       setPendingSummonZone(null);
@@ -1893,7 +1916,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
     // 3. Efeitos de Ataque: Animação de Investida (Lunge) com vetor direcional exato
     const { deltaX, deltaY } = calculateLungeDelta(true, attackerZone, targetZoneIndex);
-    setLungingZone({ isPlayer: true, zoneIndex: attackerZone, deltaX, deltaY });
+    setLungingZone({ isPlayer: true, zoneIndex: attackerZone, targetIndex: targetZoneIndex, deltaX, deltaY });
     setSelectedAttackerZone(null);
 
     // Timing do Impacto: Dispara exatamente no clímax do Lunge (280ms)
@@ -2124,15 +2147,69 @@ export const Playmat: React.FC<PlaymatProps> = ({
     forceUpdate();
   };
 
+  const currentSelectedHandCard = selectedHandCardUid ? p1.hand.find((c) => c.uid === selectedHandCardUid) : null;
+  const isCurrentCardMonster = isMonsterCard(currentSelectedHandCard);
+  const tributeCountNeeded = isCurrentCardMonster
+    ? (currentSelectedHandCard!.data.level <= 4 ? 0 : currentSelectedHandCard!.data.level <= 6 ? 1 : 2)
+    : 0;
+
+  const validSummonZoneIndices: number[] = [];
+  if (isCurrentCardMonster) {
+    p1.monsterZones.forEach((slot, idx) => {
+      const isSelectedTribute = selectedTributeZones.includes(idx);
+      const isTributeTargetZone = tributeCountNeeded > 0 && selectedTributeZones.length === tributeCountNeeded && (slot === null || isSelectedTribute);
+      const isValidSummonZone = tributeCountNeeded === 0 && slot === null;
+      if (isValidSummonZone || isTributeTargetZone) {
+        validSummonZoneIndices.push(idx);
+      }
+    });
+  }
+
+  const isCurrentCardSpellOrTrap = isSpellOrTrapCard(currentSelectedHandCard);
+  const validSpellTrapZoneIndices: number[] = [];
+  if (isCurrentCardSpellOrTrap) {
+    p1.spellTrapZones.forEach((slot, idx) => {
+      if (slot === null) {
+        validSpellTrapZoneIndices.push(idx);
+      }
+    });
+  }
+
+  const handleArena3DZoneClick = (isPlayer: boolean, zoneType: 'MONSTER' | 'SPELL_TRAP', index: number) => {
+    if (isPlayer) {
+      if (zoneType === 'MONSTER') {
+        handlePlayerMonsterZoneClick(index);
+      } else {
+        handlePlayerSpellTrapZoneClick(index);
+      }
+    } else {
+      if (zoneType === 'MONSTER') {
+        if (selectedAttackerZone !== null && p2.monsterZones.every((m) => m === null)) {
+          handleOpponentZoneClick(null);
+        } else {
+          handleOpponentZoneClick(index);
+        }
+      } else {
+        handleOpponentSpellTrapZoneClick(index);
+      }
+    }
+  };
+
+  const handleArena3DCardHover = (card: CardInstance | null) => {
+    if (card) {
+      setInspectedCard(card);
+    }
+  };
+
   return (
-    <div className="flex h-screen w-screen max-h-screen bg-[#07050d] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#180e2d] via-[#090614] to-[#030206] select-none text-slate-100 overflow-hidden font-sans relative">
+    <div className="flex h-screen w-screen max-h-screen bg-[#0c0a09] select-none text-stone-100 overflow-hidden font-sans relative">
       
       {/* ACTION BANNER DE ATIVAÇÃO DE CARTAS (MINIATURA 40x56px, BORDA METÁLICA, NOME DOURADO) */}
       {actionBanner && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-slideInRight">
-          <div className="bg-[#0c0818]/95 border-2 border-amber-500/80 rounded-2xl px-5 py-3 shadow-[0_0_35px_rgba(245,158,11,0.5)] backdrop-blur-md flex items-center gap-3.5 max-w-lg">
+          <div className="bg-[#141210]/95 border-2 border-amber-700/80 rounded-2xl px-5 py-3 shadow-[0_8px_30px_rgba(0,0,0,0.92)] backdrop-blur-md flex items-center gap-3.5 max-w-lg">
             {actionBanner.cardImage && (
-              <div className="w-[40px] h-[56px] min-w-[40px] rounded border border-amber-300/80 overflow-hidden shadow-md bg-black">
+              <div className="w-[40px] h-[56px] min-w-[40px] rounded border border-amber-500/80 overflow-hidden shadow-md bg-black">
                 <img
                   src={actionBanner.cardImage}
                   alt={actionBanner.cardName}
@@ -2143,15 +2220,15 @@ export const Playmat: React.FC<PlaymatProps> = ({
             <div className="flex flex-col text-left">
               <div className="flex items-center gap-2">
                 {actionBanner.badge && (
-                  <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-600/60 uppercase tracking-wider">
+                  <span className="text-[10px] font-mono font-black text-amber-300 bg-amber-950/90 px-2 py-0.5 rounded border border-amber-700/60 uppercase tracking-wider">
                     {actionBanner.badge}
                   </span>
                 )}
-                <span className="font-serif font-black text-amber-300 text-sm tracking-wide drop-shadow">
+                <span className="font-serif font-black text-amber-200 text-sm tracking-wide drop-shadow">
                   {actionBanner.cardName}
                 </span>
               </div>
-              <p className="text-xs text-slate-200 font-sans mt-0.5 leading-snug line-clamp-2">
+              <p className="text-xs text-stone-200 font-sans mt-0.5 leading-snug line-clamp-2">
                 {actionBanner.description}
               </p>
             </div>
@@ -2162,8 +2239,8 @@ export const Playmat: React.FC<PlaymatProps> = ({
       {/* ALERTA VISUAL DO SISTEMA (QUANDO NÃO HOUVER ACTION BANNER) */}
       {toastMessage && !actionBanner && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none">
-          <div className="bg-[#180e2d]/95 border-2 border-amber-400 text-amber-200 px-6 py-2.5 rounded-full shadow-[0_0_30px_rgba(245,158,11,0.9)] backdrop-blur-md font-serif font-black text-sm tracking-wide flex items-center gap-2.5">
-            <span className="text-[10px] font-mono font-black text-amber-300 bg-amber-950/80 px-1.5 py-0.5 rounded border border-amber-500/60">[SISTEMA]</span>
+          <div className="bg-[#141210]/95 border-2 border-amber-600/80 text-amber-200 px-6 py-2.5 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.92)] backdrop-blur-md font-serif font-black text-sm tracking-wide flex items-center gap-2.5">
+            <span className="text-[10px] font-mono font-black text-amber-300 bg-amber-950/90 px-1.5 py-0.5 rounded border border-amber-700/60">[SISTEMA]</span>
             <span>{toastMessage}</span>
           </div>
         </div>
@@ -2174,15 +2251,15 @@ export const Playmat: React.FC<PlaymatProps> = ({
       {/* MODAL / ROLETA DO TEMPO DE TIME WIZARD */}
       {timeWizardRoulette && (
         <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-gradient-to-b from-[#1a102a] to-[#0a0512] border-2 border-yellow-400 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_0_60px_rgba(234,179,8,0.9)] flex flex-col items-center">
-            <h3 className="font-serif font-black text-yellow-300 text-xl tracking-widest uppercase mb-4 drop-shadow">
+          <div className="bg-[#141210] border-2 border-amber-600 p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_10px_40px_rgba(0,0,0,0.95)] flex flex-col items-center">
+            <h3 className="font-serif font-black text-amber-300 text-xl tracking-widest uppercase mb-4 drop-shadow">
               {languagePt ? 'Roleta do Tempo' : 'Time Roulette'}
             </h3>
 
             {/* Moeda 3D Girando */}
-            <div className="w-28 h-28 my-4 rounded-full border-4 border-yellow-300 bg-gradient-to-tr from-yellow-600 via-amber-300 to-yellow-500 flex items-center justify-center shadow-[0_0_35px_rgba(250,204,21,1)] relative overflow-hidden">
+            <div className="w-28 h-28 my-4 rounded-full border-4 border-amber-400 bg-gradient-to-tr from-amber-700 via-amber-400 to-amber-600 flex items-center justify-center shadow-lg relative overflow-hidden">
               <div className={`text-5xl ${timeWizardRoulette.isSpinning ? 'anim-coin-spin' : ''}`}>
-                <span className="text-xl font-mono font-black text-yellow-300">{timeWizardRoulette.isSpinning ? '[ROLANDO]' : timeWizardRoulette.outcome === 'HEADS' ? '[CARA]' : '[COROA]'}</span>
+                <span className="text-xl font-mono font-black text-stone-950">{timeWizardRoulette.isSpinning ? '[ROLANDO]' : timeWizardRoulette.outcome === 'HEADS' ? '[CARA]' : '[COROA]'}</span>
               </div>
             </div>
 
@@ -2217,14 +2294,14 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
       {/* ANIMAÇÃO LENDÁRIA DE RAIGEKI: RELÂMPAGOS E DESTRUIÇÃO TOTAL */}
       {raigekiActive && (
-        <div className="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-center animate-fadeIn bg-gradient-to-b from-sky-400/40 via-yellow-200/50 to-amber-500/30 backdrop-blur-[2px]">
-          <div className="absolute inset-0 bg-white/40 animate-ping"></div>
-          <div className="relative text-center p-6 rounded-3xl bg-black/85 border-4 border-yellow-300 shadow-[0_0_80px_rgba(250,204,21,1)]">
-            <div className="text-3xl sm:text-4xl font-mono font-black text-yellow-300 tracking-widest mb-2 animate-bounce">[RAIGEKI]</div>
-            <h2 className="text-3xl sm:text-4xl font-serif font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-200 to-yellow-500 drop-shadow-[0_0_20px_rgba(250,204,21,0.9)] uppercase">
+        <div className="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-center animate-fadeIn bg-gradient-to-b from-amber-500/30 via-yellow-200/40 to-amber-700/30 backdrop-blur-[2px]">
+          <div className="absolute inset-0 bg-white/30 animate-ping"></div>
+          <div className="relative text-center p-6 rounded-3xl bg-[#141210]/95 border-4 border-amber-400 shadow-2xl">
+            <div className="text-3xl sm:text-4xl font-mono font-black text-amber-300 tracking-widest mb-2 animate-bounce">[RAIGEKI]</div>
+            <h2 className="text-3xl sm:text-4xl font-serif font-black tracking-widest text-amber-200 uppercase">
               {languagePt ? 'RAIGEKI !' : 'RAIGEKI !'}
             </h2>
-            <p className="text-sm font-sans font-bold text-yellow-100 tracking-wider mt-2">
+            <p className="text-sm font-sans font-bold text-amber-100 tracking-wider mt-2">
               {languagePt
                 ? 'Relâmpagos celestiais aniquilam todas as forças do adversário!'
                 : 'Heavenly lightning annihilates all opponent monsters!'}
@@ -2236,28 +2313,28 @@ export const Playmat: React.FC<PlaymatProps> = ({
       {/* BANNER COMEMORATIVO DE FORÇA ESPELHO / CARTAS LENDÁRIAS */}
       {celebratoryBanner && (
         <div className="fixed top-12 left-1/2 -translate-x-1/2 z-50 max-w-xl w-[90%] pointer-events-none animate-fadeIn">
-          <div className="bg-gradient-to-r from-purple-950/95 via-[#1a0e2e]/95 to-purple-950/95 border-2 border-cyan-400 rounded-2xl p-4 sm:p-5 text-center shadow-[0_0_50px_rgba(34,211,238,0.85)] flex items-center justify-center gap-3">
-            <span className="text-xs font-mono font-black bg-cyan-950 text-cyan-300 border border-cyan-400 px-2 py-1 rounded">[ATIVADO]</span>
-            <div className="text-sm sm:text-base font-serif font-black text-cyan-200 tracking-wide drop-shadow-[0_0_12px_rgba(34,211,238,0.9)] leading-snug">
+          <div className="bg-[#141210]/95 border-2 border-amber-600 rounded-2xl p-4 sm:p-5 text-center shadow-[0_8px_30px_rgba(0,0,0,0.92)] flex items-center justify-center gap-3">
+            <span className="text-xs font-mono font-black bg-amber-950 text-amber-200 border border-amber-600 px-2 py-1 rounded">[ATIVADO]</span>
+            <div className="text-sm sm:text-base font-serif font-black text-amber-200 tracking-wide leading-snug">
               {celebratoryBanner.title}
             </div>
-            <span className="text-xs font-mono font-black bg-cyan-950 text-cyan-300 border border-cyan-400 px-2 py-1 rounded">[ATIVADO]</span>
+            <span className="text-xs font-mono font-black bg-amber-950 text-amber-200 border border-amber-600 px-2 py-1 rounded">[ATIVADO]</span>
           </div>
         </div>
       )}
 
       {/* JANELA DE PRIORIDADE E RESPOSTA TÁTICA (RIGHT-DOCKED TACTICAL HUD) */}
       {priorityPrompt && (
-        <div className="fixed right-4 sm:right-6 top-24 z-50 w-72 sm:w-84 max-h-[80vh] flex flex-col animate-slideInRight bg-[#0c0818]/95 border-2 border-amber-500/80 rounded-2xl p-4 shadow-[0_0_35px_rgba(245,158,11,0.5)] backdrop-blur-md overflow-y-auto text-center">
+        <div className="fixed right-4 sm:right-6 top-24 z-50 w-72 sm:w-84 max-h-[80vh] flex flex-col animate-slideInRight bg-[#141210]/95 border-2 border-amber-800/80 rounded-2xl p-4 shadow-[0_8px_35px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-y-auto text-center">
           {/* Header Badge */}
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-500/30">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-black tracking-widest uppercase border bg-black/60 shadow-inner text-amber-300 border-amber-500/50">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-800">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-black tracking-widest uppercase border bg-[#1c1917] shadow-inner text-amber-300 border-amber-700/60">
               {priorityPrompt.badgeIcon && <span className="font-bold">{priorityPrompt.badgeIcon}</span>}
               <span>{priorityPrompt.badge}</span>
             </span>
             <button
               onClick={priorityPrompt.onDecline}
-              className="text-slate-400 hover:text-white text-xs font-mono px-1.5 py-0.5 rounded hover:bg-white/10"
+              className="text-stone-400 hover:text-stone-100 text-xs font-mono px-1.5 py-0.5 rounded hover:bg-white/10"
               title={languagePt ? 'Fechar / Passar' : 'Close / Pass'}
             >
               [X]
@@ -2271,7 +2348,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
           {/* Card Preview */}
           {priorityPrompt.cardImage && (
-            <div className="relative w-20 h-28 mx-auto mb-2 rounded-lg overflow-hidden border border-amber-400/60 shadow-lg">
+            <div className="relative w-20 h-28 mx-auto mb-2 rounded-lg overflow-hidden border border-amber-700/70 shadow-lg">
               <img
                 src={priorityPrompt.cardImage}
                 alt={priorityPrompt.cardName}
@@ -2286,7 +2363,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           </div>
 
           {/* Message Body */}
-          <div className="text-[11px] text-slate-200 mb-4 leading-relaxed font-sans px-1">
+          <div className="text-[11px] text-stone-200 mb-4 leading-relaxed font-sans px-1">
             {priorityPrompt.message}
           </div>
 
@@ -2294,15 +2371,15 @@ export const Playmat: React.FC<PlaymatProps> = ({
           <div className="flex flex-col gap-2">
             <button
               onClick={priorityPrompt.onConfirm}
-              className="w-full py-2.5 px-3 rounded-xl font-serif font-black text-xs uppercase tracking-wider text-slate-950 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 shadow-[0_0_20px_rgba(245,158,11,0.7)] border border-yellow-200 transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              className="w-full py-2.5 px-3 rounded-xl font-serif font-black text-xs uppercase tracking-wider text-stone-950 bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 shadow-lg border border-amber-300 transition-all active:scale-95 flex items-center justify-center gap-1.5"
             >
-              <span className="font-mono text-[10px] bg-black/30 text-slate-950 px-1 rounded font-black">[ATIVAR]</span>
+              <span className="font-mono text-[10px] bg-black/30 text-stone-950 px-1 rounded font-black">[ATIVAR]</span>
               <span>{priorityPrompt.confirmText}</span>
             </button>
 
             <button
               onClick={priorityPrompt.onDecline}
-              className="w-full py-2 px-3 rounded-xl font-serif font-bold text-xs uppercase tracking-wider bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-500 transition-all shadow-md active:scale-95"
+              className="w-full py-2 px-3 rounded-xl font-serif font-bold text-xs uppercase tracking-wider bg-[#292524] hover:bg-[#38322e] text-stone-200 hover:text-white border border-stone-700 transition-all shadow-md active:scale-95"
             >
               {priorityPrompt.declineText}
             </button>
@@ -2321,11 +2398,11 @@ export const Playmat: React.FC<PlaymatProps> = ({
           }}
           className="absolute inset-0 bg-black/95 z-50 flex flex-col items-center justify-center animate-fadeIn cursor-pointer"
         >
-          <div className="text-3xl sm:text-4xl font-serif font-black tracking-widest text-amber-400 drop-shadow-[0_0_20px_rgba(245,158,11,0.8)] mb-4 animate-pulse">[DUEL]</div>
+          <div className="text-3xl sm:text-4xl font-serif font-black tracking-widest text-amber-400 mb-4 animate-pulse">[DUEL]</div>
           <h2 className="text-2xl font-serif tracking-widest text-amber-300 font-black mb-6">
             A PARTIDA VAI INICIAR EM
           </h2>
-          <div className="text-8xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-amber-400 to-yellow-500 shadow-2xl scale-125 transition-transform duration-300">
+          <div className="text-8xl font-black font-mono text-amber-400 shadow-2xl scale-125 transition-transform duration-300">
             {countdown > 0 ? countdown : 'É HORA DO DUELO!'}
           </div>
           <p className="text-xs text-amber-300/80 mt-8 uppercase tracking-widest font-mono">
@@ -2334,40 +2411,157 @@ export const Playmat: React.FC<PlaymatProps> = ({
         </div>
       )}
 
-      {/* PAINEL LATERAL ESQUERDO: GRIMOIRE & TRADUÇÃO (ESTILO MTG / ANIME) */}
-      <aside className="w-80 bg-[#0d0918]/95 border-r-2 border-[#382654] flex flex-col p-3 shadow-[5px_0_30px_rgba(0,0,0,0.85)] z-20 justify-between overflow-y-auto">
-        <div className="flex flex-col items-center">
-          
-          {/* Topo do Grimoire com Tradução e Botão de Sair */}
-          <div className="w-full flex justify-between items-center pb-2 mb-2 border-b border-[#311f49]">
-            <div className="flex items-center space-x-1.5">
-              <span className="text-[10px] font-mono font-black text-amber-400 border border-amber-500/50 px-1.5 py-0.5 rounded bg-black/40 mr-1">[YGO]</span>
-              <h1 className="text-xs font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-400 to-yellow-600 font-serif">
-                GRIMOIRE
-              </h1>
-            </div>
-            
-            <div className="flex items-center space-x-1.5">
-              <button
-                onClick={() => setIsSettingsModalOpen(true)}
-                className="w-7 h-7 rounded-lg bg-purple-950/80 border border-purple-500/50 hover:border-amber-400 text-amber-300 hover:text-amber-200 flex items-center justify-center text-xs transition-colors shadow-sm cursor-pointer"
-                title={languagePt ? 'Configurações de Áudio e Idioma' : 'Audio and Language Settings'}
-                aria-label={languagePt ? 'Abrir Configurações' : 'Open Settings'}
-              >
-                CFG
-              </button>
+      {/* 1. ARENA DE DUELO 3D EM TELA CHEIA (100VW x 100VH MASTER DUEL VIEWPORT) */}
+      <div
+        className={`absolute inset-0 w-full h-full z-0 overflow-hidden transition-transform ${
+          isCameraShaking ? 'anim-camera-shake' : ''
+        }`}
+      >
+        <DuelArena3D
+          playerMonsters={[...p1.monsterZones]}
+          playerSpellTraps={[...p1.spellTrapZones]}
+          opponentMonsters={[...p2.monsterZones]}
+          opponentSpellTraps={[...p2.spellTrapZones]}
+          playerHand={[...p1.hand]}
+          opponentHandCount={p2.hand.length}
+          selectedHandCardUid={selectedHandCardUid}
+          onHandCardClick={handleSelectHandCard}
+          playerDeckCount={p1.deck.length}
+          playerGraveyardCount={p1.graveyard.length}
+          opponentDeckCount={p2.deck.length}
+          opponentGraveyardCount={p2.graveyard.length}
+          languagePt={languagePt}
+          activeFieldVfx={raigekiActive ? 'RAIGEKI' : session.isWabokuActiveForPlayerId ? 'WABOKU' : null}
+          inspectedCardUid={inspectedCard?.uid}
+          selectedAttackerZone={selectedAttackerZone}
+          validSummonZones={validSummonZoneIndices}
+          validSpellTrapZones={validSpellTrapZoneIndices}
+          tacticalTargetUids={tacticalTargetSelection?.selectedUids || []}
+          lungingZone={lungingZone}
+          slamZone={slamZone}
+          targetHitZone={targetHitZone}
+          destroyedCardUids={destroyedCardUids}
+          flippedZones={flippedZones}
+          onZoneClick={handleArena3DZoneClick}
+          onCardHover={handleArena3DCardHover}
+          onError={(err) => {
+            onHardwareError?.(
+              err.message || 'Falha ao inicializar acelerador 3D WebGPU/WebGL.'
+            );
+          }}
+          isCameraShaking={isCameraShaking}
+        />
+      </div>
 
-              <button
-                onClick={() => setShowSurrenderModal(true)}
-                className="px-2.5 py-1 rounded text-[10px] font-bold tracking-wider bg-red-950/80 border border-red-500/50 hover:border-red-400 text-red-300 transition-colors cursor-pointer"
-                title={languagePt ? 'Sair ou Render-se do Duelo' : 'Surrender or Exit Duel'}
-              >
-                <span className="font-mono text-[9px] mr-1">[SAIR]</span><span>{languagePt ? 'Render-se' : 'Surrender'}</span>
-              </button>
-            </div>
+      {/* 2. TOPO ESQUERDO: CONTROLES DE CONFIGURAÇÕES E RENDIÇÃO (PEDRA ESCURA E OURO ENVELHECIDO) */}
+      <div className="fixed top-3 left-3 z-30 flex items-center gap-2">
+        <button
+          onClick={() => setIsSettingsModalOpen(true)}
+          className="w-10 h-10 rounded-full bg-[#141210]/95 border border-amber-800/75 hover:border-amber-600 text-amber-200/90 font-mono text-[10px] font-black flex items-center justify-center shadow-lg cursor-pointer transition-colors backdrop-blur-md"
+          title={languagePt ? 'Configurações de Áudio e Idioma' : 'Audio and Language Settings'}
+          aria-label={languagePt ? 'Abrir Configurações' : 'Open Settings'}
+        >
+          [CFG]
+        </button>
+
+        <button
+          onClick={() => setShowSurrenderModal(true)}
+          className="px-3 py-1.5 rounded-full bg-[#141210]/95 border border-amber-800/75 hover:border-amber-600 text-amber-200/90 hover:text-amber-100 font-mono text-[10px] font-black tracking-wider shadow-lg cursor-pointer transition-colors backdrop-blur-md"
+          title={languagePt ? 'Sair ou Render-se do Duelo' : 'Surrender or Exit Duel'}
+        >
+          {languagePt ? '[RENDER-SE]' : '[SURRENDER]'}
+        </button>
+      </div>
+
+      {/* 3. TOPO DIREITO: PLACA DE LP DO OPONENTE (DARK STONE & CRIMSON IRON PLATE) */}
+      <div
+        ref={opponentLpRef}
+        className="fixed top-3 right-3 z-30 bg-[#161212]/95 border-2 border-red-900/75 rounded-bl-2xl rounded-tr-lg px-3.5 py-1.5 shadow-[0_4px_25px_rgba(0,0,0,0.9)] flex items-center gap-3 backdrop-blur-md"
+      >
+        {/* Floating Damage em Ataque Direto contra o Oponente */}
+        {floatingDamage && !floatingDamage.isPlayer && floatingDamage.zoneIndex === null && (
+          <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none anim-damage-float whitespace-nowrap">
+            <span className="text-3xl sm:text-4xl font-mono font-black text-red-500 drop-shadow-[0_2px_10px_rgba(0,0,0,1)]">
+              -{floatingDamage.amount}
+            </span>
           </div>
+        )}
 
-          {/* Carta Inspecionada em Alta Definição */}
+        <div className="flex flex-col items-end text-right">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-mono font-black px-1.5 py-0.2 bg-[#291d1d] border border-red-800/80 text-red-200 rounded uppercase">
+              [BOT]
+            </span>
+            <span className="text-xs font-bold text-stone-200 tracking-wide truncate max-w-[140px]">
+              {p2.nickname}
+            </span>
+          </div>
+          <div className="flex items-baseline mt-0.5">
+            <span className="text-xs font-black text-red-400/90 mr-1.5 font-mono">LP</span>
+            <span className="text-2xl sm:text-3xl font-black font-mono text-stone-100 tracking-tight tabular-nums drop-shadow-[0_2px_6px_rgba(0,0,0,1)]">
+              {p2.lifePoints}
+            </span>
+          </div>
+        </div>
+
+        <div className="w-11 h-11 rounded-lg bg-[#291d1d] border border-red-800/80 text-red-200 flex items-center justify-center font-black text-base shadow-inner shrink-0">
+          {p2.nickname.charAt(0) || 'K'}
+        </div>
+      </div>
+
+      {/* 4. RODAPÉ ESQUERDO: PLACA DE LP DO JOGADOR (DARK STONE & AGED GOLD PLATE) */}
+      <div
+        ref={playerLpRef}
+        className="fixed bottom-3 left-3 z-30 bg-[#141210]/95 border-2 border-amber-800/80 rounded-tr-2xl rounded-bl-lg px-3.5 py-1.5 shadow-[0_4px_25px_rgba(0,0,0,0.9)] flex items-center gap-3 backdrop-blur-md"
+      >
+        {/* Floating Heal no Jogador */}
+        {floatingHeal && (
+          <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none anim-damage-float whitespace-nowrap">
+            <span className="text-2xl sm:text-3xl font-mono font-black text-emerald-400 drop-shadow-[0_2px_10px_rgba(0,0,0,1)]">
+              +{floatingHeal.amount} LP
+            </span>
+          </div>
+        )}
+
+        {/* Floating Damage em Ataque Direto contra o Jogador */}
+        {floatingDamage && floatingDamage.isPlayer && floatingDamage.zoneIndex === null && (
+          <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none anim-damage-float whitespace-nowrap">
+            <span className="text-3xl sm:text-4xl font-mono font-black text-red-500 drop-shadow-[0_2px_10px_rgba(0,0,0,1)]">
+              -{floatingDamage.amount}
+            </span>
+          </div>
+        )}
+
+        <div className="w-11 h-11 rounded-lg bg-[#292524] border border-amber-600/80 text-amber-200 flex items-center justify-center font-black text-base shadow-inner uppercase shrink-0">
+          {p1.nickname.charAt(0) || 'D'}
+        </div>
+
+        <div className="flex flex-col items-start text-left">
+          <span className="text-xs font-bold text-stone-200 tracking-wide truncate max-w-[140px]">
+            {p1.nickname}
+          </span>
+          <div className="flex items-baseline mt-0.5">
+            <span className="text-xs font-black text-amber-400 mr-1.5 font-mono">LP</span>
+            <span className="text-2xl sm:text-3xl font-black font-mono text-stone-100 tracking-tight tabular-nums drop-shadow-[0_2px_6px_rgba(0,0,0,1)]">
+              {p1.lifePoints}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 5. PAINEL FLUTUANTE ESQUERDO: INSPETOR DE CARTAS (DARK STONE & AGED GOLD) */}
+      {isInspectorCollapsed ? (
+        <div className="fixed left-3 top-16 z-30">
+          <button
+            onClick={() => setIsInspectorCollapsed(false)}
+            className="bg-[#141210]/95 border border-amber-800/75 hover:border-amber-600 text-amber-200/90 px-3 py-2 rounded-xl shadow-lg font-mono text-[10px] font-black tracking-wider cursor-pointer transition-colors backdrop-blur-md"
+            title={languagePt ? 'Expandir Inspetor de Cartas' : 'Expand Card Inspector'}
+          >
+            {languagePt ? '[+ INSPETOR]' : '[+ INSPECTOR]'}
+          </button>
+        </div>
+      ) : (
+        <aside className="fixed left-3 top-16 bottom-24 w-64 sm:w-72 z-30 flex flex-col bg-[#141210]/95 border border-amber-900/75 text-stone-200 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-hidden">
           {inspectedCard ? (
             (() => {
               const isPlayerOwned =
@@ -2378,1153 +2572,787 @@ export const Playmat: React.FC<PlaymatProps> = ({
                 p2.monsterZones.some((m) => m?.uid === inspectedCard.uid) ||
                 p2.spellTrapZones.some((st) => st?.uid === inspectedCard.uid);
               const isFaceDown = inspectedCard.isFaceDown;
+              const cardTypeLower = inspectedCard.data.type.toLowerCase();
+              const isSpell =
+                cardTypeLower.includes('spell') || cardTypeLower.includes('mágic');
+              const isTrap =
+                cardTypeLower.includes('trap') || cardTypeLower.includes('armadilha');
+              const isSpellOrTrap = isSpell || isTrap;
 
-              // Se for carta virada para baixo do oponente, mantém o segredo
+              // Caso 1: Carta virada para baixo do oponente (segredo preservado)
               if (isOpponentOwned && isFaceDown) {
-                const isSpellOrTrap = inspectedCard.data.type.toLowerCase().includes('spell') || inspectedCard.data.type.toLowerCase().includes('trap') || inspectedCard.data.type.toLowerCase().includes('mágic') || inspectedCard.data.type.toLowerCase().includes('armadilha');
                 const titleText = isSpellOrTrap
-                  ? (languagePt ? 'Carta Mágica/Armadilha [OCULTA]' : 'Hidden Spell/Trap Card [FACE-DOWN]')
-                  : (languagePt ? 'Carta do Adversário [OCULTA]' : 'Opponent Card [FACE-DOWN]');
+                  ? languagePt
+                    ? 'Magia/Armadilha Oculta'
+                    : 'Hidden Spell/Trap'
+                  : languagePt
+                  ? 'Carta Oculta do Oponente'
+                  : 'Opponent Hidden Card';
                 const descText = isSpellOrTrap
-                  ? (languagePt
-                      ? 'Esta carta mágica ou armadilha está virada para baixo no campo do oponente. Seu efeito será ativado no momento oportuno!'
-                      : 'This spell or trap card is set face-down on the opponent field. Its effect will activate at the right moment!')
-                  : (languagePt
-                      ? 'Esta carta está virada para baixo no campo do oponente. Seus segredos só serão revelados quando for atacada ou virada!'
-                      : 'This card is set face-down on the opponent field. Its secrets will remain hidden until attacked or flipped!');
+                  ? languagePt
+                    ? 'Esta carta mágica ou armadilha está virada para baixo no campo do oponente. Seu efeito será ativado no momento oportuno!'
+                    : 'This spell or trap card is set face-down on the opponent field. Its effect will activate at the right moment!'
+                  : languagePt
+                  ? 'Esta carta está virada para baixo no campo do oponente. Seus segredos só serão revelados quando for atacada ou virada!'
+                  : 'This card is set face-down on the opponent field. Its secrets will remain hidden until attacked or flipped!';
 
                 return (
-                  <div className="flex flex-col items-center w-full animate-fadeIn">
-                    <div className="relative group w-60 h-84 rounded-lg p-2 bg-gradient-to-br from-[#7a4e23] via-[#472c13] to-[#1a0f05] border-2 border-purple-500/80 shadow-[0_0_25px_rgba(147,51,234,0.4)]">
-                      <img
-                        src="/card-back.jpg"
-                        alt={titleText}
-                        className="w-full h-full object-contain rounded drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]"
-                      />
-                    </div>
-                    <div className="mt-2.5 w-full bg-[#120c22] border-2 border-purple-900/60 rounded-lg p-3 text-center shadow-md">
-                      <div className="text-amber-400 font-serif font-black text-sm mb-1 tracking-wider">
+                  <>
+                    {/* Top Header Bar */}
+                    <div className="bg-[#1c1917] border-b border-amber-900/50 px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
+                      <span className="text-xs font-black text-amber-300 truncate">
                         {titleText}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-[#292524] border border-amber-800/60 text-amber-200">
+                          [OCULTA]
+                        </span>
+                        <button
+                          onClick={() => setIsInspectorCollapsed(true)}
+                          className="text-[10px] font-mono font-bold text-stone-400 hover:text-stone-100 px-1 cursor-pointer"
+                          title={languagePt ? 'Recolher Painel' : 'Collapse Panel'}
+                        >
+                          [-]
+                        </button>
                       </div>
-                      <p className="text-[11px] text-purple-200/80 italic leading-relaxed">
-                        {descText}
-                      </p>
-                      {!isSpellOrTrap && (
-                        <div className="mt-2 text-xs font-mono font-bold text-slate-400 bg-black/40 py-1 rounded border border-purple-950">
-                          ATK ??? / DEF ???
-                        </div>
-                      )}
                     </div>
-                  </div>
+
+                    {/* Upper Split Section */}
+                    <div className="p-2.5 flex gap-2.5 items-stretch border-b border-amber-900/40 bg-[#181512] shrink-0">
+                      <div className="w-28 sm:w-32 h-40 sm:h-44 shrink-0 rounded-lg overflow-hidden border border-amber-800/60 bg-black/70 p-1 shadow-inner">
+                        <img
+                          src="/card-back.jpg"
+                          alt={titleText}
+                          className="w-full h-full object-contain rounded"
+                        />
+                      </div>
+                      <div className="flex-1 flex flex-col justify-center gap-2 pl-1 text-left">
+                        <div className="px-2 py-1 rounded bg-[#292524] border border-amber-800/50 text-amber-200 font-mono text-[10px] font-black">
+                          [STATUS: SECRETO]
+                        </div>
+                        {!isSpellOrTrap && (
+                          <>
+                            <div className="px-2 py-1 rounded bg-[#1c1917] border border-stone-700 text-stone-300 font-mono text-xs font-black">
+                              [ATK] ???
+                            </div>
+                            <div className="px-2 py-1 rounded bg-[#1c1917] border border-stone-700 text-stone-300 font-mono text-xs font-black">
+                              [DEF] ???
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Lower Scrollable Lore/Effect Box */}
+                    <div className="flex-1 overflow-y-auto bg-[#0f0d0b]/95 p-2.5 text-left">
+                      <div className="text-xs font-bold text-amber-300 mb-1 font-mono">
+                        [{languagePt ? 'Carta Oculta' : 'Face-Down Card'}]
+                      </div>
+                      <p className="text-xs text-stone-200 leading-relaxed">{descText}</p>
+                    </div>
+                  </>
                 );
               }
 
-              // Se for carta do jogador ou já revelada
+              // Caso 2: Carta do jogador ou carta revelada do oponente
+              const displayCardName =
+                languagePt && inspectedCard.data.namePt
+                  ? inspectedCard.data.namePt
+                  : inspectedCard.data.name;
+              const displayCardDesc =
+                languagePt && inspectedCard.data.descriptionPt
+                  ? inspectedCard.data.descriptionPt
+                  : inspectedCard.data.description;
+              const attributeLabel = isSpell
+                ? languagePt
+                  ? 'MAGIA'
+                  : 'SPELL'
+                : isTrap
+                ? languagePt
+                  ? 'ARMADILHA'
+                  : 'TRAP'
+                : inspectedCard.data.attribute || 'MONSTER';
+
+              const effectiveAtk = !isSpellOrTrap
+                ? isPlayerOwned
+                  ? session.getEffectiveAttack(inspectedCard, p1, p2)
+                  : session.getEffectiveAttack(inspectedCard, p2, p1)
+                : 0;
+              const isBuffed = !isSpellOrTrap && effectiveAtk > inspectedCard.data.attack;
+
+              const playerZoneIdx = p1.monsterZones.findIndex(
+                (m) => m?.uid === inspectedCard.uid
+              );
+              const isPlayerTimeWizardOnField =
+                playerZoneIdx !== -1 &&
+                (inspectedCard.data.id === '71625222' ||
+                  inspectedCard.data.name.toLowerCase().includes('time wizard'));
+              const canUseTimeWizard =
+                isPlayerTimeWizardOnField &&
+                isPlayerTurn &&
+                (match.phase === 'MAIN1' || match.phase === 'MAIN2') &&
+                !inspectedCard.hasUsedEffectThisTurn;
+
               return (
-                <div className="flex flex-col items-center w-full animate-fadeIn">
-                  <div className="relative group w-60 h-84 rounded-lg p-2 bg-gradient-to-br from-[#7a4e23] via-[#472c13] to-[#1a0f05] border-2 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.4)] transition-transform duration-300 hover:scale-105">
-                    <img
-                      src={inspectedCard.data.imageUrl}
-                      alt={inspectedCard.data.name}
-                      className="w-full h-full object-contain rounded drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]"
-                    />
-                    {isPlayerOwned && isFaceDown && (
-                      <div className="absolute top-3 left-3 right-3 bg-purple-950/90 border border-purple-400 text-purple-200 text-[10px] font-black py-1 px-2 rounded shadow-lg text-center backdrop-blur-sm">
-                        <span className="font-mono text-[9px] bg-purple-900 border border-purple-500/60 px-1 py-0.5 rounded mr-1">[OCULTA]</span> {languagePt ? 'Carta Oculta (Apenas você pode ver)' : 'Face-Down Card (Only you can see)'}
+                <>
+                  {/* Top Header Bar */}
+                  <div className="bg-[#1c1917] border-b border-amber-900/50 px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
+                    <span
+                      className="text-xs font-black text-amber-300 truncate"
+                      title={displayCardName}
+                    >
+                      {displayCardName}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-[#292524] border border-amber-700/60 text-amber-200 uppercase">
+                        [{attributeLabel}]
+                      </span>
+                      <button
+                        onClick={() => setIsInspectorCollapsed(true)}
+                        className="text-[10px] font-mono font-bold text-stone-400 hover:text-stone-100 px-1 cursor-pointer"
+                        title={languagePt ? 'Recolher Painel' : 'Collapse Panel'}
+                      >
+                        [-]
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Upper Split Section (Side-by-Side 3D Showcase + Stats) */}
+                  <div className="p-2.5 flex gap-2.5 items-stretch border-b border-amber-900/40 bg-[#181512] shrink-0">
+                    <div className="w-28 sm:w-32 h-40 sm:h-44 shrink-0 rounded-lg overflow-hidden border border-amber-700/70 bg-black/70 shadow-inner relative">
+                      <Card3DShowcase
+                        card={inspectedCard.data}
+                        languagePt={languagePt}
+                        className="w-full h-full"
+                      />
+                      {isPlayerOwned && isFaceDown && (
+                        <div className="pointer-events-none absolute bottom-1 left-1 right-1 bg-[#292524]/95 border border-amber-600/80 text-amber-200 text-[8px] font-mono font-black py-0.5 px-1 rounded text-center">
+                          [OCULTA]
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 flex flex-col justify-center gap-2 pl-1 text-left">
+                      {!isSpellOrTrap ? (
+                        <>
+                          <div className="px-2 py-1 rounded bg-[#292524] border border-amber-700/60 text-amber-300 font-mono text-xs font-black flex items-center justify-between">
+                            <span>{languagePt ? 'NÍVEL' : 'LEVEL'}</span>
+                            <span>★ {inspectedCard.data.level}</span>
+                          </div>
+                          <div
+                            className={`px-2 py-1 rounded border font-mono text-xs font-black flex items-center justify-between transition-all ${
+                              isBuffed
+                                ? 'bg-emerald-950/90 border-emerald-600 text-emerald-300'
+                                : 'bg-[#1c1917] border-amber-800/60 text-amber-200'
+                            }`}
+                          >
+                            <span className="text-amber-400">[ATK]</span>
+                            <span>
+                              {effectiveAtk}
+                              {isBuffed ? ' ▲' : ''}
+                            </span>
+                          </div>
+                          <div className="px-2 py-1 rounded bg-[#1c1917] border border-stone-700 text-stone-200 font-mono text-xs font-black flex items-center justify-between">
+                            <span className="text-stone-400">[DEF]</span>
+                            <span>{inspectedCard.data.defense ?? 0}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div
+                          className={`px-2 py-1.5 rounded border font-mono text-xs font-black text-center ${
+                            isSpell
+                              ? 'bg-emerald-950/85 border-emerald-700/60 text-emerald-300'
+                              : 'bg-red-950/85 border-red-800/60 text-red-200'
+                          }`}
+                        >
+                          {isSpell
+                            ? languagePt
+                              ? '[MAGIA]'
+                              : '[SPELL]'
+                            : languagePt
+                            ? '[ARMADILHA]'
+                            : '[TRAP]'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Lower Scrollable Lore/Effect Box */}
+                  <div className="flex-1 overflow-y-auto bg-[#0f0d0b]/95 p-2.5 text-left flex flex-col justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-bold text-amber-300 mb-1 font-mono">
+                        [{inspectedCard.data.race || formatCardType(inspectedCard.data.type)}]
+                      </div>
+                      <p className="text-xs text-stone-200 leading-relaxed">
+                        {displayCardDesc}
+                      </p>
+                    </div>
+
+                    {/* Botão de Ativação do Efeito de Time Wizard no Campo */}
+                    {isPlayerTimeWizardOnField && (
+                      <div className="pt-2 border-t border-stone-800 shrink-0">
+                        <button
+                          onClick={() => handleActivateTimeWizard(playerZoneIdx)}
+                          disabled={!canUseTimeWizard}
+                          className={`w-full py-1.5 px-3 rounded-lg font-serif font-black text-xs tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 ${
+                            canUseTimeWizard
+                              ? 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border border-amber-300 cursor-pointer'
+                              : 'bg-[#292524] text-stone-500 border border-stone-700 cursor-not-allowed opacity-60'
+                          }`}
+                        >
+                          <span className="font-mono text-[10px] font-bold">[TEMPO]</span>
+                          <span>
+                            {inspectedCard.hasUsedEffectThisTurn
+                              ? 'Roleta Já Utilizada'
+                              : 'Girar Roleta do Tempo'}
+                          </span>
+                        </button>
                       </div>
                     )}
                   </div>
-
-                  {/* Detalhes da Carta Traduzida */}
-                  <div className="mt-2.5 w-full bg-[#120c22] border-2 border-[#412760] rounded-lg p-2.5 shadow-md">
-                    <div className="flex justify-between items-baseline mb-1">
-                      <span className="font-extrabold text-amber-300 text-sm tracking-wide">
-                        {languagePt && inspectedCard.data.namePt ? inspectedCard.data.namePt : inspectedCard.data.name}
-                      </span>
-                      {inspectedCard.data.level > 0 && (
-                        <span className="text-[11px] font-serif text-amber-400">
-                          LV {inspectedCard.data.level}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="text-[10px] uppercase font-serif tracking-wider text-purple-300 border-b border-purple-900/60 pb-1 mb-1.5 flex justify-between">
-                      <span>{formatCardType(inspectedCard.data.type)}</span>
-                      {inspectedCard.data.level > 0 && (
-                        <span className="text-slate-400">
-                          {languagePt ? 'Nível' : 'Level'} {inspectedCard.data.level}
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="text-[11px] text-amber-100/90 leading-relaxed italic bg-black/40 p-1.5 rounded border border-purple-950/80 min-h-[50px]">
-                      "{languagePt && inspectedCard.data.descriptionPt ? inspectedCard.data.descriptionPt : inspectedCard.data.description}"
-                    </p>
-
-                    {(() => {
-                      const cardTypeLower = inspectedCard.data.type.toLowerCase();
-                      const isSpellOrTrap = cardTypeLower.includes('spell') || cardTypeLower.includes('mágica') || cardTypeLower.includes('trap') || cardTypeLower.includes('armadilha');
-                      if (isSpellOrTrap) return null;
-
-                      const effectiveAtk = isPlayerOwned
-                        ? session.getEffectiveAttack(inspectedCard, p1, p2)
-                        : session.getEffectiveAttack(inspectedCard, p2, p1);
-                      const isBuffed = effectiveAtk > inspectedCard.data.attack;
-
-                      // Verifica se é o Time Wizard no campo do jogador pronto para usar efeito
-                      const playerZoneIdx = p1.monsterZones.findIndex((m) => m?.uid === inspectedCard.uid);
-                      const isPlayerTimeWizardOnField =
-                        playerZoneIdx !== -1 &&
-                        (inspectedCard.data.id === '71625222' || inspectedCard.data.name.toLowerCase().includes('time wizard'));
-                      const canUseTimeWizard =
-                        isPlayerTimeWizardOnField &&
-                        isPlayerTurn &&
-                        (match.phase === 'MAIN1' || match.phase === 'MAIN2') &&
-                        !inspectedCard.hasUsedEffectThisTurn;
-
-                      return (
-                        <>
-                          <div className="flex justify-between font-mono font-black text-xs pt-1.5 mt-1 text-slate-200">
-                            <div
-                              className={`px-2 py-0.5 rounded border flex items-center gap-1 transition-all ${
-                                isBuffed
-                                  ? 'bg-emerald-950/90 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.7)] animate-pulse'
-                                  : 'bg-amber-950/80 border-amber-600/60 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.2)]'
-                              }`}
-                            >
-                              <span className="font-mono text-amber-300 font-bold">[ATK]</span> {effectiveAtk} {isBuffed && <span className="text-[10px] font-sans text-yellow-300">▲</span>}
-                            </div>
-                            <div className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-600/60 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]">
-                              <span className="font-mono text-blue-300 font-bold">[DEF]</span> {inspectedCard.data.defense ?? 0}
-                            </div>
-                          </div>
-
-                          {/* Botão de Ativação do Efeito de Time Wizard */}
-                          {isPlayerTimeWizardOnField && (
-                            <div className="mt-2.5 pt-2 border-t border-purple-900/60">
-                              <button
-                                onClick={() => handleActivateTimeWizard(playerZoneIdx)}
-                                disabled={!canUseTimeWizard}
-                                className={`w-full py-1.5 px-3 rounded-lg font-serif font-black text-xs tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 ${
-                                  canUseTimeWizard
-                                    ? 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.8)] border border-yellow-200 animate-pulse'
-                                    : 'bg-slate-800/80 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
-                                }`}
-                              >
-                                <span className="font-mono text-[10px] font-bold">[TEMPO]</span>
-                                <span>
-                                  {inspectedCard.hasUsedEffectThisTurn
-                                    ? 'Roleta Já Utilizada'
-                                    : 'Girar Roleta do Tempo'}
-                                </span>
-                              </button>
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
+                </>
               );
             })()
           ) : (
-            <div className="w-60 h-84 rounded-lg border-2 border-amber-900/60 shadow-[0_0_25px_rgba(245,158,11,0.2)] flex flex-col items-center justify-between p-3 bg-black/40">
-              <div className="w-full h-64 rounded overflow-hidden shadow-2xl flex items-center justify-center">
-                <img
-                  src="/card-back.jpg"
-                  alt="Verso da Carta"
-                  className="w-full h-full object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]"
-                />
-              </div>
-              <p className="font-serif text-[11px] text-amber-200/70 text-center mt-2 italic">
-                Aponte ou selecione qualquer carta no campo ou na mão para inspecionar seus segredos.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Histórico do Duelo (Chat Traduzido) */}
-        <div className="bg-[#050308]/90 border border-purple-950 rounded p-2 text-[10px] text-slate-300 font-mono h-28 overflow-y-auto flex flex-col-reverse shadow-inner">
-          <div>
-            {match.log.slice(-6).map((line, idx) => (
-              <div key={idx} className="leading-snug border-b border-purple-950/40 py-0.5">
-                {line}
-              </div>
-            ))}
-          </div>
-        </div>
-      </aside>
-
-      {/* ÁREA DA MESA / PLAYMAT INTERATIVO COM CAMERA SHAKE */}
-      <main className={`flex-1 flex flex-col justify-between p-1.5 relative overflow-hidden transition-transform ${isCameraShaking ? 'anim-camera-shake' : ''}`}>
-        
-        {/* TOPO: OPONENTE KAIBA (HUD AMPLIADO E COMPACTO) */}
-        <div className="flex justify-between items-center bg-[#0e0a17]/95 border-2 border-[#412760] rounded-xl px-4 sm:px-6 py-1.5 sm:py-2 shadow-[0_6px_25px_rgba(0,0,0,0.85)] relative">
-          {/* Floating Damage em Ataque Direto */}
-          {floatingDamage && !floatingDamage.isPlayer && floatingDamage.zoneIndex === null && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none anim-damage-float">
-              <span className="text-3xl sm:text-4xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-t from-red-600 via-rose-500 to-amber-300 drop-shadow-[0_0_15px_rgba(239,68,68,1)]">
-                -{floatingDamage.amount}
-              </span>
-            </div>
-          )}
-
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-blue-600 to-indigo-950 border-2 border-blue-400 flex items-center justify-center font-black text-blue-200 text-lg sm:text-xl shadow-[0_0_15px_rgba(59,130,246,0.6)]">
-              K
-            </div>
-            <div>
-              <h2 className="font-extrabold text-blue-300 tracking-wider text-sm sm:text-base flex items-center gap-2 font-serif">
-                {p2.nickname}
-                <span className="text-[9px] font-bold px-1.5 py-0.5 bg-blue-950/90 border border-blue-500/50 text-blue-300 rounded font-sans uppercase">
-                  IA Bot
+            <>
+              {/* Estado Inicial Sem Carta Selecionada */}
+              <div className="bg-[#1c1917] border-b border-amber-900/50 px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
+                <span className="text-xs font-black text-amber-300 truncate">
+                  {languagePt ? 'Inspetor de Cartas' : 'Card Inspector'}
                 </span>
-              </h2>
-              <div className="text-[11px] text-slate-300 flex items-center gap-2 mt-0.5">
-                <span>Deck: <strong className="text-amber-400 font-mono">{p2.deck.length}</strong></span>
-                <span>•</span>
-                <span>{languagePt ? 'Cemitério:' : 'Graveyard:'} <strong className="text-purple-400 font-mono">{p2.graveyard.length}</strong></span>
-              </div>
-            </div>
-          </div>
-
-          <div ref={opponentLpRef} className="flex items-center space-x-3">
-            <span className="text-[11px] uppercase font-serif tracking-widest text-slate-400 font-black">
-              {languagePt ? 'PONTOS DE VIDA' : 'LIFE POINTS'}
-            </span>
-            <div className="bg-black/95 border-2 border-red-600 rounded-lg px-4 py-0.5 sm:py-1 text-2xl sm:text-3xl font-mono font-black text-red-500 shadow-[0_0_22px_rgba(239,68,68,0.7)] tracking-wider">
-              {p2.lifePoints} <span className="text-xs sm:text-sm font-sans text-red-400 font-normal">LP</span>
-            </div>
-          </div>
-        </div>
-
-        {/* CAMPO DO OPONENTE */}
-        <div className="flex flex-col space-y-1">
-          {/* Mão do Oponente (Verso Oficial Yu-Gi-Oh) */}
-          <div className="flex justify-center -space-x-4 h-11 sm:h-12">
-            {p2.hand.map((card, i) => (
-              <div
-                key={card.uid || i}
-                className="w-8 sm:w-9 h-11 sm:h-12 rounded shadow-2xl transition-all duration-200 hover:-translate-y-2 hover:scale-110 hover:z-20 cursor-default"
-              >
-                <img
-                  src="/card-back.jpg"
-                  alt="Verso da Carta"
-                  className="w-full h-full object-contain filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)] rounded"
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* 5 Zonas de Magias e Armadilhas do Oponente */}
-          <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
-            {p2.spellTrapZones.map((slot, i) => {
-              const isTacticalTargeting = Boolean(
-                tacticalTargetSelection &&
-                tacticalTargetSelection.action === 'DESTROY_SPELL_TRAP' &&
-                slot !== null
-              );
-              const isTacticalSelected = Boolean(
-                tacticalTargetSelection &&
-                slot &&
-                tacticalTargetSelection.selectedUids.includes(slot.uid)
-              );
-
-              return (
-                <div
-                  key={`p2-st-${i}`}
-                  onClick={() => handleOpponentSpellTrapZoneClick(i)}
-                  onMouseEnter={() => slot && setInspectedCard(slot)}
-                  className={`h-16 sm:h-18 lg:h-20 rounded-lg border-2 border-dashed flex items-center justify-center relative p-0.5 transition-all ${
-                    slot ? 'cursor-pointer' : ''
-                  } ${
-                    isTacticalSelected
-                      ? 'ring-4 ring-cyan-400 bg-cyan-950/40 scale-105 shadow-[0_0_30px_rgba(34,211,238,0.9)] animate-pulse border-cyan-300'
-                      : isTacticalTargeting
-                      ? 'ring-2 ring-cyan-500/80 hover:ring-4 hover:ring-cyan-300 scale-102 hover:scale-105 shadow-[0_0_20px_rgba(6,182,212,0.6)] animate-pulse border-cyan-400'
-                      : slot
-                      ? 'border-emerald-600/70 bg-emerald-950/25 shadow-[0_0_12px_rgba(16,185,129,0.25)] hover:border-emerald-400'
-                      : 'border-emerald-950/70 bg-emerald-950/15 hover:border-emerald-700/40'
-                  }`}
-                >
-                  {/* Indicador de Mira Tática em Magia/Armadilha */}
-                  {isTacticalTargeting && (
-                    <div
-                      className={`absolute -top-3.5 z-40 text-white font-black text-[9px] px-2 py-0.5 rounded-full shadow-lg border animate-bounce flex items-center gap-1 uppercase tracking-wider ${
-                        isTacticalSelected
-                          ? 'bg-gradient-to-r from-cyan-500 to-blue-600 border-yellow-300 shadow-[0_0_15px_rgba(34,211,238,0.9)]'
-                          : 'bg-cyan-900/90 border-cyan-400 text-cyan-200'
-                      }`}
-                    >
-                      <span className="font-mono text-[9px] text-cyan-300 font-bold">[M/A]</span>
-                      <span>
-                        {isTacticalSelected
-                          ? languagePt ? 'DESTRUIR' : 'DESTROY'
-                          : languagePt ? 'ALVO M/A' : 'TARGET S/T'}
-                      </span>
-                    </div>
-                  )}
-
-                  {slot ? (
-                    <div className="w-full h-full relative rounded-lg flex items-center justify-center group overflow-hidden">
-                      <img
-                        src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
-                        alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
-                        className="max-h-full max-w-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
-                      />
-                      {!slot.isFaceDown && (
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-1.5 pointer-events-none rounded-lg">
-                          <div className="text-[10px] font-black text-emerald-200 truncate drop-shadow text-center">
-                            {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-[10px] text-emerald-900/60 font-serif tracking-widest uppercase select-none">
-                      M / A
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Fileira de Monstros do Oponente - Prioridade e Destaque para Monstros */}
-          <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
-            {p2.monsterZones.map((slot, i) => {
-              const isTargetable = selectedAttackingMonster !== null && slot !== null;
-              const isTacticalTargeting = Boolean(tacticalTargetSelection && slot !== null);
-              const isTacticalSelected = Boolean(tacticalTargetSelection && slot && tacticalTargetSelection.selectedUids.includes(slot.uid));
-              const isWabokuProtected = Boolean(session.isWabokuActiveForPlayerId === p2.id && slot !== null);
-              const isDefense = slot?.position === 'DEFENSE';
-              const isSlamming = slamZone && !slamZone.isPlayer && slamZone.zoneIndex === i;
-              const isHitTarget = targetHitZone && !targetHitZone.isPlayer && targetHitZone.zoneIndex === i;
-              const isLunging = lungingZone && !lungingZone.isPlayer && lungingZone.zoneIndex === i;
-              const isDestroyed = slot && destroyedCardUids.includes(slot.uid);
-              const showDmg = floatingDamage && !floatingDamage.isPlayer && floatingDamage.zoneIndex === i;
-              
-              const flameClass = getCardFlameClass(slot);
-              const isFlipped = flippedZones.some((z) => !z.isPlayer && z.zoneIndex === i);
-              
-              return (
-                <div
-                  key={`p2-m-${i}`}
-                  ref={(el) => (opponentZoneRefs.current[i] = el)}
-                  onClick={() => handleOpponentZoneClick(i)}
-                  onMouseEnter={() => slot && setInspectedCard(slot)}
-                  style={
-                    isLunging
-                      ? ({
-                          '--lunge-x': `${lungingZone.deltaX}px`,
-                          '--lunge-y': `${lungingZone.deltaY}px`,
-                        } as React.CSSProperties)
-                      : undefined
-                  }
-                  className={`h-24 sm:h-26 lg:h-28 rounded-lg border-2 border-dashed flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
-                    isWabokuProtected
-                      ? 'ring-4 ring-sky-300 shadow-[0_0_30px_rgba(186,230,254,0.9),inset_0_0_15px_rgba(255,255,255,0.8)] border-sky-300'
-                      : slot
-                      ? 'border-purple-600/60 bg-purple-950/25 shadow-[0_0_15px_rgba(147,51,234,0.25)]'
-                      : 'border-purple-950/70 bg-purple-950/15 hover:border-purple-600/50'
-                  } ${
-                    isTacticalSelected
-                      ? 'ring-4 ring-cyan-400 bg-cyan-950/40 scale-105 shadow-[0_0_30px_rgba(34,211,238,0.9)] animate-pulse'
-                      : isTacticalTargeting
-                      ? 'ring-2 ring-cyan-500/80 hover:ring-4 hover:ring-cyan-300 scale-102 hover:scale-105 shadow-[0_0_20px_rgba(6,182,212,0.6)] animate-pulse'
-                      : isTargetable
-                      ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-black scale-105 shadow-[0_0_30px_rgba(239,68,68,0.9)] animate-pulse'
-                      : ''
-                  } ${
-                    isLunging ? 'anim-attack-lunge-opponent z-40' : ''
-                  }`}
-                >
-                  {/* Floating Damage Text */}
-                  {showDmg && (
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none anim-damage-float">
-                      <span className="text-3xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-t from-red-600 to-amber-300 drop-shadow-[0_0_12px_rgba(239,68,68,1)]">
-                        -{floatingDamage.amount}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Anel de Poeira / Impacto na Invocação do Bot */}
-                  {isSlamming && (
-                    <div className="absolute inset-0 rounded-full border-4 border-amber-400 pointer-events-none anim-impact-ring z-40"></div>
-                  )}
-
-                  {/* VFX de Anel de Impacto no Alvo */}
-                  {isHitTarget && (
-                    <div className="absolute inset-0 rounded-full border-4 border-red-500 pointer-events-none anim-impact-ring z-40"></div>
-                  )}
-
-                  {/* Badge de Aura Sagrada de Waboku */}
-                  {isWabokuProtected && (
-                    <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-sky-400 via-white to-blue-400 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow-[0_0_15px_rgba(186,230,254,0.9)] border border-white flex items-center gap-1 uppercase tracking-wider animate-pulse pointer-events-none">
-                      <span className="font-mono text-[9px] font-black">[SAGRADO]</span>
-                      <span>{languagePt ? 'AURA SAGRADA' : 'SACRED AURA'}</span>
-                    </div>
-                  )}
-
-                  {/* Indicador de Alvo de Ataque */}
-                  {!isTacticalTargeting && isTargetable && (
-                    <div className="absolute -top-3 z-30 bg-red-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
-                      <span className="font-mono text-[9px] font-black">[ALVO]</span>
-                    </div>
-                  )}
-
-                  {/* Indicador Genérico de Seleção Tática de Efeito com Alvo */}
-                  {isTacticalTargeting && tacticalTargetSelection && (() => {
-                    const actionMeta = getTacticalActionMeta(tacticalTargetSelection.action, languagePt);
-                    return (
-                      <div
-                        className={`absolute -top-3.5 z-40 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border animate-bounce flex items-center gap-1 uppercase tracking-wider ${
-                          isTacticalSelected
-                            ? 'bg-gradient-to-r from-cyan-500 to-blue-600 border-yellow-300 shadow-[0_0_15px_rgba(34,211,238,0.9)]'
-                            : 'bg-cyan-900/90 border-cyan-400 text-cyan-200'
-                        }`}
-                      >
-                        <span>{actionMeta.icon}</span>{' '}
-                        {isTacticalSelected
-                          ? actionMeta.badgeSelected
-                          : languagePt
-                          ? 'ESCOLHER ALVO'
-                          : 'SELECT TARGET'}
-                      </div>
-                    );
-                  })()}
-
-                  {slot ? (
-                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDefense ? 'card-defense-wrapper' : 'overflow-hidden'} ${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass} ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
-                      {/* Brilho Eéreo de Proteção de Waboku */}
-                      {isWabokuProtected && (
-                        <div className="absolute inset-0 bg-gradient-to-t from-sky-400/25 via-white/20 to-sky-300/30 rounded-lg pointer-events-none animate-pulse z-20 shadow-[inset_0_0_20px_rgba(255,255,255,0.6)]" />
-                      )}
-
-                      {/* Imagem da Carta: Se virada para baixo, exibe verso */}
-                      <img
-                        src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
-                        alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
-                        className={isDefense ? 'card-defense-img' : 'card-attack-img'}
-                      />
-
-                      {/* Informações reveladas suavemente apenas se não for oculta */}
-                      {!slot.isFaceDown && (
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none rounded-lg">
-                          <div className="text-[11px] font-black text-amber-200 truncate drop-shadow text-center">
-                            {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
-                          </div>
-                          <div className="flex justify-between items-center text-[10px] font-mono font-black bg-black/80 px-2 py-1 rounded border border-purple-500/50">
-                            {(() => {
-                              const effectiveAtk = session.getEffectiveAttack(slot, p2, p1);
-                              const isBuffed = effectiveAtk > slot.data.attack;
-                              return (
-                                <span
-                                  className={`flex items-center gap-0.5 ${
-                                    isBuffed
-                                      ? 'text-emerald-300 font-bold drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
-                                      : 'text-amber-400'
-                                  }`}
-                                >
-                                  <span className="font-mono text-[9px] text-amber-400 font-bold">ATK</span> {effectiveAtk} {isBuffed && <span className="text-[9px] text-yellow-300 font-sans">▲</span>}
-                                </span>
-                              );
-                            })()}
-                            <span className="text-blue-400 font-mono text-[9px] font-bold">DEF {slot.data.defense}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-[10px] text-purple-900/60 font-serif tracking-widest uppercase select-none">
-                      {languagePt ? 'MONSTRO' : 'MONSTER'}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* FAIXA CENTRAL DO DUELO: CONTROLES & AURA DE FASE (HUD CENTRAL AMPLIADO E COMPACTO) */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-1 bg-[#100a1c]/95 border-y-2 border-[#412760] shadow-[0_0_25px_rgba(65,39,96,0.8)] my-0.5">
-          <div className="flex items-center space-x-3">
-            <span className="text-[11px] sm:text-xs uppercase font-serif tracking-widest text-amber-400 font-black">
-              {languagePt ? 'FASE:' : 'PHASE:'}
-            </span>
-            <span className="px-2.5 sm:px-3 py-0.5 rounded text-[11px] sm:text-xs font-black tracking-widest bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.5)]">
-              {formatPhaseName(match.phase)}
-            </span>
-            <span className="text-[11px] sm:text-xs text-slate-300 font-mono font-bold">
-              {languagePt ? 'Turno' : 'Turn'} {match.currentTurn} • {isPlayerTurn ? `[VEZ DE ${p1.nickname.toUpperCase()}]` : `[VEZ DE ${p2.nickname.toUpperCase()}]`}
-            </span>
-          </div>
-
-          {/* Botão Genérico de Confirmação de Mira Tática (Monstros FLIP e Magias com Alvo) */}
-          {tacticalTargetSelection && (() => {
-            const actionMeta = getTacticalActionMeta(tacticalTargetSelection.action, languagePt);
-            return (
-              <div className="flex items-center gap-2 animate-fadeIn">
                 <button
-                  disabled={tacticalTargetSelection.selectedUids.length === 0}
-                  onClick={() => {
-                    if (tacticalTargetSelection.selectedUids.length === 0) {
-                      showNotification(
-                        languagePt
-                          ? '[AVISO] Clique em um alvo com o selo "ESCOLHER ALVO" para selecionar!'
-                          : '[WARNING] Click a target with the "SELECT TARGET" badge!'
-                      );
-                      return;
-                    }
+                  onClick={() => setIsInspectorCollapsed(true)}
+                  className="text-[10px] font-mono font-bold text-stone-400 hover:text-stone-100 px-1 cursor-pointer"
+                  title={languagePt ? 'Recolher Painel' : 'Collapse Panel'}
+                >
+                  [-]
+                </button>
+              </div>
+              <div className="p-2.5 flex gap-2.5 items-center border-b border-amber-900/40 bg-[#181512] shrink-0">
+                <div className="w-24 h-36 shrink-0 rounded-lg overflow-hidden border border-amber-800/50 bg-black/60 p-1">
+                  <img
+                    src="/card-back.jpg"
+                    alt="Verso da Carta"
+                    className="w-full h-full object-contain rounded"
+                  />
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="text-[10px] font-mono font-bold text-amber-400 mb-1">
+                    [GRIMOIRE TÁTICO]
+                  </div>
+                  <p className="text-[11px] text-stone-300 leading-snug">
+                    {languagePt
+                      ? 'Passe o cursor ou clique em qualquer carta 3D na mão ou no campo para inspecionar seus atributos e efeitos.'
+                      : 'Hover or click any 3D card in your hand or on the field to inspect its stats and effects.'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto bg-[#0f0d0b]/95 p-2.5 text-left">
+                <div className="text-xs font-bold text-amber-300 mb-1 font-mono">
+                  [{languagePt ? 'Resumo do Campo' : 'Field Summary'}]
+                </div>
+                <div className="text-[11px] text-stone-300 space-y-1 font-mono">
+                  <div>
+                    {p1.nickname}: {languagePt ? 'Mão' : 'Hand'} {p1.hand.length} • Deck{' '}
+                    {p1.deck.length} • {languagePt ? 'Cem.' : 'GY'} {p1.graveyard.length}
+                  </div>
+                  <div>
+                    {p2.nickname}: {languagePt ? 'Mão' : 'Hand'} {p2.hand.length} • Deck{' '}
+                    {p2.deck.length} • {languagePt ? 'Cem.' : 'GY'} {p2.graveyard.length}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </aside>
+      )}
 
-                    if (tacticalTargetSelection.isSpell && tacticalTargetSelection.cardUid) {
-                      if (tacticalTargetSelection.action === 'DESTROY_MONSTER' || tacticalTargetSelection.action === 'DESTROY_SPELL_TRAP') {
-                        triggerCardDestruction(tacticalTargetSelection.selectedUids);
-                        soundFX.playDestruction();
-                      } else if (tacticalTargetSelection.action === 'RETURN_TO_HAND') {
-                        soundFX.playReturnToHand();
-                      } else {
-                        soundFX.playPlaceCard();
+      {/* 6. DIREITA-CENTRO: PAINEL DE CONTROLE DE TURNO E FASE UNIFICADO (DARK STONE & AGED GOLD) */}
+      <div className="fixed right-4 sm:right-5 top-1/2 -translate-y-1/2 z-30 w-44 sm:w-48 bg-[#141210]/95 border-2 border-amber-800/80 rounded-xl p-3 shadow-[0_8px_30px_rgba(0,0,0,0.92)] flex flex-col gap-2.5 backdrop-blur-md">
+        {/* Top Row: Turn & Active Player Badge */}
+        <div className="flex items-center justify-between border-b border-stone-800 pb-1.5">
+          <span className="text-[11px] font-mono font-bold text-amber-400 tracking-wider">
+            {languagePt ? 'TURNO' : 'TURN'} {match.currentTurn}
+          </span>
+          <span
+            className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase ${
+              isPlayerTurn
+                ? 'bg-amber-950/90 text-amber-200 border border-amber-700/60'
+                : 'bg-red-950/90 text-red-200 border border-red-800/60'
+            }`}
+          >
+            {isPlayerTurn
+              ? languagePt
+                ? 'SEU TURNO'
+                : 'YOUR TURN'
+              : languagePt
+              ? 'OPONENTE'
+              : 'OPPONENT'}
+          </span>
+        </div>
+
+        {/* Middle Box: Current Phase Display (Clean, Single-Line, Never Overflows) */}
+        <div className="py-2 px-2.5 rounded-lg bg-[#1c1917] border border-amber-900/50 text-center">
+          <span className="text-[9px] font-mono uppercase tracking-widest text-stone-400 block mb-0.5">
+            {languagePt ? 'FASE ATUAL' : 'CURRENT PHASE'}
+          </span>
+          <span className="text-xs sm:text-sm font-serif font-black uppercase tracking-wider text-amber-200 whitespace-nowrap block">
+            {formatPhaseName(match.phase)}
+          </span>
+        </div>
+
+        {/* Bottom Stack: Action Buttons Aligned to Exact Same Width w-full */}
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={handleNextPhase}
+            disabled={!isPlayerTurn || match.isGameOver || match.phase === 'BATTLE'}
+            className="w-full py-2 px-3 rounded-lg bg-[#292524] hover:bg-[#38322e] disabled:opacity-35 text-stone-100 font-serif font-bold text-xs uppercase tracking-wider border border-amber-800/70 transition-colors cursor-pointer disabled:cursor-not-allowed"
+          >
+            {languagePt ? 'Fase de Batalha' : 'Battle Phase'}
+          </button>
+
+          <button
+            onClick={handleEndTurn}
+            disabled={!isPlayerTurn || match.isGameOver}
+            className="w-full py-2 px-3 rounded-lg bg-gradient-to-b from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 disabled:opacity-35 text-stone-950 font-serif font-black text-xs uppercase tracking-wider border border-amber-400/80 transition-colors cursor-pointer disabled:cursor-not-allowed"
+          >
+            {languagePt ? 'Encerrar Turno' : 'End Turn'}
+          </button>
+        </div>
+      </div>
+
+      {/* PÍLULA TÁTICA FLUTUANTE CENTRAL (CONFIRMAÇÃO DE MIRA OU ATAQUE DIRETO) */}
+      {(tacticalTargetSelection ||
+        (match.phase === 'BATTLE' &&
+          selectedAttackingMonster !== null &&
+          p2.monsterZones.every((m) => m === null))) && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 animate-fadeIn">
+          {tacticalTargetSelection &&
+            (() => {
+              const actionMeta = getTacticalActionMeta(
+                tacticalTargetSelection.action,
+                languagePt
+              );
+              return (
+                <div className="flex items-center gap-2 bg-[#141210]/95 border border-amber-800/80 rounded-full px-3 py-1.5 shadow-[0_8px_30px_rgba(0,0,0,0.92)] backdrop-blur-md">
+                  <button
+                    disabled={tacticalTargetSelection.selectedUids.length === 0}
+                    onClick={() => {
+                      if (tacticalTargetSelection.selectedUids.length === 0) {
+                        showNotification(
+                          languagePt
+                            ? '[AVISO] Clique em um alvo no campo 3D para selecionar!'
+                            : '[WARNING] Click a target on the 3D field to select!'
+                        );
+                        return;
                       }
 
-                      const success = session.activateSpell(
-                        tacticalTargetSelection.cardUid,
+                      if (
+                        tacticalTargetSelection.isSpell &&
+                        tacticalTargetSelection.cardUid
+                      ) {
+                        if (
+                          tacticalTargetSelection.action === 'DESTROY_MONSTER' ||
+                          tacticalTargetSelection.action === 'DESTROY_SPELL_TRAP'
+                        ) {
+                          triggerCardDestruction(tacticalTargetSelection.selectedUids);
+                          soundFX.playDestruction();
+                        } else if (
+                          tacticalTargetSelection.action === 'RETURN_TO_HAND'
+                        ) {
+                          soundFX.playReturnToHand();
+                        } else {
+                          soundFX.playPlaceCard();
+                        }
+
+                        const success = session.activateSpell(
+                          tacticalTargetSelection.cardUid,
+                          tacticalTargetSelection.zoneIndex,
+                          tacticalTargetSelection.selectedUids
+                        );
+                        setTacticalTargetSelection(null);
+                        if (success) {
+                          forceUpdate();
+                        }
+                        return;
+                      }
+
+                      executeFlipPositionChange(
                         tacticalTargetSelection.zoneIndex,
                         tacticalTargetSelection.selectedUids
                       );
-                      setTacticalTargetSelection(null);
-                      if (success) {
-                        forceUpdate();
-                      }
-                      return;
-                    }
+                    }}
+                    className={`px-4 py-1 text-xs font-black uppercase tracking-wider rounded-full shadow-lg transition-all flex items-center gap-1.5 border ${
+                      tacticalTargetSelection.selectedUids.length > 0
+                        ? 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border-amber-300 cursor-pointer'
+                        : 'bg-[#1c1917] text-amber-200/60 border-amber-900/40 cursor-not-allowed opacity-75'
+                    }`}
+                  >
+                    <span>{actionMeta.icon}</span>
+                    <span>
+                      {tacticalTargetSelection.selectedUids.length > 0
+                        ? languagePt
+                          ? `Confirmar ${actionMeta.confirmVerb} (${tacticalTargetSelection.selectedUids.length})`
+                          : `Confirm ${actionMeta.confirmVerb} (${tacticalTargetSelection.selectedUids.length})`
+                        : languagePt
+                        ? 'Escolha o Alvo no Campo 3D'
+                        : 'Select Target on 3D Field'}
+                    </span>
+                  </button>
 
-                    executeFlipPositionChange(
-                      tacticalTargetSelection.zoneIndex,
-                      tacticalTargetSelection.selectedUids
-                    );
-                  }}
-                  className={`px-4 sm:px-5 py-1 text-xs font-black uppercase tracking-wider rounded-full shadow-lg transition-all flex items-center gap-1.5 border ${
-                    tacticalTargetSelection.selectedUids.length > 0
-                      ? 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-600 hover:from-cyan-400 hover:to-blue-400 text-slate-950 border-cyan-200 shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-pulse cursor-pointer'
-                      : 'bg-slate-900/90 text-cyan-400/60 border-cyan-500/30 cursor-not-allowed opacity-75'
-                  }`}
-                >
-                  <span>{actionMeta.icon}</span>
-                  <span>
-                    {tacticalTargetSelection.selectedUids.length > 0
-                      ? languagePt
-                        ? `Confirmar ${actionMeta.confirmVerb} (${tacticalTargetSelection.selectedUids.length})`
-                        : `Confirm ${actionMeta.confirmVerb} (${tacticalTargetSelection.selectedUids.length})`
-                      : languagePt
-                      ? 'Escolha o Alvo Acima'
-                      : 'Select Target Above'}
-                  </span>
-                </button>
+                  <button
+                    onClick={() => setTacticalTargetSelection(null)}
+                    className="px-2.5 py-1 text-[10px] sm:text-[11px] font-bold text-stone-300 hover:text-white bg-[#292524] rounded-full border border-stone-700 uppercase transition-colors cursor-pointer"
+                  >
+                    {languagePt ? 'Cancelar' : 'Cancel'}
+                  </button>
+                </div>
+              );
+            })()}
 
-                <button
-                  onClick={() => setTacticalTargetSelection(null)}
-                  className="px-2.5 py-0.5 text-[10px] sm:text-[11px] font-bold text-slate-400 hover:text-slate-200 bg-slate-900/80 rounded-full border border-slate-700 uppercase transition-colors"
-                >
-                  {languagePt ? 'Cancelar' : 'Cancel'}
-                </button>
-              </div>
-            );
-          })()}
-
-          {/* Botão de Ataque Direto */}
           {match.phase === 'BATTLE' &&
             selectedAttackingMonster !== null &&
             p2.monsterZones.every((m) => m === null) && (
               <button
                 onClick={() => handleOpponentZoneClick(null)}
-                className="px-5 py-1 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs uppercase tracking-widest rounded-full shadow-[0_0_25px_rgba(239,68,68,0.9)] border-2 border-yellow-300 animate-bounce flex items-center gap-1.5"
+                className="px-5 py-1.5 bg-gradient-to-b from-red-700 to-red-800 hover:from-red-600 hover:to-red-700 text-stone-100 font-black text-xs uppercase tracking-widest rounded-full shadow-2xl border-2 border-amber-400 animate-bounce flex items-center gap-1.5 cursor-pointer"
               >
-                <span className="font-mono text-xs font-black mr-1">[ATAQUE]</span> {languagePt ? 'ATACAR DIRETAMENTE OS LPs!' : 'DIRECT ATTACK LIFE POINTS!'}
+                <span className="font-mono text-xs font-black mr-1">[ATAQUE]</span>{' '}
+                {languagePt
+                  ? 'ATACAR DIRETAMENTE OS LPs!'
+                  : 'DIRECT ATTACK LIFE POINTS!'}
               </button>
             )}
+        </div>
+      )}
 
-          {/* Botões de Ação */}
-          <div className="flex space-x-2">
+      {/* 7. RODAPÉ DIREITO: BOTÕES TÁTICOS [INFO] & [LOG] (DARK STONE & AGED GOLD) */}
+      <div className="fixed bottom-3 right-3 z-30 flex items-center gap-2">
+        <button
+          onClick={() => setIsFieldInfoOpen((prev) => !prev)}
+          className={`w-10 h-10 rounded-full bg-[#141210]/95 border font-mono text-[10px] font-black shadow-lg flex items-center justify-center cursor-pointer transition-colors backdrop-blur-md ${
+            isFieldInfoOpen
+              ? 'border-amber-400 text-amber-300'
+              : 'border-amber-800/75 hover:border-amber-600 text-amber-200/90'
+          }`}
+          title={languagePt ? 'Resumo de Cartas no Campo' : 'Field Cards Summary'}
+        >
+          [INFO]
+        </button>
+
+        <button
+          onClick={() => setIsLogOpen((prev) => !prev)}
+          className={`w-10 h-10 rounded-full bg-[#141210]/95 border font-mono text-[10px] font-black shadow-lg flex items-center justify-center cursor-pointer transition-colors backdrop-blur-md ${
+            isLogOpen
+              ? 'border-amber-400 text-amber-300'
+              : 'border-amber-800/75 hover:border-amber-600 text-amber-200/90'
+          }`}
+          title={languagePt ? 'Histórico de Ações do Duelo' : 'Duel Action Log'}
+        >
+          [LOG]
+        </button>
+      </div>
+
+      {/* DRAWER FLUTUANTE DE RESUMO DO CAMPO ([INFO]) */}
+      {isFieldInfoOpen && (
+        <div className="fixed bottom-16 right-3 z-40 w-72 bg-[#141210]/95 border border-amber-800/75 rounded-xl p-3 shadow-2xl backdrop-blur-md text-xs font-mono text-stone-200 animate-fadeIn">
+          <div className="flex items-center justify-between border-b border-stone-800 pb-1.5 mb-2">
+            <span className="font-black text-amber-400">[STATUS DO CAMPO 3D]</span>
             <button
-              onClick={handleNextPhase}
-              disabled={!isPlayerTurn || match.isGameOver || match.phase === 'BATTLE'}
-              className="px-3.5 sm:px-4 py-1 bg-gradient-to-r from-indigo-700 to-purple-800 hover:from-indigo-600 hover:to-purple-700 disabled:opacity-30 text-xs font-bold rounded-lg border border-indigo-400/50 shadow-md transition-all font-serif"
+              onClick={() => setIsFieldInfoOpen(false)}
+              className="text-stone-400 hover:text-stone-100 text-[10px] cursor-pointer"
             >
-              {languagePt ? 'Fase de Batalha' : 'Battle Phase'}
+              [X]
             </button>
+          </div>
+          <div className="space-y-1.5 text-[11px]">
+            <div className="flex justify-between">
+              <span className="text-amber-300 font-bold">{p1.nickname}:</span>
+              <span>
+                {languagePt ? 'Mão' : 'Hand'} {p1.hand.length} | Deck {p1.deck.length} |{' '}
+                {languagePt ? 'Cem.' : 'GY'} {p1.graveyard.length}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-red-300 font-bold">{p2.nickname}:</span>
+              <span>
+                {languagePt ? 'Mão' : 'Hand'} {p2.hand.length} | Deck {p2.deck.length} |{' '}
+                {languagePt ? 'Cem.' : 'GY'} {p2.graveyard.length}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DRAWER FLUTUANTE DO HISTÓRICO DO DUELO ([LOG]) */}
+      {isLogOpen && (
+        <div className="fixed bottom-16 right-3 z-40 w-80 max-h-56 bg-[#141210]/95 border border-amber-800/75 rounded-xl p-3 overflow-y-auto shadow-2xl backdrop-blur-md text-[10px] font-mono text-stone-300 animate-fadeIn">
+          <div className="flex items-center justify-between border-b border-stone-800 pb-1.5 mb-2 sticky top-0 bg-[#141210]/95">
+            <span className="font-black text-amber-400">
+              {languagePt ? '[HISTÓRICO DO DUELO]' : '[DUEL LOG]'}
+            </span>
             <button
-              onClick={handleEndTurn}
-              disabled={!isPlayerTurn || match.isGameOver}
-              className="px-3.5 sm:px-4 py-1 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 disabled:opacity-30 text-xs font-black rounded-lg border border-amber-400 shadow-md transition-all text-slate-950 font-serif"
+              onClick={() => setIsLogOpen(false)}
+              className="text-stone-400 hover:text-stone-100 text-[10px] cursor-pointer"
             >
-              {languagePt ? 'Encerrar Turno' : 'End Turn'}
+              [X]
             </button>
           </div>
-        </div>
-
-        {/* CAMPO DO JOGADOR (ZONA DE MONSTROS 3D E ZONAS DE MAGIAS/ARMADILHAS) */}
-        <div className="flex flex-col space-y-1">
-          {/* Fileira de Monstros do Jogador - Prioridade e Destaque para Monstros */}
-          <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
-            {p1.monsterZones.map((slot, i) => {
-              const selectedHandCard = selectedHandCardUid ? p1.hand.find((c) => c.uid === selectedHandCardUid) : null;
-              const isSelectedCardMonster = isMonsterCard(selectedHandCard);
-              const requiredTributes = isSelectedCardMonster
-                ? (selectedHandCard!.data.level <= 4 ? 0 : selectedHandCard!.data.level <= 6 ? 1 : 2)
-                : 0;
-              const isSelectedTribute = selectedTributeZones.includes(i);
-              const isTributeTargetZone = isSelectedCardMonster && requiredTributes > 0 && selectedTributeZones.length === requiredTributes && (slot === null || isSelectedTribute);
-              const isValidSummonZone = isSelectedCardMonster && requiredTributes === 0 && slot === null;
-              const isSelectedAttacker = selectedAttackerZone === i;
-              const isWabokuProtected = Boolean(session.isWabokuActiveForPlayerId === p1.id && slot !== null);
-              const isDefense = slot?.position === 'DEFENSE';
-              const isSlamming = slamZone && slamZone.isPlayer && slamZone.zoneIndex === i;
-              const isLunging = lungingZone && lungingZone.isPlayer && lungingZone.zoneIndex === i;
-              const isHitTarget = targetHitZone && targetHitZone.isPlayer && targetHitZone.zoneIndex === i;
-              const isDestroyed = slot && destroyedCardUids.includes(slot.uid);
-              const showDmg = floatingDamage && floatingDamage.isPlayer && floatingDamage.zoneIndex === i;
-              const flameClass = getCardFlameClass(slot);
-              const isFlipped = flippedZones.some((z) => z.isPlayer && z.zoneIndex === i);
-
-              return (
-                <div
-                  key={`p1-m-${i}`}
-                  ref={(el) => (playerZoneRefs.current[i] = el)}
-                  onClick={() => handlePlayerMonsterZoneClick(i)}
-                  onMouseEnter={() => slot && setInspectedCard(slot)}
-                  style={
-                    isLunging
-                      ? ({
-                          '--lunge-x': `${lungingZone.deltaX}px`,
-                          '--lunge-y': `${lungingZone.deltaY}px`,
-                        } as React.CSSProperties)
-                      : undefined
-                  }
-                  className={`h-24 sm:h-26 lg:h-28 rounded-lg border-2 border-dashed flex items-center justify-center p-0.5 transition-all cursor-pointer relative group ${
-                    isWabokuProtected
-                      ? 'ring-4 ring-sky-300 shadow-[0_0_30px_rgba(186,230,254,0.9),inset_0_0_15px_rgba(255,255,255,0.8)] border-sky-300'
-                      : (isValidSummonZone || isTributeTargetZone)
-                      ? 'border-emerald-400 bg-emerald-950/40 ring-4 ring-emerald-400/80 shadow-[0_0_25px_rgba(16,185,129,0.8)] scale-102 animate-pulse'
-                      : slot
-                      ? 'border-purple-600/60 bg-purple-950/25 shadow-[0_0_15px_rgba(147,51,234,0.25)]'
-                      : 'border-purple-950/70 bg-purple-950/15 hover:border-amber-500/50'
-                  } ${
-                    isSelectedAttacker
-                      ? 'ring-4 ring-amber-400 scale-105 shadow-[0_0_30px_rgba(245,158,11,0.9)]'
-                      : ''
-                  } ${
-                    isSelectedTribute
-                      ? 'ring-4 ring-red-500 border-2 border-red-400 scale-105 shadow-[0_0_30px_rgba(239,68,68,0.9)] animate-pulse'
-                      : ''
-                  } ${
-                    isLunging ? 'anim-attack-lunge-player z-40' : ''
-                  }`}
-                >
-                  {/* Floating Damage Text */}
-                  {showDmg && (
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none anim-damage-float">
-                      <span className="text-3xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-t from-red-600 to-amber-300 drop-shadow-[0_0_12px_rgba(239,68,68,1)]">
-                        -{floatingDamage.amount}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Anel de Poeira / Impacto na Invocação */}
-                  {isSlamming && (
-                    <div className="absolute inset-0 rounded-full border-4 border-amber-400 pointer-events-none anim-impact-ring z-40"></div>
-                  )}
-
-                  {/* Anel de Impacto ao Ser Atingido */}
-                  {isHitTarget && (
-                    <div className="absolute inset-0 rounded-full border-4 border-red-500 pointer-events-none anim-impact-ring z-40"></div>
-                  )}
-
-                  {/* Badge de Aura Sagrada de Waboku */}
-                  {isWabokuProtected && (
-                    <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-sky-400 via-white to-blue-400 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow-[0_0_15px_rgba(186,230,254,0.9)] border border-white flex items-center gap-1 uppercase tracking-wider animate-pulse pointer-events-none">
-                      <span className="font-mono text-[9px] font-black">[SAGRADO]</span>
-                      <span>{languagePt ? 'AURA SAGRADA' : 'SACRED AURA'}</span>
-                    </div>
-                  )}
-
-                  {/* Badge de Sacrifício Selecionado / Zona Pronta para Invocação por Tributo */}
-                  {isSelectedTribute ? (
-                    <div className="absolute -top-3.5 z-40 bg-gradient-to-r from-red-600 to-rose-700 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-[0_0_15px_rgba(239,68,68,0.9)] border border-yellow-300 animate-bounce flex items-center gap-1 uppercase tracking-wider">
-                      {isTributeTargetZone ? (
-                        <>
-                          <span className="font-mono text-[9px] bg-black/40 px-1 rounded font-black">[INVOCAR]</span> {languagePt ? 'INVOCAR AQUI!' : 'SUMMON HERE!'}
-                        </>
-                      ) : (
-                        <>
-                          <span className="font-mono text-[9px] bg-black/40 px-1 rounded font-black">[TRIBUTO]</span> {languagePt ? 'SACRIFÍCIO' : 'TRIBUTE'}`.replace('`', '')
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    (isValidSummonZone || isTributeTargetZone) && (
-                      <div className="absolute -top-3 z-30 bg-emerald-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-lg border border-white animate-bounce flex items-center gap-1">
-                        <span className="font-mono text-[9px] bg-black/40 px-1 rounded font-black">[INVOCAR]</span> {languagePt ? 'INVOCAR' : 'SUMMON'}
-                      </div>
-                    )
-                  )}
-
-                  {slot ? (
-                    <div className={`w-full h-full relative rounded-lg flex items-center justify-center ${isDefense ? 'card-defense-wrapper' : 'overflow-hidden'} ${isDefense ? 'card-3d-defense' : 'card-3d'} ${flameClass} ${isSlamming ? 'anim-card-slam' : ''} ${isDestroyed ? 'anim-card-destroy' : ''} ${isFlipped ? 'anim-card-flip' : ''}`}>
-                      {/* Brilho Eéreo de Proteção de Waboku */}
-                      {isWabokuProtected && (
-                        <div className="absolute inset-0 bg-gradient-to-t from-sky-400/25 via-white/20 to-sky-300/30 rounded-lg pointer-events-none animate-pulse z-20 shadow-[inset_0_0_20px_rgba(255,255,255,0.6)]" />
-                      )}
-
-                      {/* Imagem da Carta Original ou Verso se estiver Virada para Baixo */}
-                      <img
-                        src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
-                        alt={slot.isFaceDown ? 'Carta Oculta' : slot.data.name}
-                        className={isDefense ? 'card-defense-img' : 'card-attack-img'}
-                      />
-
-                      {/* Indicador de Carta Oculta do Jogador (visível permanentemente em tamanho sutil) */}
-                      {slot.isFaceDown && (
-                        <div className="absolute top-1 right-1 bg-purple-950/80 border border-purple-400 text-purple-200 text-[9px] px-1.5 py-0.5 rounded shadow pointer-events-none">[DEF]</div>
-                      )}
-
-                      {/* Informações ocultas por padrão - reveladas suavemente apenas em hover */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2 pointer-events-none rounded-lg">
-                        <div className="text-[11px] font-black text-amber-200 truncate drop-shadow text-center">
-                          {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
-                        </div>
-                        <div className="flex justify-between items-center text-[10px] font-mono font-black bg-black/85 px-2 py-1 rounded border border-amber-500/50">
-                          {(() => {
-                            const effectiveAtk = session.getEffectiveAttack(slot, p1, p2);
-                            const isBuffed = effectiveAtk > slot.data.attack;
-                            return (
-                              <span
-                                className={`flex items-center gap-0.5 ${
-                                  isBuffed
-                                    ? 'text-emerald-300 font-bold drop-shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse'
-                                    : 'text-amber-400'
-                                }`}
-                              >
-                                <span className="font-mono text-[9px] text-amber-400 font-bold">ATK</span> {effectiveAtk} {isBuffed && <span className="text-[9px] text-yellow-300 font-sans">▲</span>}
-                              </span>
-                            );
-                          })()}
-                          <span className="text-blue-400 font-mono text-[9px] font-bold">DEF {slot.data.defense}</span>
-                          {slot.hasAttacked ? (
-                            <span className="text-red-400 font-sans text-[9px]">{languagePt ? 'Atacou' : 'Attacked'}</span>
-                          ) : slot.turnSummoned === match.currentTurn ? (
-                            <span className="text-yellow-400 font-mono text-[9px]">[INVOCADO]</span>
-                          ) : isDefense ? (
-                            <span className="text-blue-400 font-mono text-[9px]">[DEFESA]</span>
-                          ) : match.phase === 'BATTLE' && !isDefense ? (
-                            <span className="text-emerald-400 font-mono text-[9px] animate-pulse">[PRONTO]</span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-[10px] text-purple-900/60 font-serif tracking-widest uppercase select-none">
-                      {isValidSummonZone ? (languagePt ? 'INVOCAR' : 'SUMMON') : (languagePt ? 'MONSTRO' : 'MONSTER')}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* 5 Zonas de Magias e Armadilhas do Jogador */}
-          <div className="grid grid-cols-5 gap-2 sm:gap-2.5 md:gap-3 max-w-4xl mx-auto w-full px-2">
-            {p1.spellTrapZones.map((slot, i) => {
-              const selectedHandCard = selectedHandCardUid ? p1.hand.find((c) => c.uid === selectedHandCardUid) : null;
-              const isSelectedSpell = isSpellCard(selectedHandCard);
-              const isSelectedTrap = isTrapCard(selectedHandCard);
-              const isTargetableSpellZone = isSelectedSpell && slot === null;
-              const isTargetableTrapZone = isSelectedTrap && slot === null;
-
-              return (
-                <div
-                  key={`p1-st-${i}`}
-                  onClick={() => handlePlayerSpellTrapZoneClick(i)}
-                  onMouseEnter={() => slot && setInspectedCard(slot)}
-                  className={`h-16 sm:h-18 lg:h-20 rounded-lg border-2 border-dashed flex items-center justify-center relative cursor-pointer p-0.5 transition-all ${
-                    isTargetableSpellZone
-                      ? 'border-emerald-400 bg-emerald-950/40 ring-4 ring-emerald-400/90 shadow-[0_0_25px_rgba(52,211,153,0.8)] scale-102 animate-pulse'
-                      : isTargetableTrapZone
-                      ? 'border-fuchsia-400 bg-fuchsia-950/40 ring-4 ring-fuchsia-500/90 shadow-[0_0_25px_rgba(217,70,239,0.8)] scale-102 animate-pulse'
-                      : slot
-                      ? 'border-emerald-600/70 bg-emerald-950/25 shadow-[0_0_12px_rgba(16,185,129,0.25)] hover:border-emerald-400'
-                      : 'border-emerald-950/70 bg-emerald-950/15 hover:border-emerald-500/50'
-                  }`}
-                >
-                  {slot ? (
-                    <div className="w-full h-full relative rounded-lg flex items-center justify-center group overflow-hidden">
-                      <img
-                        src={slot.isFaceDown ? '/card-back.jpg' : slot.data.imageUrl}
-                        alt={slot.data.name}
-                        className="max-h-full max-w-full object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.85)] transition-transform duration-200 group-hover:scale-105"
-                      />
-                      {slot.isFaceDown && (
-                        <div className="absolute top-1 right-1 bg-purple-950/80 border border-purple-400 text-purple-200 text-[8px] px-1 rounded pointer-events-none">[DEF]</div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-end p-1.5 pointer-events-none rounded-lg">
-                        <div className="text-[10px] font-black text-emerald-200 truncate drop-shadow text-center">
-                          {languagePt && slot.data.namePt ? slot.data.namePt : slot.data.name}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className={`text-[10px] font-serif tracking-widest uppercase select-none ${
-                      isTargetableSpellZone ? 'text-emerald-300 font-bold' : isTargetableTrapZone ? 'text-fuchsia-300 font-bold' : 'text-emerald-900/60'
-                    }`}>
-                      {isTargetableSpellZone ? (languagePt ? 'Colocar Magia' : 'Place Spell') : isTargetableTrapZone ? (languagePt ? 'Baixar Armadilha' : 'Set Trap') : 'M / A'}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
+          <div className="space-y-1">
+            {match.log.slice(-12).map((line, idx) => (
+              <div key={idx} className="leading-snug border-b border-stone-800/70 py-0.5">
+                {line}
+              </div>
+            ))}
           </div>
         </div>
+      )}
 
-        {/* RODAPÉ DO JOGADOR: MÃO AMPLIADA & STATUS (HUD COMPACTO E 100% RESPONSIVO) */}
-        <div className="bg-[#0b0814]/95 border-2 border-[#412760] rounded-xl px-3 sm:px-4 py-1 sm:py-1.5 shadow-[0_-6px_30px_rgba(0,0,0,0.85)] flex items-center justify-between">
-          
-          <div className="flex items-center space-x-3 w-44 sm:w-52">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-amber-500 via-amber-700 to-purple-950 border-2 border-amber-400 flex items-center justify-center font-black text-amber-200 text-lg sm:text-xl shadow-[0_0_15px_rgba(245,158,11,0.6)] uppercase">
-              {p1.nickname.charAt(0) || 'D'}
-            </div>
-            <div>
-              <h2 className="font-extrabold text-amber-300 text-xs sm:text-sm font-serif tracking-wide truncate max-w-[120px] sm:max-w-[140px]">{p1.nickname}</h2>
-              <div ref={playerLpRef} className="bg-black/95 border-2 border-red-600 rounded-lg px-2.5 py-0.5 text-lg sm:text-xl font-mono font-black text-red-400 shadow-[0_0_18px_rgba(239,68,68,0.6)] tracking-wider mt-0.5 relative">
-                {/* Texto Flutuante de Recuperação de Vida (Cura) */}
-                {floatingHeal && (
-                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 z-50 pointer-events-none anim-damage-float whitespace-nowrap">
-                    <span className="text-xl sm:text-2xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-t from-emerald-500 via-green-400 to-teal-200 drop-shadow-[0_0_15px_rgba(52,211,153,1)]">
-                      +{floatingHeal.amount} LP
-                    </span>
-                  </div>
-                )}
-                {p1.lifePoints} <span className="text-xs font-sans text-red-400 font-normal">LP</span>
-              </div>
-            </div>
+      {/* MODAL DE ESCOLHA DE POSIÇÃO DE INVOCAÇÃO (RIGHT-DOCKED TACTICAL HUD) */}
+      {summonChoiceModal && (
+        <div className="fixed right-4 sm:right-6 top-24 z-50 w-72 sm:w-84 max-h-[80vh] flex flex-col animate-slideInRight bg-[#141210]/95 border-2 border-amber-800/80 rounded-2xl p-4 shadow-[0_8px_35px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-y-auto text-center">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-800">
+            <span className="text-[10px] font-mono font-black text-amber-300 bg-amber-950/90 px-2 py-0.5 rounded border border-amber-700/60 uppercase tracking-wider">
+              [INVOCAÇÃO]
+            </span>
+            <button
+              onClick={() => setSummonChoiceModal(null)}
+              className="text-stone-400 hover:text-stone-100 text-xs font-mono px-1.5 py-0.5 rounded hover:bg-white/10"
+            >
+              [X]
+            </button>
           </div>
 
-          {/* Mão do Jogador (Cartas 3D, Layout Dinâmico e Animação de Compra) */}
-          <div className="flex-1 flex justify-center -space-x-3 sm:-space-x-4 overflow-visible py-0.5">
-            {p1.hand.map((card, idx) => {
-              const isSelected = selectedHandCardUid === card.uid;
-              const isNewlyDrawn = recentDrawnUids.includes(card.uid);
-              return (
-                <div
-                  key={card.uid}
-                  onClick={() => handleSelectHandCard(card)}
-                  onMouseEnter={() => setInspectedCard(card)}
-                  style={{ animationDelay: isNewlyDrawn ? `${idx * 140}ms` : '0ms' }}
-                  className={`card-3d group w-16 sm:w-18 md:w-20 h-22 sm:h-24 md:h-26 rounded-md cursor-pointer transition-all duration-200 relative flex items-center justify-center ${
-                    isNewlyDrawn ? 'anim-draw-card' : ''
-                  } ${
-                    isSelected
-                      ? '-translate-y-4 ring-4 ring-amber-400/90 shadow-[0_0_35px_rgba(245,158,11,1)] scale-110 z-30'
-                      : 'hover:-translate-y-3 hover:scale-105 hover:z-20 hover:drop-shadow-[0_15px_25px_rgba(245,158,11,0.5)]'
-                  }`}
-                >
-                  {isSelected && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-30 bg-amber-400 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow border border-white animate-bounce">
-                      {languagePt ? 'ESCOLHIDA' : 'SELECTED'}
-                    </div>
-                  )}
+          <h3 className="text-base font-serif font-black text-amber-300 mb-1">
+            {languagePt ? 'POSIÇÃO DE BATALHA' : 'BATTLE POSITION'}
+          </h3>
+          <p className="text-[11px] text-stone-300 mb-3">
+            {languagePt ? 'Escolha a postura do monstro no campo:' : 'Choose how to place this monster:'}
+          </p>
 
-                  {/* Arte Pura da Carta */}
-                  <img
-                    src={card.data.imageUrl}
-                    alt={card.data.name}
-                    className="w-full h-full object-contain filter drop-shadow-xl select-none"
-                  />
-
-                  {/* Informações da Carta Apenas no Hover */}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-md flex flex-col justify-between p-1 pointer-events-none backdrop-blur-[1px]">
-                    <div className="text-[9px] sm:text-[10px] font-bold text-amber-200 text-center truncate bg-black/80 rounded px-1 shadow">
-                      {languagePt && card.data.namePt ? card.data.namePt : card.data.name}
-                    </div>
-
-                    <div className="flex justify-between text-[8px] sm:text-[9px] font-mono font-black text-amber-300 bg-black/90 px-1 py-0.5 rounded shadow">
-                      <span>ATK {card.data.attack}</span>
-                      <span>DEF {card.data.defense}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Cemitério e Deck do Jogador */}
-          <div className="flex items-center space-x-2 sm:space-x-3 pl-3 sm:pl-4 border-l-2 border-[#2b1c42]">
-            <div className="text-center">
-              <div className="w-11 sm:w-12 md:w-13 h-15 sm:h-16 md:h-17 rounded border-2 border-purple-800 bg-purple-950/40 flex items-center justify-center text-xs font-mono font-bold text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.3)]">
-                {p1.graveyard.length}
-              </div>
-              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-serif tracking-wider">
-                {languagePt ? 'Cemitério' : 'Graveyard'}
-              </span>
-            </div>
-
-            <div className="text-center">
-              <div className="w-11 sm:w-12 md:w-13 h-15 sm:h-16 md:h-17 rounded border border-amber-600/50 relative shadow-[0_0_15px_rgba(245,158,11,0.4)] overflow-hidden flex items-center justify-center group">
-                <img src="/card-back.jpg" alt="Deck" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                  <span className="text-xs sm:text-sm font-mono font-black text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,1)]">
-                    {p1.deck.length}
-                  </span>
-                </div>
-              </div>
-              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-serif tracking-wider">Deck</span>
-            </div>
-          </div>
-        </div>
-
-
-
-        {/* MODAL DE ESCOLHA DE POSIÇÃO DE INVOCAÇÃO (RIGHT-DOCKED TACTICAL HUD) */}
-        {summonChoiceModal && (
-          <div className="fixed right-4 sm:right-6 top-24 z-50 w-72 sm:w-84 max-h-[80vh] flex flex-col animate-slideInRight bg-[#0c0818]/95 border-2 border-amber-500/80 rounded-2xl p-4 shadow-[0_0_35px_rgba(245,158,11,0.5)] backdrop-blur-md overflow-y-auto text-center">
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-500/30">
-              <span className="text-[10px] font-mono font-black text-amber-400 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-600/50 uppercase tracking-wider">
-                [INVOCAÇÃO]
-              </span>
-              <button
-                onClick={() => setSummonChoiceModal(null)}
-                className="text-slate-400 hover:text-white text-xs font-mono px-1.5 py-0.5 rounded hover:bg-white/10"
-              >
-                [X]
-              </button>
-            </div>
-
-            <h3 className="text-base font-serif font-black text-amber-300 mb-1">
-              {languagePt ? 'POSIÇÃO DE BATALHA' : 'BATTLE POSITION'}
-            </h3>
-            <p className="text-[11px] text-slate-300 mb-3">
-              {languagePt ? 'Escolha a postura do monstro no campo:' : 'Choose how to place this monster:'}
-            </p>
-
-            <div className="flex justify-center mb-3">
-              <div className="w-20 h-28 rounded-lg p-0.5 bg-gradient-to-br from-[#7a4e23] to-[#1a0f05] border border-amber-400/80 shadow-md">
-                <img
-                  src={summonChoiceModal.card.data.imageUrl}
-                  alt={summonChoiceModal.card.data.name}
-                  className="w-full h-full object-contain rounded"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() =>
-                  executeSummon(
-                    summonChoiceModal.zoneIndex,
-                    summonChoiceModal.tributeIndices,
-                    'ATTACK',
-                    false
-                  )
-                }
-                className="w-full py-2 px-3 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
-              >
-                <span className="font-mono text-[10px] bg-black/30 text-slate-950 px-1 rounded font-black">[ATK]</span>
-                <span>{languagePt ? 'Invocar em Modo de Ataque' : 'Summon in Attack Mode'}</span>
-              </button>
-
-              <button
-                onClick={() =>
-                  executeSummon(
-                    summonChoiceModal.zoneIndex,
-                    summonChoiceModal.tributeIndices,
-                    'DEFENSE',
-                    true
-                  )
-                }
-                className="w-full py-2 px-3 bg-purple-900/90 hover:bg-purple-800 text-purple-100 border border-purple-400/60 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
-              >
-                <span className="font-mono text-[10px] bg-black/40 text-purple-300 px-1 rounded font-black">[DEF]</span>
-                <span>{languagePt ? 'Baixar Virado para Baixo' : 'Set Face-Down (Defense)'}</span>
-              </button>
-
-              <button
-                onClick={() => setSummonChoiceModal(null)}
-                className="w-full py-1 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
-              >
-                {languagePt ? 'Cancelar' : 'Cancel'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL DE ESCOLHA DE CARTA MÁGICA (RIGHT-DOCKED TACTICAL HUD) */}
-        {spellChoiceModal && (
-          <div className="fixed right-4 sm:right-6 top-24 z-50 w-72 sm:w-84 max-h-[80vh] flex flex-col animate-slideInRight bg-[#0c0818]/95 border-2 border-amber-500/80 rounded-2xl p-4 shadow-[0_0_35px_rgba(245,158,11,0.5)] backdrop-blur-md overflow-y-auto text-center">
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-amber-500/30">
-              <span className="text-[10px] font-mono font-black text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-600/50 uppercase tracking-wider">
-                [MAGIA]
-              </span>
-              <button
-                onClick={() => setSpellChoiceModal(null)}
-                className="text-slate-400 hover:text-white text-xs font-mono px-1.5 py-0.5 rounded hover:bg-white/10"
-              >
-                [X]
-              </button>
-            </div>
-
-            <div className="w-20 h-28 mx-auto mb-2 rounded-lg overflow-hidden border border-emerald-400/80 shadow-lg">
+          <div className="flex justify-center mb-3">
+            <div className="w-20 h-28 rounded-lg p-0.5 bg-gradient-to-br from-[#7a4e23] to-[#1a0f05] border border-amber-600/80 shadow-md">
               <img
-                src={spellChoiceModal.card.data.imageUrl}
-                alt={spellChoiceModal.card.data.name}
-                className="w-full h-full object-contain"
+                src={summonChoiceModal.card.data.imageUrl}
+                alt={summonChoiceModal.card.data.name}
+                className="w-full h-full object-contain rounded"
               />
             </div>
+          </div>
 
-            <h3 className="text-sm font-serif font-black text-amber-300 mb-1">
-              {languagePt && spellChoiceModal.card.data.namePt
-                ? spellChoiceModal.card.data.namePt
-                : spellChoiceModal.card.data.name}
-            </h3>
-            <p className="text-[11px] text-slate-300 mb-4">
-              {spellChoiceModal.isFromField
-                ? (languagePt
-                    ? 'Deseja ativar esta Carta Mágica virada para baixo?'
-                    : 'Do you want to activate this face-down Spell card?')
-                : (languagePt
-                    ? 'Como deseja utilizar esta Carta Mágica?'
-                    : 'How would you like to play this Spell card?')}
-            </p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() =>
+                executeSummon(
+                  summonChoiceModal.zoneIndex,
+                  summonChoiceModal.tributeIndices,
+                  'ATTACK',
+                  false
+                )
+              }
+              className="w-full py-2 px-3 bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
+            >
+              <span className="font-mono text-[10px] bg-black/30 text-stone-950 px-1 rounded font-black">[ATK]</span>
+              <span>{languagePt ? 'Invocar em Modo de Ataque' : 'Summon in Attack Mode'}</span>
+            </button>
 
-            <div className="flex flex-col space-y-2">
+            <button
+              onClick={() =>
+                executeSummon(
+                  summonChoiceModal.zoneIndex,
+                  summonChoiceModal.tributeIndices,
+                  'DEFENSE',
+                  true
+                )
+              }
+              className="w-full py-2 px-3 bg-[#292524] hover:bg-[#38322e] text-stone-100 border border-amber-800/70 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
+            >
+              <span className="font-mono text-[10px] bg-black/40 text-amber-300 px-1 rounded font-black">[DEF]</span>
+              <span>{languagePt ? 'Baixar Virado para Baixo' : 'Set Face-Down (Defense)'}</span>
+            </button>
+
+            <button
+              onClick={() => setSummonChoiceModal(null)}
+              className="w-full py-1 text-stone-400 hover:text-stone-200 text-[11px] font-bold uppercase transition-colors"
+            >
+              {languagePt ? 'Cancelar' : 'Cancel'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE ESCOLHA DE CARTA MÁGICA (RIGHT-DOCKED TACTICAL HUD) */}
+      {spellChoiceModal && (
+        <div className="fixed right-4 sm:right-6 top-24 z-50 w-72 sm:w-84 max-h-[80vh] flex flex-col animate-slideInRight bg-[#141210]/95 border-2 border-amber-800/80 rounded-2xl p-4 shadow-[0_8px_35px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-y-auto text-center">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-800">
+            <span className="text-[10px] font-mono font-black text-emerald-300 bg-emerald-950/90 px-2 py-0.5 rounded border border-emerald-700/60 uppercase tracking-wider">
+              [MAGIA]
+            </span>
+            <button
+              onClick={() => setSpellChoiceModal(null)}
+              className="text-stone-400 hover:text-stone-100 text-xs font-mono px-1.5 py-0.5 rounded hover:bg-white/10"
+            >
+              [X]
+            </button>
+          </div>
+
+          <div className="w-20 h-28 mx-auto mb-2 rounded-lg overflow-hidden border border-emerald-700/80 shadow-lg">
+            <img
+              src={spellChoiceModal.card.data.imageUrl}
+              alt={spellChoiceModal.card.data.name}
+              className="w-full h-full object-contain"
+            />
+          </div>
+
+          <h3 className="text-sm font-serif font-black text-amber-300 mb-1">
+            {languagePt && spellChoiceModal.card.data.namePt
+              ? spellChoiceModal.card.data.namePt
+              : spellChoiceModal.card.data.name}
+          </h3>
+          <p className="text-[11px] text-stone-300 mb-4">
+            {spellChoiceModal.isFromField
+              ? languagePt
+                ? 'Deseja ativar esta Carta Mágica virada para baixo?'
+                : 'Do you want to activate this face-down Spell card?'
+              : languagePt
+              ? 'Como deseja utilizar esta Carta Mágica?'
+              : 'How would you like to play this Spell card?'}
+          </p>
+
+          <div className="flex flex-col space-y-2">
+            <button
+              onClick={() =>
+                handleActivateSpell(
+                  spellChoiceModal.card,
+                  spellChoiceModal.zoneIndex
+                )
+              }
+              className="w-full py-2 px-3 bg-gradient-to-b from-emerald-700 to-emerald-800 hover:from-emerald-600 hover:to-emerald-700 text-stone-100 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
+            >
+              <span className="font-mono text-[10px] bg-black/40 text-emerald-300 px-1 rounded font-black">[ATIVAR]</span>
+              <span>
+                {spellChoiceModal.isFromField
+                  ? languagePt
+                    ? 'Ativar Magia'
+                    : 'Activate Spell'
+                  : languagePt
+                  ? 'Ativar Imediatamente'
+                  : 'Activate Immediately'}
+              </span>
+            </button>
+
+            {!spellChoiceModal.isFromField && (
               <button
                 onClick={() =>
-                  handleActivateSpell(
+                  handleSetSpellTrap(
                     spellChoiceModal.card,
                     spellChoiceModal.zoneIndex
                   )
                 }
-                className="w-full py-2 px-3 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
+                className="w-full py-2 px-3 bg-[#292524] hover:bg-[#38322e] text-stone-200 border border-amber-800/70 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
               >
-                <span className="font-mono text-[10px] bg-black/40 text-emerald-300 px-1 rounded font-black">[ATIVAR]</span>
-                <span>
-                  {spellChoiceModal.isFromField
-                    ? (languagePt ? 'Ativar Magia' : 'Activate Spell')
-                    : (languagePt ? 'Ativar Imediatamente' : 'Activate Immediately')}
-                </span>
+                <span className="font-mono text-[10px] bg-black/40 text-amber-300 px-1 rounded font-black">[BAIXAR]</span>
+                <span>{languagePt ? 'Baixar na Zona (Virada para Baixo)' : 'Set in Zone (Face-Down)'}</span>
               </button>
+            )}
 
-              {!spellChoiceModal.isFromField && (
-                <button
-                  onClick={() =>
-                    handleSetSpellTrap(
-                      spellChoiceModal.card,
-                      spellChoiceModal.zoneIndex
-                    )
-                  }
-                  className="w-full py-2 px-3 bg-emerald-950/90 hover:bg-emerald-900 text-emerald-200 border border-emerald-500/60 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-[1.02] flex items-center justify-center gap-2"
-                >
-                  <span className="font-mono text-[10px] bg-black/40 text-emerald-300 px-1 rounded font-black">[BAIXAR]</span>
-                  <span>{languagePt ? 'Baixar na Zona (Virada para Baixo)' : 'Set in Zone (Face-Down)'}</span>
-                </button>
-              )}
+            <button
+              onClick={() => setSpellChoiceModal(null)}
+              className="w-full py-1 text-stone-400 hover:text-stone-200 text-[11px] font-bold uppercase transition-colors"
+            >
+              {languagePt ? 'Cancelar' : 'Cancel'}
+            </button>
+          </div>
+        </div>
+      )}
 
+      {/* MODAL DE CONFIRMAÇÃO DE SAIR / RENDER-SE */}
+      {showSurrenderModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
+          <div className="bg-[#141210] border-2 border-red-800 rounded-xl p-6 text-center max-w-sm shadow-2xl">
+            <h3 className="text-xl font-serif font-black text-red-400 mb-2">
+              DESEJA SAIR DO DUELO?
+            </h3>
+            <p className="text-xs text-stone-300 mb-5">
+              Ao sair agora, você concederá a vitória a Seto Kaiba por rendição.
+            </p>
+
+            <div className="flex space-x-3 justify-center">
               <button
-                onClick={() => setSpellChoiceModal(null)}
-                className="w-full py-1 text-slate-400 hover:text-slate-200 text-[11px] font-bold uppercase transition-colors"
+                onClick={handleConfirmSurrender}
+                className="flex-1 py-2 bg-red-800 hover:bg-red-700 text-stone-100 font-bold rounded-lg text-xs uppercase shadow"
               >
-                {languagePt ? 'Cancelar' : 'Cancel'}
+                Sim, Desistir
+              </button>
+              <button
+                onClick={() => setShowSurrenderModal(false)}
+                className="flex-1 py-2 bg-[#292524] hover:bg-[#38322e] text-stone-200 border border-stone-700 font-bold rounded-lg text-xs uppercase shadow"
+              >
+                Continuar Jogando
               </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* MODAL DE CONFIRMAÇÃO DE SAIR / RENDER-SE */}
-        {showSurrenderModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn">
-            <div className="bg-[#160c1d] border-2 border-red-500 rounded-xl p-6 text-center max-w-sm shadow-[0_0_35px_rgba(239,68,68,0.5)]">
-              <h3 className="text-xl font-serif font-black text-red-400 mb-2">
-                DESEJA SAIR DO DUELO?
-              </h3>
-              <p className="text-xs text-slate-300 mb-5">
-                Ao sair agora, você concederá a vitória a Seto Kaiba por rendição.
-              </p>
-              
-              <div className="flex space-x-3 justify-center">
-                <button
-                  onClick={handleConfirmSurrender}
-                  className="flex-1 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-xs uppercase shadow"
-                >
-                  Sim, Desistir
-                </button>
-                <button
-                  onClick={() => setShowSurrenderModal(false)}
-                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg text-xs uppercase shadow"
-                >
-                  Continuar Jogando
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL DE FIM DE PARTIDA */}
-        {match.isGameOver && (
-          <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
+      {/* MODAL DE FIM DE PARTIDA */}
+      {match.isGameOver && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 animate-fadeIn">
+          <div
+            className={`border-2 rounded-2xl p-8 text-center max-w-md shadow-2xl ${
+              match.winnerPlayerId === p1.id
+                ? 'bg-[#141210] border-amber-500'
+                : 'bg-[#161212] border-red-800'
+            }`}
+          >
             <div
-              className={`border-2 rounded-2xl p-8 text-center max-w-md shadow-2xl ${
-                match.winnerPlayerId === p1.id
-                  ? 'bg-[#140e26] border-amber-400 shadow-[0_0_60px_rgba(245,158,11,0.7)]'
-                  : 'bg-[#180a14] border-red-500 shadow-[0_0_60px_rgba(239,68,68,0.7)]'
+              className={`text-5xl mb-2 ${
+                match.winnerPlayerId === p1.id ? 'text-amber-400 animate-bounce' : 'text-red-400 animate-pulse'
               }`}
             >
-              <div
-                className={`text-5xl mb-2 ${
-                  match.winnerPlayerId === p1.id ? 'text-amber-400 animate-bounce' : 'text-red-400 animate-pulse'
-                }`}
-              >
-                {match.winnerPlayerId === p1.id ? '[VITÓRIA]' : '[DERROTA]'}
-              </div>
-              <h1
-                className={`text-3xl font-black mb-2 font-serif tracking-widest ${
+              {match.winnerPlayerId === p1.id ? '[VITÓRIA]' : '[DERROTA]'}
+            </div>
+            <h1
+              className={`text-3xl font-black mb-2 font-serif tracking-widest ${
+                match.winnerPlayerId === p1.id
+                  ? 'text-amber-300'
+                  : 'text-red-500'
+              }`}
+            >
+              {match.winnerPlayerId === p1.id ? 'VITÓRIA!' : 'DERROTA!'}
+            </h1>
+            <p className="text-stone-200 font-semibold mb-6 text-sm">{match.winReason}</p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+              <button
+                onClick={handleResetMatch}
+                className={`w-full sm:w-auto px-6 py-2.5 font-black uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 text-xs ${
                   match.winnerPlayerId === p1.id
-                    ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500'
-                    : 'text-red-500'
+                    ? 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950'
+                    : 'bg-gradient-to-b from-red-700 to-red-800 hover:from-red-600 hover:to-red-700 text-white'
                 }`}
               >
-                {match.winnerPlayerId === p1.id ? 'VITÓRIA!' : 'DERROTA!'}
-              </h1>
-              <p className="text-slate-200 font-semibold mb-6 text-sm">{match.winReason}</p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                Novo Duelo
+              </button>
+              {onExitToMenu && (
                 <button
-                  onClick={handleResetMatch}
-                  className={`w-full sm:w-auto px-6 py-2.5 font-black uppercase tracking-wider rounded-xl shadow-lg transition-transform hover:scale-105 text-xs ${
-                    match.winnerPlayerId === p1.id
-                      ? 'bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950'
-                      : 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
-                  }`}
+                  onClick={onExitToMenu}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-[#292524] hover:bg-[#38322e] text-stone-200 border border-amber-800/60 font-bold uppercase tracking-wider rounded-xl shadow transition-transform hover:scale-105 text-xs"
                 >
-                  Novo Duelo
+                  Menu Principal
                 </button>
-                {onExitToMenu && (
-                  <button
-                    onClick={onExitToMenu}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-purple-500/50 font-bold uppercase tracking-wider rounded-xl shadow transition-transform hover:scale-105 text-xs"
-                  >
-                    Menu Principal
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Modal de Configurações Persistentes da Mesa de Duelo */}
-        <SettingsModal
-          isOpen={isSettingsModalOpen}
-          onClose={() => setIsSettingsModalOpen(false)}
-          userNickname={playerNickname}
-          onSettingsChanged={handleSettingsChangedInPlaymat}
-        />
-      </main>
+      {/* Modal de Configurações Persistentes da Mesa de Duelo */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        userNickname={playerNickname}
+        onSettingsChanged={handleSettingsChangedInPlaymat}
+      />
     </div>
   );
 };

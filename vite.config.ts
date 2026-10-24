@@ -15,5 +15,12 @@ export default defineConfig({
     fs: {
       allow: ['..'],
     },
+    proxy: {
+      '/api/card-image': {
+        target: 'https://images.ygoprodeck.com/images/cards',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/card-image/, ''),
+      },
+    },
   },
 });

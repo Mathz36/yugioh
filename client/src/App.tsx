@@ -1,9 +1,13 @@
-import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import { AuthModal } from './components/AuthModal';
 import { GameMenu } from './components/GameMenu';
 import { Playmat } from './components/Playmat';
 import { DeckBuilder } from './components/DeckBuilder';
 import { getActiveDeckForDuel } from './utils/deckStorage';
+import {
+  verifyHardwareAcceleration,
+  HardwareAccelerationStatus,
+} from './components/duel3d/webgpuCore';
 
 export interface UserSession {
   email: string;
@@ -61,6 +65,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
   const [currentView, setCurrentView] = useState<AppView>('AUTH');
+  const [hwStatus, setHwStatus] = useState<HardwareAccelerationStatus | null>(null);
+
+  useEffect(() => {
+    verifyHardwareAcceleration().then(setHwStatus);
+  }, []);
 
   const handleLoginSuccess = (user: UserSession) => {
     setCurrentUser(user);
@@ -85,6 +94,67 @@ export const App: React.FC = () => {
   };
 
   const activeDeckData = currentUser ? getActiveDeckForDuel(currentUser.nickname) : null;
+
+  if (hwStatus && !hwStatus.supported) {
+    return (
+      <ErrorBoundary>
+        <div
+          data-testid="hardware-acceleration-guard"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#07040f] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1d0e38] via-[#090514] to-black p-4 text-slate-100 select-none font-sans"
+        >
+          <div className="w-full max-w-lg rounded-2xl border-2 border-amber-500/80 bg-[#10091e]/95 p-7 shadow-[0_0_60px_rgba(245,158,11,0.45)] flex flex-col items-center text-center relative overflow-hidden">
+            <span className="inline-block px-3 py-1 mb-3 rounded bg-amber-950/90 border border-amber-500/60 text-[10px] font-mono font-black tracking-widest text-amber-300 uppercase">
+              [REQUISITO GRÁFICO • WEBGPU / GPU 3D]
+            </span>
+
+            <h1 className="text-xl sm:text-2xl font-black font-serif tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-yellow-500 uppercase mb-2">
+              Aceleração de Hardware Necessária
+            </h1>
+
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4">
+              O Reino dos Duelistas opera exclusivamente em 3D imersivo (Three.js + WebGPU) e exige que a{' '}
+              <strong className="text-amber-300">Aceleração de Hardware (GPU)</strong> esteja ativa no seu navegador antes de prosseguir.
+            </p>
+
+            {hwStatus.reason && (
+              <div className="w-full mb-4 px-3.5 py-2.5 rounded-xl bg-red-950/75 border border-red-500/60 text-red-200 text-xs font-mono">
+                <span className="font-black text-red-400 mr-1.5">[DIAGNÓSTICO]</span>
+                {hwStatus.reason}
+              </div>
+            )}
+
+            <div className="w-full text-left bg-[#160d29] border border-purple-800/70 rounded-xl p-4 mb-5 space-y-2.5 text-xs text-slate-300">
+              <div className="text-[11px] font-mono font-black text-amber-300 uppercase tracking-wider">
+                [COMO ATIVAR A GPU NO NAVEGADOR]
+              </div>
+              <div>
+                <span className="font-bold text-purple-200">Chrome / Edge / Brave:</span> Acesse{' '}
+                <code className="px-1.5 py-0.5 rounded bg-black/70 text-amber-300 font-mono text-[11px]">
+                  chrome://settings/system
+                </code>{' '}
+                e ative <em>&ldquo;Usar aceleração gráfica quando disponível&rdquo;</em>, depois reinicie o navegador.
+              </div>
+              <div>
+                <span className="font-bold text-purple-200">Firefox:</span> Acesse{' '}
+                <code className="px-1.5 py-0.5 rounded bg-black/70 text-amber-300 font-mono text-[11px]">
+                  about:preferences#general
+                </code>{' '}
+                em Desempenho e marque <em>&ldquo;Usar aceleração de hardware quando disponível&rdquo;</em>.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => verifyHardwareAcceleration().then(setHwStatus)}
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black font-serif text-xs sm:text-sm uppercase tracking-wider border border-yellow-200 shadow-[0_0_25px_rgba(245,158,11,0.5)] transition-transform active:scale-95 cursor-pointer"
+            >
+              [Verificar Aceleração de Hardware Novamente]
+            </button>
+          </div>
+        </div>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>
@@ -119,6 +189,9 @@ export const App: React.FC = () => {
             playerDeck={activeDeckData?.cards}
             playerDeckName={activeDeckData?.deckName}
             onExitToMenu={handleExitToMenu}
+            onHardwareError={(reason) =>
+              setHwStatus({ supported: false, backend: 'NONE', reason })
+            }
           />
         )}
       </main>

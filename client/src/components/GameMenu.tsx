@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { soundtrackManager } from '../utils/SoundtrackManager';
 import { getUserSettings, UserSettings } from '../utils/settings';
 import { SettingsModal } from './SettingsModal';
+import { WebGPUBackdrop } from './duel3d/WebGPUBackdrop';
 
 interface GameMenuProps {
   userNickname: string;
@@ -44,22 +45,20 @@ export const GameMenu: React.FC<GameMenuProps> = ({
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-black select-none text-slate-100 font-sans">
-      {/* 1. Background Cinematográfico com Vídeo em Tela Cheia e Realce de Nitidez/Brilho no Dragão */}
-      <video
-        src="/video/banner.mp4"
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="absolute inset-0 w-full h-full object-cover object-right sm:object-center brightness-125 contrast-115 saturate-125 pointer-events-none"
+      {/* 1. Background 3D WebGPU Nativo (VideoTexture + Partículas + Geometria Sagrada) */}
+      <WebGPUBackdrop
+        variant="menu"
+        videoSrc="/video/banner.mp4"
+        showBadge={true}
+        className="z-0"
       />
 
       {/* 2. Aura sutil azulada para destacar o Dragão Branco de Olhos Azuis na direita */}
-      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[60vw] h-[80vh] bg-sky-500/10 rounded-full blur-[130px] pointer-events-none" />
+      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[60vw] h-[80vh] bg-sky-500/10 rounded-full blur-[130px] pointer-events-none z-[2]" />
 
-      {/* 3. Gradiente restrito apenas à coluna esquerda (deixando o Dragão 100% limpo e em foco à direita) */}
+      {/* 3. Gradiente restrito apenas à coluna esquerda (deixando o palco 3D 100% limpo e em foco à direita) */}
       <div
-        className="absolute inset-0 pointer-events-none"
+        className="absolute inset-0 pointer-events-none z-[3]"
         style={{
           background:
             'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.72) 26%, rgba(0,0,0,0.15) 48%, rgba(0,0,0,0) 70%)',

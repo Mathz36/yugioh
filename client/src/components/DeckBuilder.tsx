@@ -15,6 +15,8 @@ import {
 } from '../utils/deckStorage';
 import { getUserSettings } from '../utils/settings';
 import { soundFX } from '../utils/soundFX';
+import { WebGPUBackdrop } from './duel3d/WebGPUBackdrop';
+import { Card3DShowcase } from './duel3d/Card3DShowcase';
 
 export interface DeckBuilderProps {
   userNickname: string;
@@ -334,6 +336,9 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#07050d] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#1b1035] via-[#090614] to-[#030206] text-slate-100 select-none font-sans relative">
+      {/* Camada 3D WebGPU no Fundo do Construtor de Decks */}
+      <WebGPUBackdrop variant="deck" showBadge={true} className="z-0 opacity-45" />
+
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none">
@@ -347,7 +352,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
       {/* =====================================================================
           LADO ESQUERDO: LISTA DE DECKS + INSPETOR LATERAL AMPLIADO (GRIMOIRE)
          ===================================================================== */}
-      <aside className="w-80 lg:w-96 bg-[#0d0918]/95 border-r-2 border-[#382654] flex flex-col justify-between p-4 shadow-[5px_0_30px_rgba(0,0,0,0.85)] z-20 shrink-0 overflow-y-auto">
+      <aside className="relative w-80 lg:w-96 bg-[#0d0918]/95 border-r-2 border-[#382654] flex flex-col justify-between p-4 shadow-[5px_0_30px_rgba(0,0,0,0.85)] z-20 shrink-0 overflow-y-auto">
         <div className="space-y-3.5">
           {/* Header e Botão Voltar ao Menu */}
           <div className="flex items-center justify-between pb-3 border-b border-purple-900/50">
@@ -526,17 +531,15 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
               )}
             </div>
 
-            {/* Arte Ampliada com Moldura Dourada */}
-            <div className="relative group mx-auto">
-              <img
-                src={inspectedCard.imageUrl}
-                alt={inspectedCard.name}
-                loading="lazy"
-                decoding="async"
-                className="w-32 sm:w-40 aspect-[2/2.8] object-cover rounded-xl border-2 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.35)] transition-transform group-hover:scale-[1.02]"
+            {/* Arte Ampliada com Moldura Dourada (Showcase 3D WebGPU Interativo) */}
+            <div className="relative group mx-auto w-36 sm:w-44 aspect-[2/2.8] rounded-xl border-2 border-amber-400/80 shadow-[0_0_25px_rgba(245,158,11,0.35)] overflow-hidden">
+              <Card3DShowcase
+                card={inspectedCard}
+                languagePt={isPt}
+                className="w-full h-full"
               />
               {/* Badge com quantidade no deck em edição */}
-              <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded-full bg-black/90 border border-amber-400 text-amber-300 font-mono font-black text-[9px]">
+              <div className="pointer-events-none absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded-full bg-black/90 border border-amber-400 text-amber-300 font-mono font-black text-[9px]">
                 {getCardQuantityInDeck(inspectedCard.id)}/3
               </div>
             </div>
@@ -641,7 +644,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
       {/* =====================================================================
           ÁREA CENTRAL / DIREITA: TOPO (DECK EM EDIÇÃO) + INFERIOR (CATÁLOGO)
          ===================================================================== */}
-      <section className="flex-1 flex flex-col h-full overflow-hidden p-3 sm:p-5 gap-3.5">
+      <section className="relative z-10 flex-1 flex flex-col h-full overflow-hidden p-3 sm:p-5 gap-3.5">
         {/* -------------------------------------------------------------------
             CENTRO SUPERIOR: DECK EM EDIÇÃO (INPUT DE NOME, CONTAGEM E SALVAR)
            ------------------------------------------------------------------- */}

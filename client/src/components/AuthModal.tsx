@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { WebGPUBackdrop } from './duel3d/WebGPUBackdrop';
 
 interface AuthModalProps {
   onLoginSuccess: (user: { email: string; nickname: string; isGuest?: boolean }) => void;
@@ -39,7 +40,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
 
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4 select-none animate-fadeIn">
-      <div className="w-full max-w-md bg-[#100a1c] border-2 border-amber-500/80 rounded-2xl p-7 shadow-[0_0_50px_rgba(245,158,11,0.4)] flex flex-col items-center relative overflow-hidden">
+      <WebGPUBackdrop variant="auth" showBadge={true} className="z-0" />
+      <div className="w-full max-w-md bg-[#100a1c] border-2 border-amber-500/80 rounded-2xl p-7 shadow-[0_0_50px_rgba(245,158,11,0.4)] flex flex-col items-center relative z-10 overflow-hidden">
         
         {/* Glow de fundo */}
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
