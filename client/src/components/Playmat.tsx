@@ -2453,27 +2453,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
         />
       </div>
 
-      {/* 2. TOPO ESQUERDO: CONTROLES DE CONFIGURAÇÕES E RENDIÇÃO (PEDRA ESCURA E OURO ENVELHECIDO) */}
-      <div className="fixed top-3 left-3 z-30 flex items-center gap-2">
-        <button
-          onClick={() => setIsSettingsModalOpen(true)}
-          className="w-10 h-10 rounded-full bg-[#141210]/95 border border-amber-800/75 hover:border-amber-600 text-amber-200/90 font-mono text-[10px] font-black flex items-center justify-center shadow-lg cursor-pointer transition-colors backdrop-blur-md"
-          title={languagePt ? 'Configurações de Áudio e Idioma' : 'Audio and Language Settings'}
-          aria-label={languagePt ? 'Abrir Configurações' : 'Open Settings'}
-        >
-          [CFG]
-        </button>
-
-        <button
-          onClick={() => setShowSurrenderModal(true)}
-          className="px-3 py-1.5 rounded-full bg-[#141210]/95 border border-amber-800/75 hover:border-amber-600 text-amber-200/90 hover:text-amber-100 font-mono text-[10px] font-black tracking-wider shadow-lg cursor-pointer transition-colors backdrop-blur-md"
-          title={languagePt ? 'Sair ou Render-se do Duelo' : 'Surrender or Exit Duel'}
-        >
-          {languagePt ? '[RENDER-SE]' : '[SURRENDER]'}
-        </button>
-      </div>
-
-      {/* 3. TOPO DIREITO: PLACA DE LP DO OPONENTE (DARK STONE & CRIMSON IRON PLATE) */}
+      {/* 2. TOPO DIREITO: PLACA DE LP DO OPONENTE (DARK STONE & CRIMSON IRON PLATE) */}
       <div
         ref={opponentLpRef}
         className="fixed top-3 right-3 z-30 bg-[#161212]/95 border-2 border-red-900/75 rounded-bl-2xl rounded-tr-lg px-3.5 py-1.5 shadow-[0_4px_25px_rgba(0,0,0,0.9)] flex items-center gap-3 backdrop-blur-md"
@@ -2549,9 +2529,9 @@ export const Playmat: React.FC<PlaymatProps> = ({
         </div>
       </div>
 
-      {/* 5. PAINEL FLUTUANTE ESQUERDO: INSPETOR DE CARTAS (DARK STONE & AGED GOLD) */}
+      {/* 4. PAINEL FLUTUANTE ESQUERDO: INSPETOR DE CARTAS (DARK STONE & AGED GOLD) */}
       {isInspectorCollapsed ? (
-        <div className="fixed left-3 top-16 z-30">
+        <div className="fixed left-3 top-3 z-30">
           <button
             onClick={() => setIsInspectorCollapsed(false)}
             className="bg-[#141210]/95 border border-amber-800/75 hover:border-amber-600 text-amber-200/90 px-3 py-2 rounded-xl shadow-lg font-mono text-[10px] font-black tracking-wider cursor-pointer transition-colors backdrop-blur-md"
@@ -2561,7 +2541,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           </button>
         </div>
       ) : (
-        <aside className="fixed left-3 top-14 bottom-[86px] sm:bottom-[90px] w-80 sm:w-88 md:w-92 z-30 flex flex-col bg-[#141210]/95 border border-amber-900/75 text-stone-200 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-hidden">
+        <aside className="fixed left-3 top-3 bottom-28 sm:bottom-32 w-80 sm:w-88 md:w-92 z-30 flex flex-col bg-[#141210]/95 border border-amber-900/75 text-stone-200 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-hidden">
           {inspectedCard ? (
             (() => {
               const isPlayerOwned =
@@ -3042,8 +3022,25 @@ export const Playmat: React.FC<PlaymatProps> = ({
         </div>
       )}
 
-      {/* 7. RODAPÉ DIREITO: BOTÕES TÁTICOS [INFO] & [LOG] (DARK STONE & AGED GOLD) */}
+      {/* 6. RODAPÉ DIREITO: CONTROLES TÁTICOS ([CFG], [RENDER-SE], [INFO], [LOG]) */}
       <div className="fixed bottom-3 right-3 z-30 flex items-center gap-2">
+        <button
+          onClick={() => setIsSettingsModalOpen(true)}
+          className="w-10 h-10 rounded-full bg-[#141210]/95 border border-amber-800/75 hover:border-amber-600 text-amber-200/90 font-mono text-[10px] font-black flex items-center justify-center shadow-lg cursor-pointer transition-colors backdrop-blur-md"
+          title={languagePt ? 'Configurações de Áudio e Idioma' : 'Audio and Language Settings'}
+          aria-label={languagePt ? 'Abrir Configurações' : 'Open Settings'}
+        >
+          [CFG]
+        </button>
+
+        <button
+          onClick={() => setShowSurrenderModal(true)}
+          className="px-3 py-2 rounded-full bg-[#141210]/95 border border-amber-800/75 hover:border-red-800/80 text-amber-200/90 hover:text-red-300 font-mono text-[10px] font-black tracking-wider shadow-lg flex items-center justify-center cursor-pointer transition-colors backdrop-blur-md"
+          title={languagePt ? 'Sair ou Render-se do Duelo' : 'Surrender or Exit Duel'}
+        >
+          {languagePt ? '[RENDER-SE]' : '[SURRENDER]'}
+        </button>
+
         <button
           onClick={() => setIsFieldInfoOpen((prev) => !prev)}
           className={`w-10 h-10 rounded-full bg-[#141210]/95 border font-mono text-[10px] font-black shadow-lg flex items-center justify-center cursor-pointer transition-colors backdrop-blur-md ${
