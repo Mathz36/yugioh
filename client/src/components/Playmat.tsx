@@ -2561,7 +2561,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           </button>
         </div>
       ) : (
-        <aside className="fixed left-3 top-16 bottom-24 w-64 sm:w-72 z-30 flex flex-col bg-[#141210]/95 border border-amber-900/75 text-stone-200 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-hidden">
+        <aside className="fixed left-3 top-16 bottom-24 w-72 sm:w-80 z-30 flex flex-col bg-[#141210]/95 border border-amber-900/75 text-stone-200 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-hidden">
           {inspectedCard ? (
             (() => {
               const isPlayerOwned =
@@ -2617,38 +2617,43 @@ export const Playmat: React.FC<PlaymatProps> = ({
                       </div>
                     </div>
 
-                    {/* Upper Split Section */}
-                    <div className="p-2.5 flex gap-2.5 items-stretch border-b border-amber-900/40 bg-[#181512] shrink-0">
-                      <div className="w-28 sm:w-32 h-40 sm:h-44 shrink-0 rounded-lg overflow-hidden border border-amber-800/60 bg-black/70 p-1 shadow-inner">
+                    {/* Conteúdo Vertical Unificado */}
+                    <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
+                      {/* 1. Foto da Carta Ampliada */}
+                      <div className="w-48 sm:w-52 h-68 sm:h-74 mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-800/60 bg-black/70 p-1 shadow-lg">
                         <img
                           src="/card-back.jpg"
                           alt={titleText}
                           className="w-full h-full object-contain rounded"
                         />
                       </div>
-                      <div className="flex-1 flex flex-col justify-center gap-2 pl-1 text-left">
-                        <div className="px-2 py-1 rounded bg-[#292524] border border-amber-800/50 text-amber-200 font-mono text-[10px] font-black">
-                          [STATUS: SECRETO]
-                        </div>
-                        {!isSpellOrTrap && (
-                          <>
-                            <div className="px-2 py-1 rounded bg-[#1c1917] border border-stone-700 text-stone-300 font-mono text-xs font-black">
-                              [ATK] ???
-                            </div>
-                            <div className="px-2 py-1 rounded bg-[#1c1917] border border-stone-700 text-stone-300 font-mono text-xs font-black">
-                              [DEF] ???
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Lower Scrollable Lore/Effect Box */}
-                    <div className="flex-1 overflow-y-auto bg-[#0f0d0b]/95 p-2.5 text-left">
-                      <div className="text-xs font-bold text-amber-300 mb-1 font-mono">
-                        [{languagePt ? 'Carta Oculta' : 'Face-Down Card'}]
+                      {/* 2. Status Oculto */}
+                      <div className="py-1 px-3 rounded-lg bg-[#292524] border border-amber-800/50 text-amber-200 font-mono text-[11px] font-black text-center shrink-0">
+                        [STATUS: SECRETO]
                       </div>
-                      <p className="text-xs text-stone-200 leading-relaxed">{descText}</p>
+
+                      {/* 3. Informações de ATK e Defesa */}
+                      {!isSpellOrTrap && (
+                        <div className="grid grid-cols-2 gap-2 shrink-0">
+                          <div className="px-3 py-1.5 rounded-lg bg-[#1c1917] border border-stone-700 text-stone-400 font-mono text-xs font-black flex items-center justify-between">
+                            <span className="text-[10px]">[ATK]</span>
+                            <span>???</span>
+                          </div>
+                          <div className="px-3 py-1.5 rounded-lg bg-[#1c1917] border border-stone-700 text-stone-400 font-mono text-xs font-black flex items-center justify-between">
+                            <span className="text-[10px]">[DEF]</span>
+                            <span>???</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 4. Descrição */}
+                      <div className="bg-[#0f0d0b]/95 p-3 rounded-lg border border-amber-950/80 text-left shadow-inner">
+                        <div className="text-xs font-bold text-amber-300 mb-1 font-mono">
+                          [{languagePt ? 'Carta Oculta' : 'Face-Down Card'}]
+                        </div>
+                        <p className="text-xs text-stone-200 leading-relaxed font-sans">{descText}</p>
+                      </div>
                     </div>
                   </>
                 );
@@ -2717,98 +2722,110 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     </div>
                   </div>
 
-                  {/* Upper Split Section (Side-by-Side 3D Showcase + Stats) */}
-                  <div className="p-2.5 flex gap-2.5 items-stretch border-b border-amber-900/40 bg-[#181512] shrink-0">
-                    <div className="w-28 sm:w-32 h-40 sm:h-44 shrink-0 rounded-lg overflow-hidden border border-amber-700/70 bg-black/70 shadow-inner relative">
+                  {/* Conteúdo Vertical Unificado */}
+                  <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
+                    {/* 1. Foto da Carta Ampliada (Card3DShowcase) */}
+                    <div className="w-48 sm:w-52 h-68 sm:h-74 mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-700/70 bg-black/70 shadow-lg relative">
                       <Card3DShowcase
                         card={inspectedCard.data}
                         languagePt={languagePt}
                         className="w-full h-full"
                       />
                       {isPlayerOwned && isFaceDown && (
-                        <div className="pointer-events-none absolute bottom-1 left-1 right-1 bg-[#292524]/95 border border-amber-600/80 text-amber-200 text-[8px] font-mono font-black py-0.5 px-1 rounded text-center">
+                        <div className="pointer-events-none absolute bottom-1.5 left-2 right-2 bg-[#292524]/95 border border-amber-600/80 text-amber-200 text-[9px] font-mono font-black py-0.5 px-1 rounded text-center">
                           [OCULTA]
                         </div>
                       )}
                     </div>
 
-                    <div className="flex-1 flex flex-col justify-center gap-2 pl-1 text-left">
-                      {!isSpellOrTrap ? (
-                        <>
-                          <div className="px-2 py-1 rounded bg-[#292524] border border-amber-700/60 text-amber-300 font-mono text-xs font-black flex items-center justify-between">
-                            <span>{languagePt ? 'NÍVEL' : 'LEVEL'}</span>
-                            <span>★ {inspectedCard.data.level}</span>
-                          </div>
-                          <div
-                            className={`px-2 py-1 rounded border font-mono text-xs font-black flex items-center justify-between transition-all ${
-                              isBuffed
-                                ? 'bg-emerald-950/90 border-emerald-600 text-emerald-300'
-                                : 'bg-[#1c1917] border-amber-800/60 text-amber-200'
-                            }`}
-                          >
-                            <span className="text-amber-400">[ATK]</span>
-                            <span>
-                              {effectiveAtk}
-                              {isBuffed ? ' ▲' : ''}
-                            </span>
-                          </div>
-                          <div className="px-2 py-1 rounded bg-[#1c1917] border border-stone-700 text-stone-200 font-mono text-xs font-black flex items-center justify-between">
-                            <span className="text-stone-400">[DEF]</span>
-                            <span>{inspectedCard.data.defense ?? 0}</span>
-                          </div>
-                        </>
-                      ) : (
+                    {/* 2. Logo abaixo: Estrelas de Nível do Monstro */}
+                    {!isSpellOrTrap ? (
+                      <div className="flex items-center justify-center gap-1.5 py-1 px-2.5 rounded-lg bg-[#1c1917] border border-amber-900/60 shadow-inner shrink-0">
+                        <span className="text-[11px] font-mono font-black text-amber-300 uppercase tracking-wider mr-1">
+                          {languagePt ? 'NÍVEL' : 'LEVEL'} {inspectedCard.data.level}
+                        </span>
+                        <div className="flex items-center gap-0.5 text-amber-400 text-sm drop-shadow-[0_1px_3px_rgba(245,158,11,0.6)]">
+                          {Array.from({ length: Math.min(12, inspectedCard.data.level || 0) }).map((_, i) => (
+                            <span key={i}>★</span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        className={`py-1 px-3 rounded-lg border font-mono text-xs font-black text-center shrink-0 ${
+                          isSpell
+                            ? 'bg-emerald-950/85 border-emerald-700/60 text-emerald-300'
+                            : 'bg-red-950/85 border-red-800/60 text-red-200'
+                        }`}
+                      >
+                        {isSpell
+                          ? languagePt
+                            ? '[CARTA MÁGICA]'
+                            : '[SPELL CARD]'
+                          : languagePt
+                          ? '[CARTA ARMADILHA]'
+                          : '[TRAP CARD]'}
+                      </div>
+                    )}
+
+                    {/* 3. Depois: Informações de ATK e Defesa */}
+                    {!isSpellOrTrap && (
+                      <div className="grid grid-cols-2 gap-2 shrink-0">
                         <div
-                          className={`px-2 py-1.5 rounded border font-mono text-xs font-black text-center ${
-                            isSpell
-                              ? 'bg-emerald-950/85 border-emerald-700/60 text-emerald-300'
-                              : 'bg-red-950/85 border-red-800/60 text-red-200'
+                          className={`px-3 py-1.5 rounded-lg border font-mono text-xs font-black flex items-center justify-between transition-all ${
+                            isBuffed
+                              ? 'bg-emerald-950/90 border-emerald-600 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.25)]'
+                              : 'bg-[#1c1917] border-amber-800/60 text-amber-200'
                           }`}
                         >
-                          {isSpell
-                            ? languagePt
-                              ? '[MAGIA]'
-                              : '[SPELL]'
-                            : languagePt
-                            ? '[ARMADILHA]'
-                            : '[TRAP]'}
+                          <span className="text-amber-400 font-bold text-[10px]">[ATK]</span>
+                          <span className="text-sm font-black tracking-wide">
+                            {effectiveAtk}
+                            {isBuffed ? ' ▲' : ''}
+                          </span>
+                        </div>
+                        <div className="px-3 py-1.5 rounded-lg bg-[#1c1917] border border-stone-700 text-stone-200 font-mono text-xs font-black flex items-center justify-between">
+                          <span className="text-stone-400 font-bold text-[10px]">[DEF]</span>
+                          <span className="text-sm font-black tracking-wide">
+                            {inspectedCard.data.defense ?? 0}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 4. Depois: Efeito ou Descrição */}
+                    <div className="bg-[#0f0d0b]/95 p-3 rounded-lg border border-amber-950/80 text-left flex flex-col justify-between gap-2 shadow-inner">
+                      <div>
+                        <div className="text-xs font-bold text-amber-300 mb-1.5 font-mono">
+                          [{inspectedCard.data.race || formatCardType(inspectedCard.data.type)}]
+                        </div>
+                        <p className="text-xs text-stone-200 leading-relaxed font-sans">
+                          {displayCardDesc}
+                        </p>
+                      </div>
+
+                      {/* Botão de Ativação do Efeito de Time Wizard no Campo */}
+                      {isPlayerTimeWizardOnField && (
+                        <div className="pt-2 border-t border-stone-800 shrink-0">
+                          <button
+                            onClick={() => handleActivateTimeWizard(playerZoneIdx)}
+                            disabled={!canUseTimeWizard}
+                            className={`w-full py-1.5 px-3 rounded-lg font-serif font-black text-xs tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 ${
+                              canUseTimeWizard
+                                ? 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border border-amber-300 cursor-pointer'
+                                : 'bg-[#292524] text-stone-500 border border-stone-700 cursor-not-allowed opacity-60'
+                            }`}
+                          >
+                            <span className="font-mono text-[10px] font-bold">[TEMPO]</span>
+                            <span>
+                              {inspectedCard.hasUsedEffectThisTurn
+                                ? 'Roleta Já Utilizada'
+                                : 'Girar Roleta do Tempo'}
+                            </span>
+                          </button>
                         </div>
                       )}
                     </div>
-                  </div>
-
-                  {/* Lower Scrollable Lore/Effect Box */}
-                  <div className="flex-1 overflow-y-auto bg-[#0f0d0b]/95 p-2.5 text-left flex flex-col justify-between gap-2">
-                    <div>
-                      <div className="text-xs font-bold text-amber-300 mb-1 font-mono">
-                        [{inspectedCard.data.race || formatCardType(inspectedCard.data.type)}]
-                      </div>
-                      <p className="text-xs text-stone-200 leading-relaxed">
-                        {displayCardDesc}
-                      </p>
-                    </div>
-
-                    {/* Botão de Ativação do Efeito de Time Wizard no Campo */}
-                    {isPlayerTimeWizardOnField && (
-                      <div className="pt-2 border-t border-stone-800 shrink-0">
-                        <button
-                          onClick={() => handleActivateTimeWizard(playerZoneIdx)}
-                          disabled={!canUseTimeWizard}
-                          className={`w-full py-1.5 px-3 rounded-lg font-serif font-black text-xs tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 ${
-                            canUseTimeWizard
-                              ? 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border border-amber-300 cursor-pointer'
-                              : 'bg-[#292524] text-stone-500 border border-stone-700 cursor-not-allowed opacity-60'
-                          }`}
-                        >
-                          <span className="font-mono text-[10px] font-bold">[TEMPO]</span>
-                          <span>
-                            {inspectedCard.hasUsedEffectThisTurn
-                              ? 'Roleta Já Utilizada'
-                              : 'Girar Roleta do Tempo'}
-                          </span>
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </>
               );
@@ -2828,37 +2845,36 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   [-]
                 </button>
               </div>
-              <div className="p-2.5 flex gap-2.5 items-center border-b border-amber-900/40 bg-[#181512] shrink-0">
-                <div className="w-24 h-36 shrink-0 rounded-lg overflow-hidden border border-amber-800/50 bg-black/60 p-1">
+
+              <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
+                <div className="w-48 sm:w-52 h-68 sm:h-74 mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-800/50 bg-black/60 p-1 shadow-lg">
                   <img
                     src="/card-back.jpg"
                     alt="Verso da Carta"
                     className="w-full h-full object-contain rounded"
                   />
                 </div>
-                <div className="flex-1 text-left">
-                  <div className="text-[10px] font-mono font-bold text-amber-400 mb-1">
-                    [GRIMOIRE TÁTICO]
-                  </div>
-                  <p className="text-[11px] text-stone-300 leading-snug">
+                <div className="py-1 px-3 rounded-lg bg-[#292524] border border-amber-800/50 text-amber-300 font-mono text-xs font-black text-center shrink-0">
+                  [GRIMOIRE TÁTICO]
+                </div>
+                <div className="bg-[#0f0d0b]/95 p-3 rounded-lg border border-amber-950/80 text-left space-y-2 shadow-inner">
+                  <p className="text-xs text-stone-300 leading-relaxed font-sans">
                     {languagePt
                       ? 'Passe o cursor ou clique em qualquer carta 3D na mão ou no campo para inspecionar seus atributos e efeitos.'
                       : 'Hover or click any 3D card in your hand or on the field to inspect its stats and effects.'}
                   </p>
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto bg-[#0f0d0b]/95 p-2.5 text-left">
-                <div className="text-xs font-bold text-amber-300 mb-1 font-mono">
-                  [{languagePt ? 'Resumo do Campo' : 'Field Summary'}]
-                </div>
-                <div className="text-[11px] text-stone-300 space-y-1 font-mono">
-                  <div>
-                    {p1.nickname}: {languagePt ? 'Mão' : 'Hand'} {p1.hand.length} • Deck{' '}
-                    {p1.deck.length} • {languagePt ? 'Cem.' : 'GY'} {p1.graveyard.length}
-                  </div>
-                  <div>
-                    {p2.nickname}: {languagePt ? 'Mão' : 'Hand'} {p2.hand.length} • Deck{' '}
-                    {p2.deck.length} • {languagePt ? 'Cem.' : 'GY'} {p2.graveyard.length}
+                  <div className="pt-2 border-t border-stone-800/80 text-[11px] text-stone-300 space-y-1 font-mono">
+                    <div className="font-bold text-amber-400/90 mb-1">
+                      [{languagePt ? 'Resumo do Campo' : 'Field Summary'}]
+                    </div>
+                    <div>
+                      {p1.nickname}: {languagePt ? 'Mão' : 'Hand'} {p1.hand.length} • Deck{' '}
+                      {p1.deck.length} • {languagePt ? 'Cem.' : 'GY'} {p1.graveyard.length}
+                    </div>
+                    <div>
+                      {p2.nickname}: {languagePt ? 'Mão' : 'Hand'} {p2.hand.length} • Deck{' '}
+                      {p2.deck.length} • {languagePt ? 'Cem.' : 'GY'} {p2.graveyard.length}
+                    </div>
                   </div>
                 </div>
               </div>
