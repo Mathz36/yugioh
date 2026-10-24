@@ -6,6 +6,8 @@ import {
   resolveCardImageUrl,
   createCardFaceTexture,
   createCardBackTexture,
+  drawProceduralCardBack,
+  getCardBackDataUrl,
   clearCardTextureCache,
 } from './cardTextureGenerator';
 
@@ -172,6 +174,35 @@ describe('cardTextureGenerator - Procedural Yu-Gi-Oh! Frames & CORS-Safe Proxy U
       expect(firstBackTex).toBe(cachedBackTex);
       expect(freshFaceTex).not.toBe(firstFaceTex);
       expect(freshBackTex).not.toBe(firstBackTex);
+    });
+
+    it('should generate an authentic procedural card back via drawProceduralCardBack and return a non-empty fallback data URL', () => {
+      // Arrange
+      const mockCtx = {
+        fillStyle: '',
+        fillRect: () => {},
+        strokeStyle: '',
+        strokeRect: () => {},
+        lineWidth: 0,
+        createRadialGradient: () => ({ addColorStop: () => {} }),
+        createLinearGradient: () => ({ addColorStop: () => {} }),
+        save: () => {},
+        restore: () => {},
+        translate: () => {},
+        beginPath: () => {},
+        ellipse: () => {},
+        fill: () => {},
+        stroke: () => {},
+      } as unknown as CanvasRenderingContext2D;
+
+      // Act
+      drawProceduralCardBack(mockCtx, 256, 372);
+      const dataUrl = getCardBackDataUrl();
+
+      // Assert
+      expect(dataUrl).toBeTruthy();
+      expect(typeof dataUrl).toBe('string');
+      expect(dataUrl.startsWith('data:image/') || dataUrl === '/card-back.jpg').toBe(true);
     });
   });
 });

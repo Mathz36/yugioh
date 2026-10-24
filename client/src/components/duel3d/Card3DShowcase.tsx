@@ -12,22 +12,24 @@ import {
 } from './cardTextureGenerator';
 
 export interface Card3DShowcaseProps {
-  card: {
+  card?: {
     id?: string;
-    name: string;
+    name?: string;
     namePt?: string;
-    type: string;
+    type?: string;
     level?: number;
     attack?: number;
     defense?: number;
     imageUrl?: string;
   };
+  isBack?: boolean;
   languagePt?: boolean;
   className?: string;
 }
 
 export const Card3DShowcase: React.FC<Card3DShowcaseProps> = ({
   card,
+  isBack = false,
   languagePt = true,
   className = '',
 }) => {
@@ -38,6 +40,8 @@ export const Card3DShowcase: React.FC<Card3DShowcaseProps> = ({
   const auraRingRef = useRef<THREE.Mesh | null>(null);
   const auraLightRef = useRef<THREE.PointLight | null>(null);
   const targetTiltRef = useRef<{ rx: number; ry: number }>({ rx: 0, ry: 0 });
+
+  const effectiveCard = card || { name: 'Card', type: 'Normal' };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -72,7 +76,9 @@ export const Card3DShowcase: React.FC<Card3DShowcaseProps> = ({
     const sideMat = new THREE.MeshBasicMaterial({
       color: 0x1c1917,
     });
-    const frontTex = createCardFaceTexture(card, languagePt);
+    const frontTex = isBack
+      ? createCardBackTexture()
+      : createCardFaceTexture(effectiveCard, languagePt);
     const backTex = createCardBackTexture();
 
     const frontMat = new THREE.MeshBasicMaterial({
@@ -187,11 +193,15 @@ export const Card3DShowcase: React.FC<Card3DShowcaseProps> = ({
       if (frontMat.map) {
         frontMat.map.dispose();
       }
-      frontMat.map = createCardFaceTexture(card, languagePt);
+      frontMat.map = isBack
+        ? createCardBackTexture()
+        : createCardFaceTexture(effectiveCard, languagePt);
       frontMat.needsUpdate = true;
     }
 
-    const palette = getCardFramePalette(card.type);
+    const palette = isBack
+      ? { border: 0x854d0e, glow: 0xb45309 }
+      : getCardFramePalette(effectiveCard.type || 'Normal');
     if (auraRingRef.current) {
       ((auraRingRef.current.material as THREE.MeshBasicMaterial).color as THREE.Color).set(
         palette.border
@@ -200,7 +210,18 @@ export const Card3DShowcase: React.FC<Card3DShowcaseProps> = ({
     if (auraLightRef.current) {
       auraLightRef.current.color.set(palette.border);
     }
-  }, [card.id, card.name, card.namePt, card.type, card.level, card.attack, card.defense, card.imageUrl, languagePt]);
+  }, [
+    isBack,
+    effectiveCard.id,
+    effectiveCard.name,
+    effectiveCard.namePt,
+    effectiveCard.type,
+    effectiveCard.level,
+    effectiveCard.attack,
+    effectiveCard.defense,
+    effectiveCard.imageUrl,
+    languagePt,
+  ]);
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();

@@ -2599,12 +2599,12 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
                     {/* Conteúdo Vertical Unificado */}
                     <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
-                      {/* 1. Foto da Carta Ampliada */}
-                      <div className="w-56 sm:w-64 md:w-72 h-80 sm:h-92 md:h-[390px] mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-800/60 bg-black/70 p-1 shadow-2xl">
-                        <img
-                          src="/card-back.jpg"
-                          alt={titleText}
-                          className="w-full h-full object-contain rounded"
+                      {/* 1. Foto da Carta Oculta Ampliada (Showcase 3D) */}
+                      <div className="w-56 sm:w-64 md:w-72 h-80 sm:h-92 md:h-[390px] mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-800/60 bg-black/70 shadow-2xl relative">
+                        <Card3DShowcase
+                          isBack={true}
+                          languagePt={languagePt}
+                          className="w-full h-full"
                         />
                       </div>
 
@@ -2827,11 +2827,12 @@ export const Playmat: React.FC<PlaymatProps> = ({
               </div>
 
               <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
-                <div className="w-56 sm:w-64 md:w-72 h-80 sm:h-92 md:h-[390px] mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-800/50 bg-black/60 p-1 shadow-2xl">
-                  <img
-                    src="/card-back.jpg"
-                    alt="Verso da Carta"
-                    className="w-full h-full object-contain rounded"
+                {/* 1. Verso Oficial da Carta Yu-Gi-Oh! em 3D (Showcase 3D) */}
+                <div className="w-56 sm:w-64 md:w-72 h-80 sm:h-92 md:h-[390px] mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-800/50 bg-black/60 shadow-2xl relative">
+                  <Card3DShowcase
+                    isBack={true}
+                    languagePt={languagePt}
+                    className="w-full h-full"
                   />
                 </div>
                 <div className="py-1 px-3 rounded-lg bg-[#292524] border border-amber-800/50 text-amber-300 font-mono text-xs font-black text-center shrink-0">

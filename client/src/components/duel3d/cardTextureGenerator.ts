@@ -24,6 +24,7 @@ const PROXY_IMAGE_PREFIX = '/api/card-image/';
 
 const cardFaceTextureCache = new Map<string, THREE.Texture>();
 let cachedBackTexture: THREE.Texture | null = null;
+let cachedBackDataUrl: string | null = null;
 
 /**
  * Disposes and clears all cached procedural/proxy card textures.
@@ -41,6 +42,7 @@ export function clearCardTextureCache(): void {
     } catch {}
     cachedBackTexture = null;
   }
+  cachedBackDataUrl = null;
 }
 
 /**
@@ -296,6 +298,128 @@ export function createCardFaceTexture(
 }
 
 /**
+ * Renders an authentic procedural Yu-Gi-Oh! card back onto a 2D canvas context.
+ * Features the signature dark reddish-brown border, inner dark chamber,
+ * cosmic vortex glow and central oval medallion, with zero external network dependencies.
+ */
+export function drawProceduralCardBack(
+  ctx: CanvasRenderingContext2D,
+  width: number = 256,
+  height: number = 372
+): void {
+  // 1. Deep reddish-brown outer border
+  ctx.fillStyle = '#2e1208';
+  ctx.fillRect(0, 0, width, height);
+
+  // 2. Subtle outer border trim
+  ctx.strokeStyle = '#180a04';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1.5, 1.5, width - 3, height - 3);
+
+  // 3. Inner dark card body
+  const innerMarginX = 14;
+  const innerMarginY = 16;
+  const innerW = width - innerMarginX * 2;
+  const innerH = height - innerMarginY * 2;
+
+  const bgGrad = ctx.createRadialGradient(
+    width / 2, height / 2, 10,
+    width / 2, height / 2, innerW / 1.1
+  );
+  bgGrad.addColorStop(0, '#381c10');
+  bgGrad.addColorStop(0.5, '#200f07');
+  bgGrad.addColorStop(1, '#0e0603');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(innerMarginX, innerMarginY, innerW, innerH);
+
+  // Inner border outline
+  ctx.strokeStyle = '#5a2d18';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(innerMarginX, innerMarginY, innerW, innerH);
+
+  // 4. Central cosmic vortex swirl
+  ctx.save();
+  ctx.translate(width / 2, height / 2);
+
+  // Outer vortex glow
+  const vortexGrad = ctx.createRadialGradient(0, 0, 15, 0, 0, 85);
+  vortexGrad.addColorStop(0, 'rgba(217, 119, 6, 0.45)');
+  vortexGrad.addColorStop(0.5, 'rgba(146, 64, 14, 0.25)');
+  vortexGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = vortexGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 68, 104, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Swirl arcs
+  ctx.strokeStyle = 'rgba(245, 158, 11, 0.35)';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 56, 88, -0.2, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(180, 83, 9, 0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 44, 70, 0.2, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Central dark medallion
+  ctx.fillStyle = '#140a05';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 32, 52, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(217, 119, 6, 0.6)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 32, 52, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(245, 158, 11, 0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 22, 38, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
+
+  // 5. Bottom right authentic hologram square
+  const holoSize = 12;
+  const holoX = innerMarginX + innerW - holoSize - 4;
+  const holoY = innerMarginY + innerH - holoSize - 4;
+  const holoGrad = ctx.createLinearGradient(holoX, holoY, holoX + holoSize, holoY + holoSize);
+  holoGrad.addColorStop(0, '#fef08a');
+  holoGrad.addColorStop(0.5, '#ca8a04');
+  holoGrad.addColorStop(1, '#854d0e');
+  ctx.fillStyle = holoGrad;
+  ctx.fillRect(holoX, holoY, holoSize, holoSize);
+  ctx.strokeStyle = '#fef9c3';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(holoX, holoY, holoSize, holoSize);
+}
+
+/**
+ * Returns a robust data URL for the procedural card back (for 2D img fallbacks).
+ */
+export function getCardBackDataUrl(): string {
+  if (cachedBackDataUrl) return cachedBackDataUrl;
+  if (typeof document === 'undefined') return '/card-back.jpg';
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 372;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '/card-back.jpg';
+    drawProceduralCardBack(ctx, 256, 372);
+    cachedBackDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    return cachedBackDataUrl;
+  } catch {
+    return '/card-back.jpg';
+  }
+}
+
+/**
  * Generates a WebGPU-safe THREE.CanvasTexture for the classic Yu-Gi-Oh! card back.
  */
 export function createCardBackTexture(): THREE.Texture {
@@ -317,47 +441,31 @@ export function createCardBackTexture(): THREE.Texture {
     return cachedBackTexture;
   }
 
-  // Subtle dark matte card back placeholder (zero bright borders)
-  const bgGrad = ctx.createRadialGradient(128, 186, 15, 128, 186, 190);
-  bgGrad.addColorStop(0, '#291d18');
-  bgGrad.addColorStop(0.6, '#1c1412');
-  bgGrad.addColorStop(1, '#120c0a');
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, 256, 372);
-
-  ctx.strokeStyle = '#3f342c';
-  ctx.lineWidth = 4;
-  ctx.strokeRect(2, 2, 252, 368);
-
-  // Subtle dark vortex oval in the center
-  ctx.save();
-  ctx.translate(128, 186);
-  ctx.strokeStyle = 'rgba(120, 92, 50, 0.35)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 58, 92, 0, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.fillStyle = 'rgba(28, 20, 18, 0.65)';
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 38, 62, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  drawProceduralCardBack(ctx, 256, 372);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.needsUpdate = true;
 
   if (typeof Image !== 'undefined') {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        ctx.drawImage(img, 0, 0, 256, 372);
-        texture.needsUpdate = true;
-      } catch {}
+    const tryLoad = (url: string, next?: () => void) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          ctx.drawImage(img, 0, 0, 256, 372);
+          texture.needsUpdate = true;
+        } catch {}
+      };
+      if (next) {
+        img.onerror = () => next();
+      }
+      img.src = url;
     };
-    img.src = '/card-back.jpg';
+
+    tryLoad('/card-back.jpg', () => {
+      tryLoad('./card-back.jpg');
+    });
   }
 
   cachedBackTexture = texture;

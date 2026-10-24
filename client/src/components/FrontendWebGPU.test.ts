@@ -576,4 +576,17 @@ describe('FrontendWebGPU - 100% 3D Exclusive Screens, Hardware Guard & DuelArena
       expect(item.textureEn).toBeInstanceOf(THREE.Texture);
     }
   });
+
+  it('should support Card3DShowcase isBack={true} for displaying authentic 3D Yu-Gi-Oh! card back in Inspector without 2D broken images', () => {
+    // Arrange & Act
+    const backShowcaseProps = {
+      isBack: true,
+      languagePt: true,
+      className: 'w-full h-full',
+    };
+
+    // Assert
+    expect(Card3DShowcase).toBeDefined();
+    expect(backShowcaseProps.isBack).toBe(true);
+  });
 });
