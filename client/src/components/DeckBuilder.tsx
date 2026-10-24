@@ -337,7 +337,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#0c0a09] select-none text-stone-100 font-sans relative">
       {/* Camada 3D WebGPU no Fundo do Construtor de Decks */}
-      <WebGPUBackdrop variant="deck" showBadge={true} className="z-0 opacity-30" />
+      <WebGPUBackdrop variant="deck" className="z-0 opacity-30" />
 
       {/* Toast Notification */}
       {toastMessage && (

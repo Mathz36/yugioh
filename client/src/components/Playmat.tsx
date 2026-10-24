@@ -2446,7 +2446,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           onCardHover={handleArena3DCardHover}
           onError={(err) => {
             onHardwareError?.(
-              err.message || 'Falha ao inicializar acelerador 3D WebGPU/WebGL.'
+              err.message || 'Falha ao inicializar o acelerador gráfico 3D.'
             );
           }}
           isCameraShaking={isCameraShaking}

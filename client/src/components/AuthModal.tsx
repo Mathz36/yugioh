@@ -40,7 +40,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
 
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4 select-none animate-fadeIn">
-      <WebGPUBackdrop variant="auth" showBadge={true} className="z-0" />
+      <WebGPUBackdrop variant="auth" className="z-0" />
       <div className="w-full max-w-md bg-[#141210]/95 border-2 border-amber-800/80 rounded-2xl p-7 shadow-[0_8px_35px_rgba(0,0,0,0.92)] flex flex-col items-center relative z-10 overflow-hidden backdrop-blur-md">
         
         {/* Glow atmosférico suave Dark Stone & Aged Gold */}

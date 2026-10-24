@@ -104,7 +104,7 @@ export const App: React.FC = () => {
         >
           <div className="w-full max-w-lg rounded-2xl border-2 border-amber-800/80 bg-[#141210]/95 p-7 shadow-[0_8px_35px_rgba(0,0,0,0.92)] flex flex-col items-center text-center relative overflow-hidden backdrop-blur-md">
             <span className="inline-block px-3 py-1 mb-3 rounded bg-[#1c1917] border border-amber-700/60 text-[10px] font-mono font-black tracking-widest text-amber-300 uppercase">
-              [REQUISITO GRÁFICO • WEBGPU / GPU 3D]
+              [REQUISITO GRÁFICO • ACELERAÇÃO 3D]
             </span>
 
             <h1 className="text-xl sm:text-2xl font-black font-serif tracking-wider text-amber-300 uppercase mb-2">
@@ -112,7 +112,7 @@ export const App: React.FC = () => {
             </h1>
 
             <p className="text-xs sm:text-sm text-stone-300 leading-relaxed mb-4">
-              O Reino dos Duelistas opera exclusivamente em 3D imersivo (Three.js + WebGPU) e exige que a{' '}
+              O Reino dos Duelistas opera exclusivamente em 3D imersivo e exige que a{' '}
               <strong className="text-amber-400">Aceleração de Hardware (GPU)</strong> esteja ativa no seu navegador antes de prosseguir.
             </p>
 

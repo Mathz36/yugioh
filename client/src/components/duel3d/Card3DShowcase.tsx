@@ -224,10 +224,6 @@ export const Card3DShowcase: React.FC<Card3DShowcaseProps> = ({
       className={`relative overflow-hidden rounded-lg border border-stone-700/80 bg-gradient-to-b from-[#171513] via-[#100e0d] to-[#0a0908] shadow-inner select-none cursor-grab active:cursor-grabbing ${className}`}
     >
       <div ref={containerRef} className="w-full h-full" />
-      <div className="pointer-events-none absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded bg-black/75 border border-amber-500/40 px-1.5 py-0.5 text-[8px] font-mono text-amber-300">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-        <span>3D • {backend}</span>
-      </div>
     </div>
   );
 };

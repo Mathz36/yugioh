@@ -1470,12 +1470,6 @@ export const DuelArena3D: React.FC<DuelArena3DProps> = ({
           </div>
         )}
       </div>
-
-      {/* Technical Renderer Badge (Sober Stone & Aged Gold) */}
-      <div className="absolute top-2 left-2 z-10 pointer-events-none flex items-center gap-1.5 bg-[#141210]/85 border border-amber-900/50 rounded px-2.5 py-1 text-[9px] font-mono text-stone-300 backdrop-blur-md shadow">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80" />
-        <span className="font-bold tracking-wider">ARENA 3D • {rendererType}</span>
-      </div>
     </div>
   );
 };

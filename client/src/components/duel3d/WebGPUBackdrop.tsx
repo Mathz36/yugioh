@@ -284,12 +284,6 @@ export const WebGPUBackdrop: React.FC<WebGPUBackdropProps> = ({
       aria-hidden="true"
     >
       <div ref={containerRef} className="w-full h-full" />
-      {showBadge && (
-        <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded bg-black/65 border border-amber-500/40 px-2 py-0.5 text-[9px] font-mono text-amber-300/90 backdrop-blur-sm shadow">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span>[{backend.toUpperCase()} • 3D]</span>
-        </div>
-      )}
     </div>
   );
 };

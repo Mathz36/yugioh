@@ -49,7 +49,6 @@ export const GameMenu: React.FC<GameMenuProps> = ({
       <WebGPUBackdrop
         variant="menu"
         videoSrc="/video/banner.mp4"
-        showBadge={true}
         className="z-0"
       />
 
