@@ -2561,7 +2561,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           </button>
         </div>
       ) : (
-        <aside className="fixed left-3 top-14 bottom-20 w-80 sm:w-88 md:w-92 z-30 flex flex-col bg-[#141210]/95 border border-amber-900/75 text-stone-200 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-hidden">
+        <aside className="fixed left-3 top-14 bottom-[86px] sm:bottom-[90px] w-80 sm:w-88 md:w-92 z-30 flex flex-col bg-[#141210]/95 border border-amber-900/75 text-stone-200 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-hidden">
           {inspectedCard ? (
             (() => {
               const isPlayerOwned =
