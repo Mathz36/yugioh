@@ -229,6 +229,16 @@ function createPlaymatSurfaceTexture(): THREE.Texture {
   return tex;
 }
 
+// Helper predicate for tactical stat pills visibility (appears strictly on hover, during attack declaration or targeting)
+export function isTacticalPillVisible(
+  cardUid: string,
+  hoveredCardUid: string | null,
+  isAttacker: boolean,
+  tacticalTargetUids: string[] = []
+): boolean {
+  return hoveredCardUid === cardUid || isAttacker || tacticalTargetUids.includes(cardUid);
+}
+
 export const DuelArena3D: React.FC<DuelArena3DProps> = ({
   playerMonsters,
   playerSpellTraps,
@@ -262,6 +272,14 @@ export const DuelArena3D: React.FC<DuelArena3DProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [rendererType, setRendererType] = useState<RendererBackendType>('WebGL2');
   const [viewportAspect, setViewportAspect] = useState<number>(16 / 9);
+  const [hoveredCardUid, setHoveredCardUid] = useState<string | null>(null);
+
+  // Stale-closure prevention for active monster zones in raycasting
+  const monsterCardsRef = useRef<{ p1: (CardInstance | null)[]; p2: (CardInstance | null)[] }>({
+    p1: playerMonsters,
+    p2: opponentMonsters,
+  });
+  monsterCardsRef.current = { p1: playerMonsters, p2: opponentMonsters };
 
   // Refs for zero-flicker 60 FPS hand interpolation & stale closure prevention
   const selectedHandCardUidRef = useRef<string | null>(selectedHandCardUid);
@@ -601,6 +619,13 @@ export const DuelArena3D: React.FC<DuelArena3DProps> = ({
         if (data?.cardInstance && !hoveredCard) {
           hoveredCard = data.cardInstance;
         }
+        if (!hoveredCard && data?.isZoneSlot && data.zoneType === 'MONSTER') {
+          const list = data.isPlayer ? monsterCardsRef.current.p1 : monsterCardsRef.current.p2;
+          const m = list[data.index];
+          if (m) {
+            hoveredCard = m;
+          }
+        }
         if (data?.isCardMesh || data?.isZoneSlot) {
           hasInteractive = true;
         }
@@ -615,9 +640,20 @@ export const DuelArena3D: React.FC<DuelArena3DProps> = ({
       const nextHoverUid = hoveredCard?.uid ?? null;
       if (nextHoverUid !== lastReportedHoverUidRef.current) {
         lastReportedHoverUidRef.current = nextHoverUid;
+        setHoveredCardUid(nextHoverUid);
         if (onCardHoverRef.current) {
           onCardHoverRef.current(hoveredCard);
         }
+      }
+    };
+
+    const handlePointerLeave = () => {
+      hoveredHandUidRef.current = null;
+      lastReportedHoverUidRef.current = null;
+      setHoveredCardUid(null);
+      container.style.cursor = 'default';
+      if (onCardHoverRef.current) {
+        onCardHoverRef.current(null);
       }
     };
 
@@ -652,6 +688,7 @@ export const DuelArena3D: React.FC<DuelArena3DProps> = ({
     };
 
     container.addEventListener('pointermove', handlePointerMove);
+    container.addEventListener('pointerleave', handlePointerLeave);
     container.addEventListener('pointerdown', handlePointerDown);
     container.addEventListener('pointerup', handlePointerUp);
     container.addEventListener('click', handleClick);
@@ -794,6 +831,7 @@ export const DuelArena3D: React.FC<DuelArena3DProps> = ({
       isRendererReadyRef.current = false;
       if (resizeObserver) resizeObserver.disconnect();
       container.removeEventListener('pointermove', handlePointerMove);
+      container.removeEventListener('pointerleave', handlePointerLeave);
       container.removeEventListener('pointerdown', handlePointerDown);
       container.removeEventListener('pointerup', handlePointerUp);
       container.removeEventListener('click', handleClick);
@@ -1392,28 +1430,39 @@ export const DuelArena3D: React.FC<DuelArena3DProps> = ({
           </div>
         ))}
 
-        {tacticalPills.map((pill) => (
-          <div
-            key={pill.key}
-            style={{ left: pill.left, top: pill.top }}
-            className={`-translate-x-1/2 -translate-y-1/2 absolute flex flex-col items-center rounded border px-1.5 py-0.5 text-[9px] font-mono backdrop-blur-md shadow-lg transition-all ${
-              pill.isAttacker
-                ? 'bg-red-950/90 border-red-700/80 text-red-200'
-                : pill.isDefense
-                ? 'bg-[#141210]/90 border-stone-600/80 text-stone-200'
-                : 'bg-[#141210]/90 border-amber-800/70 text-amber-200'
-            }`}
-          >
-            {pill.subLabel && (
-              <span className="text-[8px] font-sans font-bold text-stone-300 leading-tight">
-                {pill.subLabel}
+        {tacticalPills.map((pill) => {
+          const isVisible = isTacticalPillVisible(
+            pill.key,
+            hoveredCardUid,
+            pill.isAttacker,
+            tacticalTargetUids
+          );
+
+          return (
+            <div
+              key={pill.key}
+              style={{ left: pill.left, top: pill.top }}
+              className={`-translate-x-1/2 -translate-y-1/2 absolute flex flex-col items-center rounded border px-1.5 py-0.5 text-[9px] font-mono backdrop-blur-md shadow-lg transition-all duration-200 pointer-events-none select-none ${
+                isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'
+              } ${
+                pill.isAttacker
+                  ? 'bg-red-950/90 border-red-700/80 text-red-200'
+                  : pill.isDefense
+                  ? 'bg-[#141210]/90 border-stone-600/80 text-stone-200'
+                  : 'bg-[#141210]/90 border-amber-800/70 text-amber-200'
+              }`}
+            >
+              {pill.subLabel && (
+                <span className="text-[8px] font-sans font-bold text-stone-300 leading-tight">
+                  {pill.subLabel}
+                </span>
+              )}
+              <span className="font-extrabold tracking-tight leading-tight">
+                {pill.isDefense ? `[DEF] ${pill.label}` : `[ATK] ${pill.label}`}
               </span>
-            )}
-            <span className="font-extrabold tracking-tight leading-tight">
-              {pill.isDefense ? `[DEF] ${pill.label}` : `[ATK] ${pill.label}`}
-            </span>
-          </div>
-        ))}
+            </div>
+          );
+        })}
 
         {selectedHandCard && (
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded border border-amber-700/70 bg-[#141210]/95 px-4 py-1 text-[10px] font-mono font-bold tracking-wider text-amber-200 shadow-lg backdrop-blur-md">

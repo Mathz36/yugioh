@@ -5,6 +5,7 @@ import {
   DuelArena3D,
   DuelArena3DProps,
   computeHandCardTransform,
+  isTacticalPillVisible,
 } from './DuelArena3D';
 
 function createMockCardInstance(
@@ -396,5 +397,35 @@ describe('DuelArena3D Component Contract, 3D Hand Fan, Spatial Zones, Callbacks 
     expect(playerHand.some((c) => c.uid === 'p1_th')).toBe(false);
     expect(playerSpellTrapZones[0]?.uid).toBe('p1_th');
     expect(playerSpellTrapZones[0]?.data.name).toBe('Trap Hole');
+  });
+
+  it('should toggle tactical monster stats pill visibility strictly on hover, attack declaration, or tactical targeting', () => {
+    // Arrange
+    const targetMonsterUid = 'monster_magical_ghost_123';
+    const otherMonsterUid = 'monster_luster_dragon_456';
+
+    // Act 1: Idle state - neither hovered nor attacking nor targeted
+    const isVisibleIdle = isTacticalPillVisible(targetMonsterUid, null, false, []);
+    const isOtherVisibleIdle = isTacticalPillVisible(otherMonsterUid, null, false, []);
+
+    // Act 2: Mouse hover on target monster
+    const isVisibleOnHover = isTacticalPillVisible(targetMonsterUid, targetMonsterUid, false, []);
+    const isOtherVisibleOnHover = isTacticalPillVisible(otherMonsterUid, targetMonsterUid, false, []);
+
+    // Act 3: Attacker declared state
+    const isVisibleWhenAttacker = isTacticalPillVisible(targetMonsterUid, null, true, []);
+
+    // Act 4: Targeted state (e.g. tactical target selection)
+    const isVisibleWhenTargeted = isTacticalPillVisible(targetMonsterUid, null, false, [targetMonsterUid]);
+
+    // Assert
+    expect(isVisibleIdle).toBe(false);
+    expect(isOtherVisibleIdle).toBe(false);
+
+    expect(isVisibleOnHover).toBe(true);
+    expect(isOtherVisibleOnHover).toBe(false);
+
+    expect(isVisibleWhenAttacker).toBe(true);
+    expect(isVisibleWhenTargeted).toBe(true);
   });
 });
