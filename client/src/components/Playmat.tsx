@@ -2561,7 +2561,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
           </button>
         </div>
       ) : (
-        <aside className="fixed left-3 top-16 bottom-24 w-72 sm:w-80 z-30 flex flex-col bg-[#141210]/95 border border-amber-900/75 text-stone-200 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-hidden">
+        <aside className="fixed left-3 top-14 bottom-20 w-80 sm:w-88 md:w-92 z-30 flex flex-col bg-[#141210]/95 border border-amber-900/75 text-stone-200 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.92)] backdrop-blur-md overflow-hidden">
           {inspectedCard ? (
             (() => {
               const isPlayerOwned =
@@ -2620,7 +2620,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                     {/* Conteúdo Vertical Unificado */}
                     <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
                       {/* 1. Foto da Carta Ampliada */}
-                      <div className="w-48 sm:w-52 h-68 sm:h-74 mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-800/60 bg-black/70 p-1 shadow-lg">
+                      <div className="w-56 sm:w-64 md:w-72 h-80 sm:h-92 md:h-[390px] mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-800/60 bg-black/70 p-1 shadow-2xl">
                         <img
                           src="/card-back.jpg"
                           alt={titleText}
@@ -2649,7 +2649,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
 
                       {/* 4. Descrição */}
                       <div className="bg-[#0f0d0b]/95 p-3 rounded-lg border border-amber-950/80 text-left shadow-inner">
-                        <div className="text-xs font-bold text-amber-300 mb-1 font-mono">
+                        <div className="text-xs font-bold text-amber-300 mb-1.5 font-mono">
                           [{languagePt ? 'Carta Oculta' : 'Face-Down Card'}]
                         </div>
                         <p className="text-xs text-stone-200 leading-relaxed font-sans">{descText}</p>
@@ -2725,7 +2725,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
                   {/* Conteúdo Vertical Unificado */}
                   <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
                     {/* 1. Foto da Carta Ampliada (Card3DShowcase) */}
-                    <div className="w-48 sm:w-52 h-68 sm:h-74 mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-700/70 bg-black/70 shadow-lg relative">
+                    <div className="w-56 sm:w-64 md:w-72 h-80 sm:h-92 md:h-[390px] mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-700/70 bg-black/70 shadow-2xl relative">
                       <Card3DShowcase
                         card={inspectedCard.data}
                         languagePt={languagePt}
@@ -2847,7 +2847,7 @@ export const Playmat: React.FC<PlaymatProps> = ({
               </div>
 
               <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5">
-                <div className="w-48 sm:w-52 h-68 sm:h-74 mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-800/50 bg-black/60 p-1 shadow-lg">
+                <div className="w-56 sm:w-64 md:w-72 h-80 sm:h-92 md:h-[390px] mx-auto shrink-0 rounded-lg overflow-hidden border border-amber-800/50 bg-black/60 p-1 shadow-2xl">
                   <img
                     src="/card-back.jpg"
                     alt="Verso da Carta"

@@ -53,7 +53,7 @@ export const Card3DShowcase: React.FC<Card3DShowcaseProps> = ({
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 50);
-    camera.position.set(0, 0, 5.2);
+    camera.position.set(0, 0, 4.85);
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.35);
     scene.add(ambientLight);
