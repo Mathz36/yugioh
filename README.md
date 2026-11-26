@@ -295,7 +295,7 @@ Desacoplamento completo entre a regra de montagem de decks e a persistência (Su
 
 ### Engenharia de Áudio com Howler.js
 
-O [`SoundtrackManager.ts`](file:///mnt/Dados/Projetos/run/client/src/utils/SoundtrackManager.ts) gerencia o ecossistema sonoro do simulador:
+O [`SoundtrackManager.ts`](client/src/utils/SoundtrackManager.ts) gerencia o ecossistema sonoro do simulador:
 1. **Menu Principal:** Tema clássico em loop contínuo.
 2. **Fila Sequencial da Partida:** Rotação contínua e fluida entre *Egypt in Ruins* e *Password* ao disparar o evento `onend`, eliminando lacunas de silêncio ou sobreposições.
 3. **Cortes de Estado Idempotentes:** Interrupção imediata da música de duelo na ocorrência de vitória (*You Win*) ou derrota (*You Lose*).
