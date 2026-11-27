@@ -1,5 +1,5 @@
 import { CardData } from '@duel/duel-types';
-import { DeckCardEntry, DeckModel, DeckService } from '@duel/deck-service';
+import { DeckCardEntry, DeckModel, DeckService, deckService } from '@duel/deck-service';
 import { createYugiDeck, createKaibaDeck, CLASSIC_CARDS } from '@duel/starter-decks';
 import duelistKingdomCatalog from '../data/duelist-kingdom-catalog.json';
 
@@ -152,10 +152,19 @@ export const getAllUserDecks = (nickname?: string): DeckModel[] => {
 /**
  * Sets a deck (prebuilt or custom) as the active main deck for duels.
  */
-export const setActiveMainDeck = (nickname: string | undefined, deckId: string): DeckModel[] => {
+export const setActiveMainDeck = (
+  nickname: string | undefined,
+  deckId: string,
+  userId?: string
+): DeckModel[] => {
   const stored = loadStoredData(nickname);
   stored.activeDeckId = deckId;
   saveStoredData(nickname, stored);
+
+  if (userId && userId !== 'guest') {
+    deckService.setMainDeck(userId, deckId).catch(() => {});
+  }
+
   return getAllUserDecks(nickname);
 };
 
@@ -165,7 +174,8 @@ export const setActiveMainDeck = (nickname: string | undefined, deckId: string):
 export const createNewCustomDeck = (
   nickname: string | undefined,
   name: string,
-  initialCards?: DeckCardEntry[]
+  initialCards?: DeckCardEntry[],
+  userId?: string
 ): { decks: DeckModel[]; createdDeck: DeckModel } => {
   const stored = loadStoredData(nickname);
   if (stored.customDecks.length >= DeckService.MAX_USER_DECKS) {
@@ -186,6 +196,18 @@ export const createNewCustomDeck = (
   stored.activeDeckId = newDeck.id;
   saveStoredData(nickname, stored);
 
+  if (userId && userId !== 'guest') {
+    deckService
+      .saveCustomDeck(userId, {
+        id: newDeck.id,
+        name: newDeck.name,
+        description: newDeck.description,
+        isActive: newDeck.isActive,
+        cards: newDeck.cards,
+      })
+      .catch(() => {});
+  }
+
   return {
     decks: getAllUserDecks(nickname),
     createdDeck: newDeck,
@@ -197,7 +219,8 @@ export const createNewCustomDeck = (
  */
 export const updateCustomDeck = (
   nickname: string | undefined,
-  updatedDeck: DeckModel
+  updatedDeck: DeckModel,
+  userId?: string
 ): DeckModel[] => {
   if (updatedDeck.isPrebuilt) {
     throw new Error('Decks pré-montados clássicos não podem ser alterados diretamente.');
@@ -229,19 +252,76 @@ export const updateCustomDeck = (
   }
 
   saveStoredData(nickname, stored);
+
+  if (userId && userId !== 'guest') {
+    deckService
+      .saveCustomDeck(userId, {
+        id: updatedDeck.id,
+        name: updatedDeck.name,
+        description: updatedDeck.description,
+        isActive: updatedDeck.isActive,
+        cards: updatedDeck.cards,
+      })
+      .catch(() => {});
+  }
+
   return getAllUserDecks(nickname);
 };
 
 /**
  * Deletes a custom deck and resets active deck if necessary.
  */
-export const deleteCustomDeck = (nickname: string | undefined, deckId: string): DeckModel[] => {
+export const deleteCustomDeck = (
+  nickname: string | undefined,
+  deckId: string,
+  userId?: string
+): DeckModel[] => {
   const stored = loadStoredData(nickname);
   stored.customDecks = stored.customDecks.filter((d) => d.id !== deckId);
   if (stored.activeDeckId === deckId) {
     stored.activeDeckId = 'prebuilt-yugi-classic';
   }
   saveStoredData(nickname, stored);
+
+  if (userId && userId !== 'guest') {
+    deckService.deleteCustomDeck(userId, deckId).catch(() => {});
+  }
+
+  return getAllUserDecks(nickname);
+};
+
+/**
+ * Asynchronously synchronizes user decks from Supabase into local cache.
+ */
+export const syncUserDecksWithCloud = async (
+  userId: string,
+  nickname?: string
+): Promise<DeckModel[]> => {
+  if (!userId || userId === 'guest') {
+    return getAllUserDecks(nickname);
+  }
+
+  try {
+    const cloudDecks = await deckService.getUserDecks(userId);
+    if (Array.isArray(cloudDecks) && cloudDecks.length > 0) {
+      const stored = loadStoredData(nickname);
+      const customOnly = cloudDecks
+        .filter((d) => !d.isPrebuilt)
+        .slice(0, DeckService.MAX_USER_DECKS);
+      const activeCloud = cloudDecks.find((d) => d.isActive);
+
+      if (customOnly.length > 0) {
+        stored.customDecks = customOnly;
+      }
+      if (activeCloud) {
+        stored.activeDeckId = activeCloud.id;
+      }
+      saveStoredData(nickname, stored);
+    }
+  } catch {
+    // Graceful fallback to local cache
+  }
+
   return getAllUserDecks(nickname);
 };
 

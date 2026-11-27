@@ -4,12 +4,12 @@
 [![React](https://img.shields.io/badge/React-18.3-61dafb.svg?logo=react)](https://react.dev/)
 [![Three.js](https://img.shields.io/badge/Three.js-r186%20(WebGPU%20%2F%20WebGL2)-black.svg?logo=three.js)](https://threejs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-646CFF.svg?logo=vite)](https://vitejs.dev/)
-[![Vitest](https://img.shields.io/badge/Vitest-2.1%20(181%20passed)-729B1B.svg?logo=vitest)](https://vitest.dev/)
+[![Vitest](https://img.shields.io/badge/Vitest-2.1%20(186%20passed)-729B1B.svg?logo=vitest)](https://vitest.dev/)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38B2AC.svg?logo=tailwind-css)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20RLS-3ECF8E.svg?logo=supabase)](https://supabase.com/)
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 
-Simulador tático completo de duelos retrô inspirado no arco clássico do **Reino dos Duelistas (*Yu-Gi-Oh! Duelist Kingdom*)** e no aclamado jogo **Yu-Gi-Oh! Forbidden Memories (PS1)**. Desenvolvido com arquitetura modular de alta performance em **TypeScript**, **React 18**, renderização 3D em tempo real com **Three.js (WebGPU / WebGL2)**, **Supabase (PostgreSQL + RLS)**, áudio adaptativo com **Howler.js** e suíte contínua de testes unitários com **Vitest** (**181/181 testes aprovados** no padrão AAA).
+Simulador tático completo de duelos retrô inspirado no arco clássico do **Reino dos Duelistas (*Yu-Gi-Oh! Duelist Kingdom*)** e no aclamado jogo **Yu-Gi-Oh! Forbidden Memories (PS1)**. Desenvolvido com arquitetura modular de alta performance em **TypeScript**, **React 18**, renderização 3D em tempo real com **Three.js (WebGPU / WebGL2)**, **Supabase (PostgreSQL + RLS)**, áudio adaptativo com **Howler.js** e suíte contínua de testes unitários com **Vitest** (**186/186 testes aprovados** no padrão AAA).
 
 ---
 
@@ -457,7 +457,7 @@ npm run build
 
 ---
 
-## 🧪 Suíte de Testes Automatizados (181/181 Aprovados)
+## 🧪 Suíte de Testes Automatizados (186/186 Aprovados)
 
 O projeto mantém uma política inegociável de **Zero Regressão**, com todos os testes escritos no padrão **AAA (Arrange, Act, Assert)**.
 
@@ -466,7 +466,7 @@ Para executar todas as suítes de teste via **Vitest**:
 npm test
 ```
 
-### Cobertura das 10 Suítes de Teste:
+### Cobertura das 11 Suítes de Teste:
 1. `src/duel/duel-rule-engine.test.ts` (12 testes): Matemática pura de batalha, posições de combate, cálculo de dano refletido e regras de sacrifício (Nível 5-6 $\rightarrow$ 1 sacrifício, Nível 7+ $\rightarrow$ 2 sacrifícios).
 2. `src/duel/duel-match-session.test.ts` (86 testes): Fases do duelo, resolução prioritária de efeitos FLIP (Man-Eater Bug, Penguin Soldier), efeitos contínuos por raça (Buster Blader), ativação de magias (Raigeki, Dark Hole, Pote da Ganância, Dian Keto, Hinotama, De-Spell) e armadilhas (Mirror Force, Waboku, Trap Hole).
 3. `src/duel/deck-service.test.ts` (8 testes): Regras de construção de deck (limite de 3 cópias, 3 decks personalizados, alternância atômica de deck ativo, validação de 40 monstros da Onda 1).
@@ -477,6 +477,7 @@ npm test
 8. `client/src/components/duel3d/cardTextureGenerator.test.ts` (10 testes): Paletas clássicas por tipo de carta, resolução de URLs anti-CORS `/api/card-image/`, geração procedural de molduras e verso canônico em canvas 2D.
 9. `client/src/components/duel3d/webgpuCore.test.ts` (10 testes): Sondagem de adaptadores WebGPU, fallback seguro para WebGL2 nativo e descarte de recursos de cena (*disposeSceneResources*).
 10. `client/src/components/FrontendWebGPU.test.ts` (15 testes): Integração dos componentes React 3D (`App`, `AuthModal`, `GameMenu`, `DeckBuilder`, `Playmat`, `DuelArena3D`, `Card3DShowcase`, `WebGPUBackdrop`), suporte ao verso 3D e sincronização do fluxo mão-para-campo.
+11. `client/src/supabase.test.ts` (5 testes): Contrato do cliente Supabase, sincronização de decks na nuvem com fallback para cache local e Optimistic UI.
 
 ---
 

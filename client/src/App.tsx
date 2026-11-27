@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
-import { AuthModal } from './components/AuthModal';
+import { AuthModal, AuthSuccessPayload } from './components/AuthModal';
 import { GameMenu } from './components/GameMenu';
 import { Playmat } from './components/Playmat';
 import { DeckBuilder } from './components/DeckBuilder';
@@ -8,8 +8,10 @@ import {
   verifyHardwareAcceleration,
   HardwareAccelerationStatus,
 } from './components/duel3d/webgpuCore';
+import { supabase, isSupabaseConfigured } from './supabase';
 
 export interface UserSession {
+  id?: string;
   email: string;
   nickname: string;
   isGuest?: boolean;
@@ -69,6 +71,47 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     verifyHardwareAcceleration().then(setHwStatus);
+
+    if (isSupabaseConfigured && supabase) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          const userNick =
+            session.user.user_metadata?.nickname ||
+            session.user.email?.split('@')[0] ||
+            'Duelista';
+          setCurrentUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            nickname: userNick,
+            isGuest: false,
+          });
+          setCurrentView('MENU');
+        }
+      });
+
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          const userNick =
+            session.user.user_metadata?.nickname ||
+            session.user.email?.split('@')[0] ||
+            'Duelista';
+          setCurrentUser((prev) => ({
+            id: session.user.id,
+            email: session.user.email || '',
+            nickname: userNick,
+            isGuest: false,
+          }));
+        } else {
+          setCurrentUser((prev) => (prev?.isGuest ? prev : null));
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
   }, []);
 
   const handleLoginSuccess = (user: UserSession) => {
@@ -88,7 +131,12 @@ export const App: React.FC = () => {
     setCurrentView('MENU');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+    }
     setCurrentUser(null);
     setCurrentView('AUTH');
   };
@@ -178,6 +226,7 @@ export const App: React.FC = () => {
         {currentView === 'DECK_BUILDER' && currentUser && (
           <DeckBuilder
             userNickname={currentUser.nickname}
+            userId={currentUser.id}
             onBackToMenu={handleExitToMenu}
           />
         )}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { CardData } from '@duel/duel-types';
 import { DeckCardEntry, DeckModel, DeckService } from '@duel/deck-service';
 import {
@@ -7,6 +7,7 @@ import {
   createNewCustomDeck,
   updateCustomDeck,
   deleteCustomDeck,
+  syncUserDecksWithCloud,
   getAllCatalogCards,
   CardFilterType,
   isMonsterType,
@@ -20,16 +21,27 @@ import { Card3DShowcase } from './duel3d/Card3DShowcase';
 
 export interface DeckBuilderProps {
   userNickname: string;
+  userId?: string;
   onBackToMenu: () => void;
 }
 
-export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackToMenu }) => {
+export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, onBackToMenu }) => {
   const settings = getUserSettings(userNickname);
   const isPt = settings.language === 'pt';
 
   // Complete Onda 1 Catalog (493 cards with classic fallback)
   const catalogCards = useMemo(() => getAllCatalogCards(), []);
   const [decks, setDecks] = useState<DeckModel[]>(() => getAllUserDecks(userNickname));
+
+  useEffect(() => {
+    if (userId && userId !== 'guest') {
+      syncUserDecksWithCloud(userId, userNickname).then((synced) => {
+        if (Array.isArray(synced) && synced.length > 0) {
+          setDecks(synced);
+        }
+      });
+    }
+  }, [userId, userNickname]);
 
   // Initial selected deck is the currently active main deck
   const initialSelected = useMemo(() => {
@@ -96,7 +108,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
   // Set a deck as Active Main Deck (Principal ★)
   const handleSetMainDeck = (deckId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const updated = setActiveMainDeck(userNickname, deckId);
+    const updated = setActiveMainDeck(userNickname, deckId, userId);
     setDecks(updated);
     const target = updated.find((d) => d.id === deckId);
     soundFX.playPlaceCard();
@@ -132,7 +144,8 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
       const { decks: updatedDecks, createdDeck } = createNewCustomDeck(
         userNickname,
         baseName,
-        initialCards
+        initialCards,
+        userId
       );
 
       setDecks(updatedDecks);
@@ -155,7 +168,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
   const handleDeleteCustomDeck = (deck: DeckModel, e: React.MouseEvent) => {
     e.stopPropagation();
     if (deck.isPrebuilt) return;
-    const updated = deleteCustomDeck(userNickname, deck.id);
+    const updated = deleteCustomDeck(userNickname, deck.id, userId);
     setDecks(updated);
     if (selectedDeckId === deck.id) {
       const fallback = updated.find((d) => d.isActive) || updated[0];
@@ -294,7 +307,7 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, onBackTo
         name: editingName.trim() || 'Deck Personalizado',
         cards: editingCards,
       };
-      const updatedList = updateCustomDeck(userNickname, updatedModel);
+      const updatedList = updateCustomDeck(userNickname, updatedModel, userId);
       setDecks(updatedList);
       setHasUnsavedChanges(false);
       soundFX.playPlaceCard();
