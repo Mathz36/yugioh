@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { soundtrackManager } from '../utils/SoundtrackManager';
 import { getUserSettings, saveUserSettings, UserSettings } from '../utils/settings';
+import {
+  CloseIcon,
+  VolumeIcon,
+  VolumeMuteIcon,
+  GlobeIcon,
+  CheckIcon,
+} from './icons/HudIcons';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -59,13 +66,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-amber-700/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Botão fechar '[X]' no canto superior */}
+        {/* Botão fechar no canto superior */}
         <button
           onClick={onClose}
           aria-label={isPt ? 'Fechar configurações' : 'Close settings'}
-          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#1c1917] border border-amber-900/60 hover:border-amber-500 text-stone-400 hover:text-amber-300 flex items-center justify-center font-mono text-xs font-black transition-all cursor-pointer"
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#1c1917] border border-amber-900/60 hover:border-amber-500 text-stone-400 hover:text-amber-300 flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95"
         >
-          [X]
+          <CloseIcon className="w-4 h-4" />
         </button>
 
         {/* Emblema e Título */}
@@ -90,8 +97,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* 1. Trilha Sonora */}
           <div className="p-3.5 rounded-xl bg-[#1c1917] border border-amber-900/60 flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-lg bg-[#292524] border border-amber-700/60 flex items-center justify-center font-mono text-xs font-black text-amber-300 shrink-0">
-                [SOM]
+              <div className="w-10 h-10 rounded-lg bg-[#292524] border border-amber-700/60 flex items-center justify-center text-amber-300 shrink-0">
+                {settings.soundMuted ? (
+                  <VolumeMuteIcon className="w-5 h-5 text-stone-400" />
+                ) : (
+                  <VolumeIcon className="w-5 h-5 text-amber-300" />
+                )}
               </div>
               <div>
                 <h3 className="text-sm font-bold text-stone-200 font-serif tracking-wide">
@@ -99,29 +110,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </h3>
                 <p className="text-[11px] text-stone-400 font-mono">
                   {settings.soundMuted
-                    ? isPt ? '[Áudio mutado]' : '[Audio muted]'
-                    : isPt ? '[Música ativa]' : '[Music active]'}
+                    ? isPt ? 'Áudio mutado' : 'Audio muted'
+                    : isPt ? 'Música ativa' : 'Music active'}
                 </p>
               </div>
             </div>
 
             <button
               onClick={handleToggleMute}
-              className={`px-3 py-1.5 rounded-lg font-mono font-black text-xs uppercase tracking-wider transition-all border shadow-sm cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg font-mono font-black text-xs uppercase tracking-wider transition-all border shadow-sm cursor-pointer flex items-center gap-1.5 ${
                 settings.soundMuted
                   ? 'bg-[#292524] border-stone-700 text-stone-400 hover:text-stone-200'
                   : 'bg-gradient-to-b from-amber-500 to-amber-600 text-stone-950 border-amber-300'
               }`}
             >
-              <span>{settings.soundMuted ? '[ATIVAR]' : '[MUTAR]'}</span>
+              {settings.soundMuted ? (
+                <>
+                  <VolumeIcon className="w-3.5 h-3.5" />
+                  <span>{isPt ? 'ATIVAR' : 'UNMUTE'}</span>
+                </>
+              ) : (
+                <>
+                  <VolumeMuteIcon className="w-3.5 h-3.5" />
+                  <span>{isPt ? 'MUTAR' : 'MUTE'}</span>
+                </>
+              )}
             </button>
           </div>
 
           {/* 2. Idioma */}
           <div className="p-3.5 rounded-xl bg-[#1c1917] border border-amber-900/60 flex flex-col space-y-2.5">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-lg bg-[#292524] border border-amber-700/60 flex items-center justify-center font-mono text-xs font-black text-amber-300 shrink-0">
-                [IDM]
+              <div className="w-10 h-10 rounded-lg bg-[#292524] border border-amber-700/60 flex items-center justify-center text-amber-300 shrink-0">
+                <GlobeIcon className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-stone-200 font-serif tracking-wide">
@@ -144,7 +165,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     : 'bg-[#292524] border-stone-700 text-stone-400 hover:text-stone-200'
                 }`}
               >
-                <span>[PT-BR] Português</span>
+                <span>Português (BR)</span>
               </button>
 
               <button
@@ -155,7 +176,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     : 'bg-[#292524] border-stone-700 text-stone-400 hover:text-stone-200'
                 }`}
               >
-                <span>[EN-US] English</span>
+                <span>English (US)</span>
               </button>
             </div>
           </div>
@@ -163,14 +184,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Rodapé: Concluir */}
         <div className="w-full mt-6 pt-4 border-t border-amber-900/50 flex items-center justify-between">
-          <span className="text-[10px] text-amber-400 font-mono flex items-center gap-1">
-            <span>[OK]</span> {isPt ? 'Salvo no navegador' : 'Saved in browser'}
+          <span className="text-[10px] text-amber-400 font-mono flex items-center gap-1.5">
+            <CheckIcon className="w-3.5 h-3.5 text-emerald-400" />
+            <span>{isPt ? 'Salvo no navegador' : 'Saved in browser'}</span>
           </span>
           <button
             onClick={onClose}
-            className="px-5 py-1.5 bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black font-mono text-xs uppercase tracking-wider rounded-lg shadow border border-amber-300 cursor-pointer"
+            className="px-5 py-1.5 bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black font-mono text-xs uppercase tracking-wider rounded-lg shadow border border-amber-300 cursor-pointer flex items-center gap-1"
           >
-            {isPt ? '[CONCLUIR]' : '[DONE]'}
+            <span>{isPt ? 'CONCLUIR' : 'DONE'}</span>
           </button>
         </div>
       </div>

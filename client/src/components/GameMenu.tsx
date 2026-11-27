@@ -3,6 +3,14 @@ import { soundtrackManager } from '../utils/SoundtrackManager';
 import { getUserSettings, UserSettings } from '../utils/settings';
 import { SettingsModal } from './SettingsModal';
 import { WebGPUBackdrop } from './duel3d/WebGPUBackdrop';
+import {
+  SwordsIcon,
+  PvPIcon,
+  DeckCardsIcon,
+  SettingsIcon,
+  LogoutIcon,
+  ChevronRightIcon,
+} from './icons/HudIcons';
 
 interface GameMenuProps {
   userNickname: string;
@@ -98,8 +106,8 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             className="w-full p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-950/40 via-[#1c1917] to-[#141210] border-2 border-amber-600/80 hover:border-amber-400 shadow-[0_4px_25px_rgba(0,0,0,0.85)] hover:shadow-[0_4px_30px_rgba(245,158,11,0.25)] transition-all duration-200 group flex items-center justify-between text-left cursor-pointer transform hover:-translate-y-0.5 active:scale-[0.99]"
           >
             <div className="flex items-center space-x-3.5">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#292524] border border-amber-600/80 flex items-center justify-center font-mono font-black text-amber-300 text-xs shadow-inner uppercase shrink-0 group-hover:scale-105 transition-transform">
-                [SOLO]
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#292524] border border-amber-600/80 flex items-center justify-center text-amber-300 shadow-inner uppercase shrink-0 group-hover:scale-105 transition-transform">
+                <SwordsIcon className="w-6 h-6" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -117,16 +125,16 @@ export const GameMenu: React.FC<GameMenuProps> = ({
                 </p>
               </div>
             </div>
-            <span className="text-amber-400 font-mono font-black text-sm group-hover:translate-x-1.5 transition-transform pr-1">
-              [➔]
+            <span className="text-amber-400 group-hover:translate-x-1.5 transition-transform pr-1">
+              <ChevronRightIcon className="w-5 h-5" />
             </span>
           </button>
 
           {/* Opção 2: [PVP] Duelo Online (PvP) */}
           <div className="w-full p-3.5 sm:p-4 rounded-2xl bg-[#141210]/80 border border-stone-800/80 flex items-center justify-between text-left opacity-60">
             <div className="flex items-center space-x-3.5">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#1c1917] border border-stone-800 flex items-center justify-center font-mono font-bold text-stone-500 text-xs shrink-0">
-                [PVP]
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#1c1917] border border-stone-800 flex items-center justify-center text-stone-500 shrink-0">
+                <PvPIcon className="w-6 h-6" />
               </div>
               <div>
                 <div className="flex items-center space-x-2">
@@ -155,8 +163,8 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             className="w-full p-3.5 sm:p-4 rounded-2xl bg-[#1c1917]/90 border border-amber-800/70 hover:border-amber-500 shadow-md hover:shadow-[0_4px_20px_rgba(245,158,11,0.25)] transition-all duration-200 group flex items-center justify-between text-left cursor-pointer transform hover:-translate-y-0.5"
           >
             <div className="flex items-center space-x-3.5">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#292524] border border-amber-700/60 flex items-center justify-center font-mono font-black text-amber-300 text-xs shadow-inner uppercase shrink-0 group-hover:scale-105 transition-transform">
-                [DECK]
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#292524] border border-amber-700/60 flex items-center justify-center text-amber-300 shadow-inner uppercase shrink-0 group-hover:scale-105 transition-transform">
+                <DeckCardsIcon className="w-6 h-6" />
               </div>
               <div>
                 <div className="flex items-center space-x-2">
@@ -174,8 +182,8 @@ export const GameMenu: React.FC<GameMenuProps> = ({
                 </p>
               </div>
             </div>
-            <span className="text-stone-400 group-hover:text-amber-400 font-mono font-black text-sm transition-transform group-hover:translate-x-1.5 pr-1">
-              [➔]
+            <span className="text-stone-400 group-hover:text-amber-400 group-hover:translate-x-1.5 transition-transform pr-1">
+              <ChevronRightIcon className="w-5 h-5" />
             </span>
           </button>
 
@@ -185,8 +193,8 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             className="w-full p-3.5 sm:p-4 rounded-2xl bg-[#141210]/95 border border-stone-800 hover:border-amber-700/70 shadow-md transition-all group flex items-center justify-between text-left cursor-pointer transform hover:-translate-y-0.5"
           >
             <div className="flex items-center space-x-3.5">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#1c1917] border border-stone-700 flex items-center justify-center font-mono font-black text-stone-300 text-xs shadow-inner uppercase shrink-0">
-                [CFG]
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#1c1917] border border-stone-700 flex items-center justify-center text-stone-300 shadow-inner uppercase shrink-0 group-hover:rotate-45 transition-transform">
+                <SettingsIcon className="w-6 h-6" />
               </div>
               <div>
                 <h2 className="text-sm sm:text-base font-bold text-stone-200 group-hover:text-amber-300 font-serif tracking-wide transition-colors">
@@ -199,8 +207,8 @@ export const GameMenu: React.FC<GameMenuProps> = ({
                 </p>
               </div>
             </div>
-            <span className="text-stone-400 group-hover:text-amber-300 font-mono font-black text-sm transition-transform group-hover:translate-x-1.5 pr-1">
-              [➔]
+            <span className="text-stone-400 group-hover:text-amber-300 group-hover:translate-x-1.5 transition-transform pr-1">
+              <ChevronRightIcon className="w-5 h-5" />
             </span>
           </button>
 
@@ -215,7 +223,8 @@ export const GameMenu: React.FC<GameMenuProps> = ({
             onClick={onLogout}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] text-red-400 hover:text-red-200 bg-[#1c1917] hover:bg-red-950/40 border border-stone-800 hover:border-red-900/60 font-mono font-black uppercase tracking-wider transition-all cursor-pointer"
           >
-            <span>[SAIR]</span>
+            <LogoutIcon className="w-3.5 h-3.5 text-red-400" />
+            <span>{isPt ? 'SAIR' : 'LOGOUT'}</span>
           </button>
         </footer>
 

@@ -18,6 +18,16 @@ import { getUserSettings } from '../utils/settings';
 import { soundFX } from '../utils/soundFX';
 import { WebGPUBackdrop } from './duel3d/WebGPUBackdrop';
 import { Card3DShowcase } from './duel3d/Card3DShowcase';
+import {
+  ArrowLeftIcon,
+  PlusIcon,
+  MinusIcon,
+  DeckCardsIcon,
+  StarIcon,
+  TrashIcon,
+  SaveIcon,
+  CloseIcon,
+} from './icons/HudIcons';
 
 export interface DeckBuilderProps {
   userNickname: string;
@@ -385,10 +395,11 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, 
 
             <button
               onClick={onBackToMenu}
-              className="px-2.5 py-1.5 rounded-lg bg-[#1c1917] hover:bg-[#292524] text-amber-300 border border-amber-800/70 hover:border-amber-400 text-xs font-mono font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+              className="px-2.5 py-1.5 rounded-lg bg-[#1c1917] hover:bg-[#292524] text-amber-300 border border-amber-800/70 hover:border-amber-400 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm group"
               title={isPt ? 'Voltar ao Menu Principal' : 'Back to Main Menu'}
             >
-              <span>[➔ MENU]</span>
+              <ArrowLeftIcon className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
+              <span>{isPt ? 'MENU' : 'MENU'}</span>
             </button>
           </div>
 
@@ -413,13 +424,14 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, 
                     : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border-amber-300 shadow-md cursor-pointer'
                 }`}
               >
-                <span>[+ NOVO]</span>
+                <PlusIcon className="w-3.5 h-3.5" />
+                <span>{isPt ? 'NOVO' : 'NEW'}</span>
               </button>
 
               <button
                 onClick={() => handleCreateNewDeck(true)}
                 disabled={customDecksCount >= DeckService.MAX_USER_DECKS}
-                className={`py-2 px-3 rounded-xl font-mono font-black text-xs uppercase tracking-wider border flex items-center justify-center gap-1 transition-all ${
+                className={`py-2 px-3 rounded-xl font-mono font-black text-xs uppercase tracking-wider border flex items-center justify-center gap-1.5 transition-all ${
                   customDecksCount >= DeckService.MAX_USER_DECKS
                     ? 'bg-[#1c1917] border-stone-800 text-stone-600 cursor-not-allowed'
                     : 'bg-[#1c1917] hover:bg-[#292524] text-amber-200 border-amber-800/70 hover:border-amber-500 cursor-pointer'
@@ -430,7 +442,8 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, 
                     : 'Clone selected deck into a new editable slot'
                 }
               >
-                <span>[CLONAR]</span>
+                <DeckCardsIcon className="w-3.5 h-3.5" />
+                <span>{isPt ? 'CLONAR' : 'CLONE'}</span>
               </button>
             </div>
           </div>
@@ -483,10 +496,10 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, 
                     {!deck.isPrebuilt && (
                       <button
                         onClick={(e) => handleDeleteCustomDeck(deck, e)}
-                        className="text-xs font-mono font-black text-red-400 hover:text-red-200 p-1 rounded hover:bg-red-950/60 transition-colors cursor-pointer"
+                        className="p-1 rounded text-stone-400 hover:text-red-400 hover:bg-red-950/60 transition-colors cursor-pointer"
                         title={isPt ? 'Excluir Deck Personalizado' : 'Delete Custom Deck'}
                       >
-                        [X]
+                        <TrashIcon className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
@@ -501,14 +514,15 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, 
                           : 'bg-[#1c1917] hover:bg-amber-500/20 text-amber-300 border border-amber-700/60'
                       }`}
                     >
+                      <StarIcon className={`w-3 h-3 ${deck.isActive ? 'text-stone-950 fill-stone-950' : 'text-amber-400'}`} />
                       <span>
                         {deck.isActive
                           ? isPt
-                            ? '[★ PRINCIPAL]'
-                            : '[★ MAIN]'
+                            ? 'PRINCIPAL'
+                            : 'MAIN'
                           : isPt
-                          ? '[DEFINIR PRINCIPAL]'
-                          : '[SET MAIN]'}
+                          ? 'DEFINIR'
+                          : 'SET MAIN'}
                       </span>
                     </button>
 
@@ -632,10 +646,11 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, 
                     : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border-amber-300 shadow-md'
                 }`}
               >
+                <PlusIcon className="w-3.5 h-3.5" />
                 <span>
                   {getCardQuantityInDeck(inspectedCard.id) >= DeckService.MAX_COPIES_PER_CARD
-                    ? isPt ? '[LIMITE 3/3 ATINGIDO]' : '[MAX 3/3 REACHED]'
-                    : isPt ? '[+ ADICIONAR AO DECK (+1)]' : '[+ ADD TO DECK (+1)]'}
+                    ? isPt ? 'LIMITE 3/3 ATINGIDO' : 'MAX 3/3 REACHED'
+                    : isPt ? 'ADICIONAR AO DECK (+1)' : 'ADD TO DECK (+1)'}
                 </span>
               </button>
             )}
@@ -718,13 +733,14 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, 
                   onClick={() => handleSetMainDeck(selectedDeck.id)}
                   className="px-3 py-1.5 rounded-xl bg-[#1c1917] hover:bg-amber-500/20 text-amber-300 border border-amber-700/60 text-xs font-mono font-black flex items-center gap-1.5 transition-all cursor-pointer"
                 >
-                  <span>{isPt ? '[★ TORNAR PRINCIPAL]' : '[★ SET MAIN]'}</span>
+                  <StarIcon className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{isPt ? 'TORNAR PRINCIPAL' : 'SET MAIN'}</span>
                 </button>
               )}
 
               <button
                 onClick={handleSaveDeck}
-                className={`px-4 py-2 rounded-xl font-mono font-black text-xs uppercase tracking-wider border flex items-center gap-2 transition-all cursor-pointer ${
+                className={`px-4 py-2 rounded-xl font-mono font-black text-xs uppercase tracking-wider border flex items-center gap-1.5 transition-all cursor-pointer ${
                   selectedDeck.isPrebuilt
                     ? 'bg-[#1c1917] hover:bg-[#292524] text-amber-300 border-amber-700/70'
                     : hasUnsavedChanges
@@ -732,14 +748,15 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, 
                     : 'bg-gradient-to-b from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 border-amber-300 shadow-md'
                 }`}
               >
+                <SaveIcon className="w-3.5 h-3.5" />
                 <span>
                   {selectedDeck.isPrebuilt
                     ? isPt
-                      ? '[SALVAR COMO NOVO DECK]'
-                      : '[SAVE AS NEW DECK]'
+                      ? 'SALVAR COMO NOVO DECK'
+                      : 'SAVE AS NEW DECK'
                     : isPt
-                    ? '[SALVAR DECK]'
-                    : '[SAVE DECK]'}
+                    ? 'SALVAR DECK'
+                    : 'SAVE DECK'}
                 </span>
               </button>
             </div>
@@ -837,9 +854,10 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, 
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 font-mono text-xs text-stone-400 hover:text-white cursor-pointer"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-white cursor-pointer p-0.5"
+                    title={isPt ? 'Limpar busca' : 'Clear search'}
                   >
-                    [X]
+                    <CloseIcon className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
@@ -973,26 +991,26 @@ export const DeckBuilder: React.FC<DeckBuilderProps> = ({ userNickname, userId, 
                             <button
                               onClick={(e) => handleRemoveCardFromDeck(card, e)}
                               disabled={qtyInDeck === 0 || selectedDeck.isPrebuilt}
-                              className={`w-5 h-5 rounded flex items-center justify-center font-mono font-black text-xs border transition-colors ${
+                              className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${
                                 qtyInDeck === 0 || selectedDeck.isPrebuilt
                                   ? 'bg-[#1c1917] border-stone-800 text-stone-600 cursor-not-allowed'
                                   : 'bg-red-950/80 hover:bg-red-600 text-red-200 hover:text-white border-red-700/60 cursor-pointer'
                               }`}
                               title={isPt ? 'Remover 1 cópia' : 'Remove 1 copy'}
                             >
-                              -
+                              <MinusIcon className="w-3 h-3" />
                             </button>
                             <button
                               onClick={() => handleAddCardToDeck(card)}
                               disabled={isMaxed || selectedDeck.isPrebuilt}
-                              className={`w-5 h-5 rounded flex items-center justify-center font-mono font-black text-xs border transition-colors ${
+                              className={`w-5 h-5 rounded flex items-center justify-center border transition-colors ${
                                 isMaxed || selectedDeck.isPrebuilt
                                   ? 'bg-[#1c1917] border-stone-800 text-stone-600 cursor-not-allowed'
                                   : 'bg-emerald-950/80 hover:bg-emerald-500 text-emerald-200 hover:text-stone-950 border-emerald-600/60 cursor-pointer'
                               }`}
                               title={isPt ? 'Adicionar 1 cópia' : 'Add 1 copy'}
                             >
-                              +
+                              <PlusIcon className="w-3 h-3" />
                             </button>
                           </div>
                         </div>

@@ -10,6 +10,15 @@ import { getActiveDeckForDuel } from '../utils/deckStorage';
 import { SettingsModal } from './SettingsModal';
 import { DuelArena3D } from './duel3d/DuelArena3D';
 import { Card3DShowcase } from './duel3d/Card3DShowcase';
+import {
+  SettingsIcon,
+  SurrenderIcon,
+  InfoIcon,
+  LogIcon,
+  CloseIcon,
+  PlusIcon,
+  MinusIcon,
+} from './icons/HudIcons';
 
 export interface PlaymatProps {
   playerNickname?: string;
@@ -2534,10 +2543,11 @@ export const Playmat: React.FC<PlaymatProps> = ({
         <div className="fixed left-3 top-3 z-30">
           <button
             onClick={() => setIsInspectorCollapsed(false)}
-            className="bg-[#141210]/95 border border-amber-800/75 hover:border-amber-600 text-amber-200/90 px-3 py-2 rounded-xl shadow-lg font-mono text-[10px] font-black tracking-wider cursor-pointer transition-colors backdrop-blur-md"
+            className="bg-[#141210]/95 border border-amber-800/75 hover:border-amber-500 text-amber-200/90 hover:text-amber-100 px-3 py-2 rounded-xl shadow-lg font-mono text-[10px] font-black tracking-wider cursor-pointer transition-all hover:scale-105 active:scale-95 backdrop-blur-md flex items-center gap-1.5"
             title={languagePt ? 'Expandir Inspetor de Cartas' : 'Expand Card Inspector'}
           >
-            {languagePt ? '[+ INSPETOR]' : '[+ INSPECTOR]'}
+            <PlusIcon className="w-3.5 h-3.5 text-amber-400" />
+            <span>{languagePt ? 'INSPETOR' : 'INSPECTOR'}</span>
           </button>
         </div>
       ) : (
@@ -2589,10 +2599,11 @@ export const Playmat: React.FC<PlaymatProps> = ({
                         </span>
                         <button
                           onClick={() => setIsInspectorCollapsed(true)}
-                          className="text-[10px] font-mono font-bold text-stone-400 hover:text-stone-100 px-1 cursor-pointer"
+                          className="text-stone-400 hover:text-stone-100 p-0.5 rounded hover:bg-stone-800/50 cursor-pointer transition-colors"
                           title={languagePt ? 'Recolher Painel' : 'Collapse Panel'}
+                          aria-label="Recolher"
                         >
-                          [-]
+                          <MinusIcon className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -2694,10 +2705,11 @@ export const Playmat: React.FC<PlaymatProps> = ({
                       </span>
                       <button
                         onClick={() => setIsInspectorCollapsed(true)}
-                        className="text-[10px] font-mono font-bold text-stone-400 hover:text-stone-100 px-1 cursor-pointer"
+                        className="text-stone-400 hover:text-stone-100 p-0.5 rounded hover:bg-stone-800/50 cursor-pointer transition-colors"
                         title={languagePt ? 'Recolher Painel' : 'Collapse Panel'}
+                        aria-label="Recolher"
                       >
-                        [-]
+                        <MinusIcon className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -2819,10 +2831,11 @@ export const Playmat: React.FC<PlaymatProps> = ({
                 </span>
                 <button
                   onClick={() => setIsInspectorCollapsed(true)}
-                  className="text-[10px] font-mono font-bold text-stone-400 hover:text-stone-100 px-1 cursor-pointer"
+                  className="text-stone-400 hover:text-stone-100 p-0.5 rounded hover:bg-stone-800/50 cursor-pointer transition-colors"
                   title={languagePt ? 'Recolher Painel' : 'Collapse Panel'}
+                  aria-label="Recolher"
                 >
-                  [-]
+                  <MinusIcon className="w-3.5 h-3.5" />
                 </button>
               </div>
 
@@ -3023,47 +3036,50 @@ export const Playmat: React.FC<PlaymatProps> = ({
         </div>
       )}
 
-      {/* 6. RODAPÉ DIREITO: CONTROLES TÁTICOS ([CFG], [RENDER-SE], [INFO], [LOG]) */}
+      {/* 6. RODAPÉ DIREITO: CONTROLES TÁTICOS (CFG, RENDER-SE, INFO, LOG COM ÍCONES SVG) */}
       <div className="fixed bottom-3 right-3 z-30 flex items-center gap-2">
         <button
           onClick={() => setIsSettingsModalOpen(true)}
-          className="w-10 h-10 rounded-full bg-[#141210]/95 border border-amber-800/75 hover:border-amber-600 text-amber-200/90 font-mono text-[10px] font-black flex items-center justify-center shadow-lg cursor-pointer transition-colors backdrop-blur-md"
+          className="w-10 h-10 rounded-full bg-[#141210]/95 border border-amber-800/75 hover:border-amber-500 text-amber-300 hover:text-amber-200 shadow-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:scale-105 active:scale-95 backdrop-blur-md group"
           title={languagePt ? 'Configurações de Áudio e Idioma' : 'Audio and Language Settings'}
           aria-label={languagePt ? 'Abrir Configurações' : 'Open Settings'}
         >
-          [CFG]
+          <SettingsIcon className="w-4 h-4 transition-transform group-hover:rotate-45" />
         </button>
 
         <button
           onClick={() => setShowSurrenderModal(true)}
-          className="px-3 py-2 rounded-full bg-[#141210]/95 border border-amber-800/75 hover:border-red-800/80 text-amber-200/90 hover:text-red-300 font-mono text-[10px] font-black tracking-wider shadow-lg flex items-center justify-center cursor-pointer transition-colors backdrop-blur-md"
+          className="px-3.5 py-2 rounded-full bg-[#141210]/95 border border-amber-800/75 hover:border-red-600/80 text-amber-200/90 hover:text-red-300 font-mono text-[10px] font-black tracking-wider shadow-lg flex items-center gap-1.5 cursor-pointer transition-all duration-200 hover:scale-105 active:scale-95 backdrop-blur-md group"
           title={languagePt ? 'Sair ou Render-se do Duelo' : 'Surrender or Exit Duel'}
         >
-          {languagePt ? '[RENDER-SE]' : '[SURRENDER]'}
+          <SurrenderIcon className="w-3.5 h-3.5 text-amber-400 group-hover:text-red-400 transition-colors" />
+          <span>{languagePt ? 'RENDER-SE' : 'SURRENDER'}</span>
         </button>
 
         <button
           onClick={() => setIsFieldInfoOpen((prev) => !prev)}
-          className={`w-10 h-10 rounded-full bg-[#141210]/95 border font-mono text-[10px] font-black shadow-lg flex items-center justify-center cursor-pointer transition-colors backdrop-blur-md ${
+          className={`w-10 h-10 rounded-full bg-[#141210]/95 border font-mono text-[10px] font-black shadow-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:scale-105 active:scale-95 backdrop-blur-md ${
             isFieldInfoOpen
-              ? 'border-amber-400 text-amber-300'
-              : 'border-amber-800/75 hover:border-amber-600 text-amber-200/90'
+              ? 'border-amber-400 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.4)]'
+              : 'border-amber-800/75 hover:border-amber-500 text-amber-300/80 hover:text-amber-200'
           }`}
           title={languagePt ? 'Resumo de Cartas no Campo' : 'Field Cards Summary'}
+          aria-label={languagePt ? 'Informações do Campo' : 'Field Info'}
         >
-          [INFO]
+          <InfoIcon className="w-4 h-4" />
         </button>
 
         <button
           onClick={() => setIsLogOpen((prev) => !prev)}
-          className={`w-10 h-10 rounded-full bg-[#141210]/95 border font-mono text-[10px] font-black shadow-lg flex items-center justify-center cursor-pointer transition-colors backdrop-blur-md ${
+          className={`w-10 h-10 rounded-full bg-[#141210]/95 border font-mono text-[10px] font-black shadow-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:scale-105 active:scale-95 backdrop-blur-md ${
             isLogOpen
-              ? 'border-amber-400 text-amber-300'
-              : 'border-amber-800/75 hover:border-amber-600 text-amber-200/90'
+              ? 'border-amber-400 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.4)]'
+              : 'border-amber-800/75 hover:border-amber-500 text-amber-300/80 hover:text-amber-200'
           }`}
           title={languagePt ? 'Histórico de Ações do Duelo' : 'Duel Action Log'}
+          aria-label={languagePt ? 'Histórico de Duelo' : 'Duel Log'}
         >
-          [LOG]
+          <LogIcon className="w-4 h-4" />
         </button>
       </div>
 
@@ -3074,9 +3090,10 @@ export const Playmat: React.FC<PlaymatProps> = ({
             <span className="font-black text-amber-400">[STATUS DO CAMPO 3D]</span>
             <button
               onClick={() => setIsFieldInfoOpen(false)}
-              className="text-stone-400 hover:text-stone-100 text-[10px] cursor-pointer"
+              className="text-stone-400 hover:text-stone-100 p-0.5 rounded hover:bg-stone-800/50 cursor-pointer transition-colors"
+              aria-label="Fechar"
             >
-              [X]
+              <CloseIcon className="w-3.5 h-3.5" />
             </button>
           </div>
           <div className="space-y-1.5 text-[11px]">
@@ -3107,9 +3124,10 @@ export const Playmat: React.FC<PlaymatProps> = ({
             </span>
             <button
               onClick={() => setIsLogOpen(false)}
-              className="text-stone-400 hover:text-stone-100 text-[10px] cursor-pointer"
+              className="text-stone-400 hover:text-stone-100 p-0.5 rounded hover:bg-stone-800/50 cursor-pointer transition-colors"
+              aria-label="Fechar"
             >
-              [X]
+              <CloseIcon className="w-3.5 h-3.5" />
             </button>
           </div>
           <div className="space-y-1">
