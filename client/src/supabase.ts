@@ -1,27 +1,27 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { deckService } from '@duel/deck-service';
 
-function getEnvVar(key: string): string {
-  try {
-    const metaEnv = new Function('try { return import.meta.env; } catch (e) { return undefined; }')();
-    if (metaEnv && metaEnv[key]) {
-      return String(metaEnv[key]).trim();
-    }
-  } catch {}
-  try {
-    if (typeof process !== 'undefined' && process.env?.[key]) {
-      return String(process.env[key]).trim();
-    }
-  } catch {}
-  return '';
-}
+// Helper to resolve Supabase URL across Vite (browser) and Node/Vitest
+const resolvedUrl: string =
+  (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_URL || import.meta.env?.SUPABASE_URL)) ||
+  (typeof process !== 'undefined' && (process.env?.VITE_SUPABASE_URL || process.env?.SUPABASE_URL)) ||
+  '';
 
-export const SUPABASE_URL = getEnvVar('VITE_SUPABASE_URL') || getEnvVar('SUPABASE_URL');
-export const SUPABASE_ANON_KEY =
-  getEnvVar('VITE_SUPABASE_ANON_KEY') ||
-  getEnvVar('SUPABASE_ANON_KEY') ||
-  getEnvVar('SUPABASE_SERVICE_ROLE_KEY') ||
-  getEnvVar('VITE_SUPABASE_SERVICE_ROLE_KEY');
+const resolvedKey: string =
+  (typeof import.meta !== 'undefined' &&
+    (import.meta.env?.VITE_SUPABASE_ANON_KEY ||
+      import.meta.env?.SUPABASE_ANON_KEY ||
+      import.meta.env?.SUPABASE_SERVICE_ROLE_KEY ||
+      import.meta.env?.VITE_SUPABASE_SERVICE_ROLE_KEY)) ||
+  (typeof process !== 'undefined' &&
+    (process.env?.VITE_SUPABASE_ANON_KEY ||
+      process.env?.SUPABASE_ANON_KEY ||
+      process.env?.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env?.VITE_SUPABASE_SERVICE_ROLE_KEY)) ||
+  '';
+
+export const SUPABASE_URL = String(resolvedUrl || '').trim();
+export const SUPABASE_ANON_KEY = String(resolvedKey || '').trim();
 
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 

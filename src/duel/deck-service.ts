@@ -456,17 +456,13 @@ export class DeckService {
   }
 
   private readEnv(key: string): string | undefined {
-    try {
-      const metaEnv = new Function('try { return import.meta.env; } catch (e) { return undefined; }')();
-      if (metaEnv && metaEnv[key]) {
-        return String(metaEnv[key]);
-      }
-    } catch {}
-    try {
-      if (typeof process !== 'undefined' && process.env?.[key]) {
-        return String(process.env[key]);
-      }
-    } catch {}
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+      const val = (import.meta as any).env[key];
+      if (val) return String(val);
+    }
+    if (typeof process !== 'undefined' && process.env?.[key]) {
+      return String(process.env[key]);
+    }
     return undefined;
   }
 

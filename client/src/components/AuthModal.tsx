@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { WebGPUBackdrop } from './duel3d/WebGPUBackdrop';
-import { supabase, isSupabaseConfigured } from '../supabase';
+import { supabase, isSupabaseConfigured, SUPABASE_URL, SUPABASE_ANON_KEY } from '../supabase';
 
 export interface AuthSuccessPayload {
   id?: string;
@@ -180,9 +180,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         ) : (
           <span
             className="inline-block px-2.5 py-0.5 mb-5 rounded bg-amber-950/60 border border-amber-600/40 text-[9px] font-mono text-amber-300 font-bold uppercase tracking-wider"
-            title="Para ativar a nuvem, configure SUPABASE_URL e SUPABASE_ANON_KEY (ou VITE_SUPABASE_*) na Vercel ou no .env"
+            title={`Diagnóstico: URL=${SUPABASE_URL ? 'Conectada' : 'Não detectada'} | Chave=${SUPABASE_ANON_KEY ? 'Detectada' : 'Não detectada'}`}
           >
-            ⚠️ [MODO LOCAL OFFLINE • SUPABASE DESCONECTADO]
+            ⚠️ [MODO LOCAL OFFLINE • {!SUPABASE_URL && !SUPABASE_ANON_KEY ? 'CHAVES NÃO DETECTADAS' : !SUPABASE_URL ? 'URL AUSENTE' : 'CHAVE AUSENTE'}]
           </span>
         )}
 
