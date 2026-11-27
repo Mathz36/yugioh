@@ -170,7 +170,9 @@ export class DeckService {
     const key =
       options.supabaseKey ||
       this.readEnv('VITE_SUPABASE_ANON_KEY') ||
-      this.readEnv('SUPABASE_ANON_KEY');
+      this.readEnv('SUPABASE_ANON_KEY') ||
+      this.readEnv('SUPABASE_SERVICE_ROLE_KEY') ||
+      this.readEnv('VITE_SUPABASE_SERVICE_ROLE_KEY');
 
     if (url && key) {
       try {

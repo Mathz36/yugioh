@@ -16,8 +16,12 @@ function getEnvVar(key: string): string {
   return '';
 }
 
-export const SUPABASE_URL = getEnvVar('VITE_SUPABASE_URL');
-export const SUPABASE_ANON_KEY = getEnvVar('VITE_SUPABASE_ANON_KEY');
+export const SUPABASE_URL = getEnvVar('VITE_SUPABASE_URL') || getEnvVar('SUPABASE_URL');
+export const SUPABASE_ANON_KEY =
+  getEnvVar('VITE_SUPABASE_ANON_KEY') ||
+  getEnvVar('SUPABASE_ANON_KEY') ||
+  getEnvVar('SUPABASE_SERVICE_ROLE_KEY') ||
+  getEnvVar('VITE_SUPABASE_SERVICE_ROLE_KEY');
 
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 

@@ -173,9 +173,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
           {isSignUp ? '[CRIAR CONTA DE DUELISTA]' : '[ACESSO À ARENA SAGRADA]'}
         </p>
 
-        {isSupabaseConfigured && (
+        {isSupabaseConfigured ? (
           <span className="inline-block px-2.5 py-0.5 mb-5 rounded bg-black/60 border border-emerald-600/40 text-[9px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
             ● [NUVEM SEGURA ATIVA • SUPABASE AUTH]
+          </span>
+        ) : (
+          <span
+            className="inline-block px-2.5 py-0.5 mb-5 rounded bg-amber-950/60 border border-amber-600/40 text-[9px] font-mono text-amber-300 font-bold uppercase tracking-wider"
+            title="Para ativar a nuvem, configure SUPABASE_URL e SUPABASE_ANON_KEY (ou VITE_SUPABASE_*) na Vercel ou no .env"
+          >
+            ⚠️ [MODO LOCAL OFFLINE • SUPABASE DESCONECTADO]
           </span>
         )}
 
